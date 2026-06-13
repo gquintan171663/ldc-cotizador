@@ -42,22 +42,26 @@ const CSS=`
   td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:bold;color:var(--slate);} td.num .cur{color:var(--label);font-size:10px;margin-right:2px;font-weight:normal;}
   .subjto{font-size:11px;color:var(--label);} .subjto .code{color:var(--slate);font-weight:normal;}
   .allin{display:inline-block;font-size:10px;font-weight:bold;letter-spacing:.5px;color:#0B7A3B;background:#E8F5EC;border:1px solid #BfE3CB;border-radius:3px;padding:2px 7px;}
-  .cols2{display:flex;gap:24px;margin-top:22px;}
+  .cols2{display:flex;gap:24px;margin-top:34px;}
+  .notas{margin-top:26px;}
+  .notas h4{font-size:11px;letter-spacing:1px;text-transform:uppercase;margin:0 0 6px;color:var(--ink);text-decoration:underline;text-underline-offset:3px;}
+  .notas-body{font-size:12px;color:var(--slate);line-height:1.5;white-space:pre-wrap;}
+  .tail{margin-top:auto;}
   .panel{flex:1;} .panel h4{font-size:11px;letter-spacing:1px;text-transform:uppercase;margin:0 0 8px;color:var(--ink);text-decoration:underline;text-underline-offset:3px;}
   .panel ul{margin:0;padding:0;list-style:none;}
   .panel li{font-size:12px;color:var(--slate);padding:4px 0 4px 18px;position:relative;line-height:1.35;}
   .panel li::before{position:absolute;left:0;top:3px;font-size:12px;font-weight:bold;line-height:1.2;}
   .panel.inc li::before{content:'\\2713';color:#0B7A3B;}
   .panel.exc li::before{content:'\\00D7';color:#B6BEC6;}
-  .valid{margin-top:22px;display:flex;align-items:center;gap:12px;}
+  .valid{margin-top:30px;display:flex;align-items:center;gap:12px;}
   .valid .chip{font-size:11px;font-weight:bold;letter-spacing:.5px;color:#fff;background:var(--slate);border-radius:4px;padding:7px 13px;}
   .valid .txt{font-size:12px;color:var(--label);} .valid .txt b{color:var(--slate);}
-  .sign{margin-top:34px;display:flex;justify-content:flex-end;}
+  .sign{margin-top:46px;display:flex;justify-content:flex-end;}
   .sign-box{text-align:center;min-width:240px;}
   .sign-line{border-top:1px solid var(--slate);margin-bottom:6px;}
   .sign-name{font-size:12.5px;font-weight:bold;color:var(--ink);letter-spacing:.5px;}
   .sign-sub{font-size:10.5px;color:var(--label);margin-top:1px;}
-  .foot{margin-top:auto;padding-top:18px;text-align:center;}
+  .foot{padding-top:22px;text-align:center;}
   .foot .fr{height:2px;background:var(--red);margin-bottom:8px;}
   .foot p{margin:1px 0;font-size:10.5px;color:var(--label);} .foot a{color:var(--red);text-decoration:none;}
   @media print{html,body{background:#fff;} .sheet{margin:0;box-shadow:none;width:auto;min-height:auto;} @page{size:Letter;margin:0;}}
@@ -107,6 +111,8 @@ export function buildQuoteHtml(st){
   const dirTxt=st.direccion==="E"?"EXPORTACIÓN":"IMPORTACIÓN";
   const folio=(st.codigo||"")+(st.commodity?(" · "+st.commodity):"");
   const vig=(st.vigDesde||st.vigHasta)?((st.vigDesde?fmtFecha(st.vigDesde):"")+(st.vigHasta?" — "+fmtFecha(st.vigHasta):"")):"Sujeta a confirmación";
+  const notasTxt=(st.notas||"").trim();
+  const notasBlock=notasTxt?('<div class="notas"><h4>Notas:</h4><div class="notas-body">'+esc(notasTxt)+'</div></div>'):"";
 
   return '<!DOCTYPE html><html lang="es"><head><meta charset="utf-8"><title>Cotización '+esc(folio)+'</title><style>'+CSS+'</style></head><body><div class="sheet">'+
     '<div class="head"><img src="'+LOGO+'" alt="LDC"><div class="doc-meta"><div class="doc-title">COTIZACIÓN</div><div class="doc-sub">FLETE MARÍTIMO · '+dirTxt+'</div>'+
@@ -119,9 +125,12 @@ export function buildQuoteHtml(st){
     '<table class="'+tblCls+'" style="font-size:'+tblFont+'px"><thead><tr><th>Origin</th><th>POL</th><th>POD</th><th>Destination</th><th class="ctr">Scope</th><th class="ctr">T.T.</th>'+eqTh+'<th>Subject to</th></tr></thead><tbody>'+bodyRows+'</tbody></table>'+
     '<div class="cols2"><div class="panel inc"><h4>Incluyen:</h4><ul>'+incList+'</ul></div>'+
     '<div class="panel exc"><h4>No incluyen (subject to):</h4><ul>'+excList+'</ul></div></div>'+
+    notasBlock+
+    '<div class="tail">'+
     '<div class="valid"><span class="chip">VIGENCIA</span><span class="txt"><b>'+esc(vig)+'</b></span></div>'+
     '<div class="sign"><div class="sign-box"><div class="sign-line"></div><div class="sign-name">Pricing Department</div><div class="sign-sub">Logistic Dynamics Corporation</div></div></div>'+
     '<div class="foot"><div class="fr"></div><p><b>Logistic Dynamics Corporation S.A. de C.V.</b> · Nuevo León, México</p><p><a>ldcorporation.com</a></p></div>'+
+    '</div>'+
     '</div></body></html>';
 }
 

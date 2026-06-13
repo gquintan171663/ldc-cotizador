@@ -133,6 +133,7 @@ export function Cotizador({ loadId, onDirty }){
   const [commodityId,setCommodityId]=useState("");
   const [vigDesde,setVigDesde]=useState("");
   const [vigHasta,setVigHasta]=useState("");
+  const [notas,setNotas]=useState("");
   const [equipos,setEquipos]=useState(["20DV","40HC"]);
   const [started,setStarted]=useState(false);
   const [rutas,setRutas]=useState([]);
@@ -197,7 +198,7 @@ export function Cotizador({ loadId, onDirty }){
     loadVersion(loadId).then(st=>{
       setVersionId(st.versionId); setCodigo(st.codigo); setEstatus(st.estatus);
       setCliente(st.cliente||""); setModo(st.modo||"maritimo"); setDireccion(st.direccion||"I");
-      setCommodityId(st.commodity_id||""); setVigDesde(st.vigDesde||""); setVigHasta(st.vigHasta||"");
+      setCommodityId(st.commodity_id||""); setVigDesde(st.vigDesde||""); setVigHasta(st.vigHasta||""); setNotas(st.notas||"");
       setEquipos(st.equipos&&st.equipos.length?st.equipos:["20DV","40HC"]);
       setRutas(st.rutas&&st.rutas.length?st.rutas:[mkRuta()]);
       setQuoteNav(st.quoteNav||[]); setStarted(true); setLoading(false);
@@ -214,7 +215,7 @@ export function Cotizador({ loadId, onDirty }){
     if(firstRun.current){ firstRun.current=false; return; }
     if(hydrating.current) return;
     onDirtyRef.current&&onDirtyRef.current(true);
-  },[cliente,modo,direccion,commodityId,vigDesde,vigHasta,equipos,rutas,quoteNav,started]);
+  },[cliente,modo,direccion,commodityId,vigDesde,vigHasta,notas,equipos,rutas,quoteNav,started]);
 
   const editable = estatus==="borrador";
   const comLabel=(comms.find(c=>c.id===commodityId)||{}).commodity||"";
@@ -226,7 +227,7 @@ export function Cotizador({ loadId, onDirty }){
   const guardar=async()=>{
     if(!cliente){ alert("Elige un cliente."); return; }
     const cn=(clientes.find(c=>c.id===cliente)||{}).nombre;
-    const st={versionId,codigo,cliente,clienteNombre:cn,modo,direccion,commodity:comLabel,commodity_id:commodityId||null,vigDesde,vigHasta,origen:"cero",equipos,rutas,quoteNav};
+    const st={versionId,codigo,cliente,clienteNombre:cn,modo,direccion,commodity:comLabel,commodity_id:commodityId||null,vigDesde,vigHasta,notas,origen:"cero",equipos,rutas,quoteNav};
     // #5 Conflicto: misma ruta + misma vigencia con tarifa distinta
     try{
       const conf=await checkConflictoTarifa(st);
@@ -244,7 +245,7 @@ export function Cotizador({ loadId, onDirty }){
   };
   const enviar=async()=>{ if(!versionId) return; await markEnviada(versionId); setEstatus("enviada"); };
   const nueva=async()=>{ if(!versionId) return; setSaving(true); const res=await nuevaVersion(versionId); setSaving(false); if(res.versionId){ setVersionId(res.versionId); setCodigo(res.codigo); setEstatus("borrador"); setSaved(res); } };
-  const generar=()=>{ const cn=(clientes.find(c=>c.id===cliente)||{}).nombre; abrirCotizacion({clienteNombre:cn,codigo:codigo||codigoPreview,commodity:comLabel,direccion,equipos,rutas,quoteNav,vigDesde,vigHasta}); };
+  const generar=()=>{ const cn=(clientes.find(c=>c.id===cliente)||{}).nombre; abrirCotizacion({clienteNombre:cn,codigo:codigo||codigoPreview,commodity:comLabel,direccion,equipos,rutas,quoteNav,vigDesde,vigHasta,notas}); };
 
   return (<div style={{maxWidth:1160,margin:"0 auto"}}>
     {loading&&<div style={{color:C.label,fontSize:13,padding:10}}>Cargando cotización…</div>}
@@ -325,6 +326,10 @@ export function Cotizador({ loadId, onDirty }){
         </div>))}
       </div>)}
       <TarifasGrid rutas={rutas} setRutas={setRutas} quoteNav={quoteNav} equipos={equipos}/>
+      </div>
+      <div style={{background:"#fff",border:"1px solid "+C.sep2,borderRadius:12,padding:14,marginTop:14,opacity:editable?1:.7,pointerEvents:editable?"auto":"none"}}>
+        <Lbl>Notas <span style={{fontWeight:"normal",color:C.label,textTransform:"none"}}>· texto libre que aparece en el PDF (condiciones, comentarios, etc.)</span></Lbl>
+        <textarea value={notas} onChange={e=>setNotas(e.target.value)} placeholder="Ej. Tarifas sujetas a disponibilidad de espacio y equipo. No incluye seguro de la mercancía…" rows={3} style={{...inS,marginTop:4,resize:"vertical",minHeight:64,fontFamily:F,lineHeight:1.45}}/>
       </div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:14,padding:"6px 0"}}>
         <span style={{fontSize:12,color:saved?C.green:C.label}}>{saved?("Guardado "+(saved.codigo||codigo||"")+" · "+saved.lineas+" líneas, "+saved.opciones+" opciones, "+saved.surcharges+" recargos"):""}</span>

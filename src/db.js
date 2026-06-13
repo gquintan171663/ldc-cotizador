@@ -112,11 +112,11 @@ async function insertChildren(versionId, state, sum){
 
 export async function saveCotizacion(state){
   const sum={versiones:0,lineas:0,opciones:0,surcharges:0,errores:[],codigo:null,versionId:null};
-  const { versionId, cliente, clienteNombre, modo, direccion, commodity, commodity_id, origen } = state;
+  const { versionId, cliente, clienteNombre, modo, direccion, commodity, commodity_id, origen, notas } = state;
 
   if(versionId){
     // EDITAR borrador existente: actualiza versión y reemplaza hijos
-    await supabase.from("versiones").update({direccion,commodity:commodity||"",commodity_id:commodity_id||null}).eq("id",versionId);
+    await supabase.from("versiones").update({direccion,commodity:commodity||"",commodity_id:commodity_id||null,notas:notas||null}).eq("id",versionId);
     await supabase.from("lineas").delete().eq("version_id",versionId); // cascade -> opciones + recargos
     sum.versionId=versionId; sum.codigo=state.codigo;
     await insertChildren(versionId, state, sum);
@@ -134,7 +134,7 @@ export async function saveCotizacion(state){
     acuerdo_id=ai.id;
   }
   let { data: ver, error: ve } = await supabase.from("versiones")
-    .insert({acuerdo_id,direccion,origen:origen==="rr"?"desde_rate_request":"desde_cero",commodity:commodity||"",commodity_id:commodity_id||null,estatus:"borrador"})
+    .insert({acuerdo_id,direccion,origen:origen==="rr"?"desde_rate_request":"desde_cero",commodity:commodity||"",commodity_id:commodity_id||null,notas:notas||null,estatus:"borrador"})
     .select("id,codigo").single();
   if(ve){ sum.errores.push("version: "+ve.message); return sum; }
   sum.versiones++; sum.codigo=ver.codigo; sum.versionId=ver.id;
@@ -190,7 +190,7 @@ export async function loadVersion(versionId){
     versionId, codigo:ver.codigo, estatus:ver.estatus, acuerdo_id:ver.acuerdos?.id,
     cliente:ver.acuerdos?.cliente_id, clienteNombre:ver.acuerdos?.clientes?.nombre,
     modo:ver.acuerdos?.modo||"maritimo", direccion:ver.direccion,
-    commodity:ver.commodity, commodity_id:ver.commodity_id,
+    commodity:ver.commodity, commodity_id:ver.commodity_id, notas:ver.notas||"",
     vigDesde:anyL.validez_desde||"", vigHasta:anyL.validez_hasta||"",
     equipos:[...equiposSet], rutas:rutas.length?rutas:[], quoteNav:Object.values(quoteNavMap),
   };
