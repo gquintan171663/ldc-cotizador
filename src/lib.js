@@ -68,9 +68,20 @@ export function parseWorkbook(buf){
     const bests=[];hdr.forEach((h,i)=>{if(_norm(h)==="best cost")bests.push(i);});
     const cm={cust:pick("customer"),com:pick("commodity"),ori:pick("origin"),pol:pick("pol"),dest:pick("destination"),mode:pick("transp. mode","transp mode"),svc:pick("service"),exp:pick("expire date"),tr20:pick("total rate 20'","total rate 20"),tr40:pick("total rate 40'","total rate 40"),note:pick("note")};
     const b20=bests[0],b40=bests[1];
-    let cnt=0;
+    let cnt=0; let lastCust="", lastCom="";
     for(let r=hi+1;r<aoa.length;r++){
-      const row=aoa[r];if(!row)continue;const cust=row[cm.cust];if(cust==null||String(cust).trim()==="")continue;
+      const row=aoa[r];if(!row)continue;
+      // Arrastre de cliente: en los Excel de Pricing el nombre va sólo en la 1ª fila del bloque
+      const rawCust=cm.cust>=0?row[cm.cust]:null; const cu=(rawCust==null?"":String(rawCust).trim());
+      if(cu){ lastCust=cu; lastCom=""; }   // nuevo bloque de cliente -> reinicia commodity arrastrado
+      const cust=cu||lastCust; if(!cust) continue;
+      // Arrastre de commodity dentro del mismo cliente
+      const rawCom=cm.com>=0?row[cm.com]:null; const co=(rawCom==null?"":String(rawCom).trim());
+      if(co) lastCom=co; const com=co||lastCom;
+      // ¿La fila tiene datos reales? (ruta o algún costo) — evita filas separadoras vacías
+      const filled=(ci)=>ci!=null&&ci>=0&&row[ci]!=null&&String(row[ci]).trim()!=="";
+      const hasData=filled(cm.pol)||filled(cm.dest)||filled(cm.ori)||filled(cm.tr20)||filled(cm.tr40)||(b20!=null&&filled(b20))||(b40!=null&&filled(b40));
+      if(!hasData) continue;
       const svc=row[cm.svc];const side=(t)=>(String(t||"").trim().toUpperCase().startsWith("D"))?"DR":"CY";
       const sp=String(svc||"").split("/");const scope=side(sp[0])+"-"+side(sp[1]||"");
       const num=(v)=>{const x=parseFloat(v);return isFinite(x)?x:null;};
@@ -84,7 +95,7 @@ export function parseWorkbook(buf){
       if(cost20==null&&cost40==null)w.push("sin costo");
       [ {raw:b20!=null?row[b20+1]:null,s:nav20}, {raw:b40!=null?row[b40+1]:null,s:nav40} ].forEach(o=>{ if(o.raw&&!isKnownScac(o.s)) w.push("naviera '"+o.raw+"' sin SCAC"); });
       if(w.length)warns++;
-      recs.push({sheet:sn,cust:String(cust).trim(),com:row[cm.com]||"",ori:row[cm.ori]||"",pol:row[cm.pol]||"",dest:row[cm.dest]||"",mode:row[cm.mode]||"",svc,scope,exp:row[cm.exp]||null,cost20,nav20,cost40,nav40,note:row[cm.note]||"",w});
+      recs.push({sheet:sn,cust:cust,com:com||"",ori:row[cm.ori]||"",pol:row[cm.pol]||"",dest:row[cm.dest]||"",mode:row[cm.mode]||"",svc,scope,exp:row[cm.exp]||null,cost20,nav20,cost40,nav40,note:row[cm.note]||"",w});
       cnt++;
     }
     sheets.push({sn,n:cnt});
@@ -241,3 +252,17 @@ const _up=(s)=>String(s||"").toUpperCase();
 export const optPuertos=()=>PUERTOS.map(p=>({v:p.code,label:p.code+" · "+p.name,sub:(PAIS_NOMBRE[p.country]||p.country)}));
 export const optCiudades=()=>CIUDADES.map(c=>({v:c.city+", "+c.country,label:c.city,sub:(PAIS_NOMBRE[c.country]||c.country)}));
 export const puertoLabel=(code)=>{const p=PUERTOS.find(x=>x.code===_up(code));return p?(p.code+" · "+p.name):code;};
+
+// ====== Derivación de país (para auto-poblar recargos por ruta similar) ======
+export const paisDe=(v)=>{
+  const s=String(v||"").trim(); if(!s) return "";
+  const m=s.match(/,\s*([A-Za-z]{2})\s*$/); if(m) return m[1].toUpperCase();         // "Ciudad, MX"
+  const up=s.toUpperCase();
+  const p=PUERTOS.find(x=>x.code===up); if(p) return p.country;                       // código de puerto exacto
+  if(/^[A-Z]{2}[A-Z0-9]{2,3}$/.test(up) && PAIS_NOMBRE[up.slice(0,2)]) return up.slice(0,2); // UN/LOCODE genérico
+  const c=CIUDADES.find(x=>x.city.toUpperCase()===up); if(c) return c.country;        // ciudad por nombre
+  return "";
+};
+export const paisOrigen=(r)=>paisDe(r.pol)||paisDe(r.origen);
+export const paisDestino=(r)=>paisDe(r.pod)||paisDe(r.destino);
+export const rutaPaisLabel=(o,d)=>((PAIS_NOMBRE[o]||o||"?")+" → "+(PAIS_NOMBRE[d]||d||"?"));

@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient.js";
-import { matchCommodity } from "./lib.js";
+import { matchCommodity, paisDe, n, adicPorCont, tx, eqMeta } from "./lib.js";
 
 // Mapa commodity(lower) -> id desde el catálogo
 async function commodityMap(){
@@ -145,14 +145,18 @@ export async function saveCotizacion(state){
 // ===== Lista de cotizaciones (todo el equipo para pricing/admin; sales: propias por RLS) =====
 export async function listCotizaciones(){
   const { data, error } = await supabase.from("versiones")
-    .select("id,codigo,direccion,estatus,commodity,owner_email,updated_at,reemplaza_a,origen,acuerdos(modo,clientes(nombre,no_cliente))")
+    .select("id,codigo,direccion,estatus,commodity,owner_email,updated_at,reemplaza_a,origen,acuerdos(modo,clientes(nombre,no_cliente)),lineas(validez_desde,validez_hasta)")
     .order("updated_at",{ascending:false}).limit(300);
   if(error) return { rows:[], error:error.message };
-  return { rows:(data||[]).map(v=>({
-    id:v.id, codigo:v.codigo, folio:(v.codigo||"")+(v.commodity?(" · "+v.commodity):""),
-    cliente:v.acuerdos?.clientes?.nombre||"—", direccion:v.direccion, estatus:v.estatus,
-    commodity:v.commodity, owner:v.owner_email, updated_at:v.updated_at, origen:v.origen, superseded_by:null
-  })) };
+  return { rows:(data||[]).map(v=>{
+    const l=(v.lineas||[]).find(x=>x.validez_desde||x.validez_hasta)||{};
+    return {
+      id:v.id, codigo:v.codigo, folio:(v.codigo||"")+(v.commodity?(" · "+v.commodity):""),
+      cliente:v.acuerdos?.clientes?.nombre||"—", direccion:v.direccion, estatus:v.estatus,
+      commodity:v.commodity, owner:v.owner_email, updated_at:v.updated_at, origen:v.origen, superseded_by:null,
+      vigDesde:l.validez_desde||null, vigHasta:l.validez_hasta||null
+    };
+  }) };
 }
 
 // ===== Reconstruir el estado del cotizador desde una versión =====
@@ -242,4 +246,97 @@ export async function altaSurcharge({clave, descripcion, categoria="Otros"}){
 export async function listSurcharges(){
   const { data } = await supabase.from("surcharges").select("clave,descripcion,categoria").order("clave");
   return (data||[]).map(s=>({ c:s.clave, d:s.descripcion||"", g:s.categoria||"" }));
+}
+
+// ===== #2 Recargos de la última cotización con misma combinación País→País =====
+export async function recargosDeRutaSimilar(pais1, pais2, excludeVersionId){
+  if(!pais1 || !pais2) return null;
+  const { data } = await supabase.from("versiones")
+    .select("id,updated_at,lineas(pol,pod,origen,destino)")
+    .order("updated_at",{ascending:false}).limit(150);
+  for(const v of (data||[])){
+    if(v.id===excludeVersionId) continue;
+    const hit=(v.lineas||[]).some(l=>{
+      const o=paisDe(l.pol)||paisDe(l.origen);
+      const d=paisDe(l.pod)||paisDe(l.destino);
+      return o===pais1 && d===pais2;
+    });
+    if(hit){
+      const st=await loadVersion(v.id);
+      if(st && st.quoteNav && st.quoteNav.length) return { versionId:v.id, codigo:st.codigo, quoteNav:st.quoteNav };
+    }
+  }
+  return null;
+}
+
+// ===== #5 Conflicto: misma ruta + misma vigencia, tarifa distinta (otro cliente o no) =====
+// Devuelve [{folio, cliente, ruta, vig, tarifaExistente, tarifaNueva}]
+export async function checkConflictoTarifa(state){
+  const { versionId, vigDesde, vigHasta, rutas, equipos, quoteNav } = state;
+  if(!vigDesde && !vigHasta) return [];
+  const surOf=(scac)=>((quoteNav||[]).find(q=>q.scac===scac)||{}).surcharges||[];
+  // venta (base+profit+adicional prepaid por contenedor) de la opción elegida, primer equipo
+  const ventaNueva=(r)=>{
+    const o=(r.opciones||[])[r.elegida??0]||r.opciones[0]||{}; const ek=equipos[0];
+    const pr=(o.precios&&o.precios[ek])||{}; const surs=surOf(o.navScac);
+    return n(pr.base)+n(pr.profit)+adicPorCont(surs, (eqMeta(ek).teu||1));
+  };
+  const rutasReq=(rutas||[]).filter(r=>tx(r.pol)&&tx(r.pod)).map(r=>({pol:r.pol,pod:r.pod,venta:ventaNueva(r)}));
+  if(!rutasReq.length) return [];
+  // Trae versiones con misma vigencia (en lineas) y sus tarifas
+  const { data } = await supabase.from("lineas")
+    .select("pol,pod,validez_desde,validez_hasta,version_id,opcion_elegida_id,versiones(id,codigo,estatus,acuerdos(clientes(nombre)))")
+    .eq("validez_desde", vigDesde||null).eq("validez_hasta", vigHasta||null).limit(500);
+  if(!data || !data.length) return [];
+  const lids=data.filter(l=>l.opcion_elegida_id).map(l=>l.opcion_elegida_id);
+  const { data: ops } = lids.length ? await supabase.from("opciones_costo").select("id,costo_base,profit").in("id",lids) : { data:[] };
+  const opMap={}; (ops||[]).forEach(o=>{ opMap[o.id]={base:n(o.costo_base),profit:n(o.profit)}; });
+  // surcharges de esas opciones para sumar adicional
+  const { data: surExist } = lids.length ? await supabase.from("opcion_surcharges").select("opcion_id,monto,incluido,pago,basis").in("opcion_id",lids) : { data:[] };
+  const surByOp={}; (surExist||[]).forEach(s=>{ (surByOp[s.opcion_id]=surByOp[s.opcion_id]||[]).push({monto:s.monto,incluido:s.incluido,pago:s.pago,basis:s.basis,c:""}); });
+  const conflictos=[];
+  for(const l of data){
+    if(l.version_id===versionId) continue;
+    const mine=rutasReq.find(x=>x.pol===l.pol && x.pod===l.pod);
+    if(!mine) continue;
+    const op=opMap[l.opcion_elegida_id]; if(!op) continue;
+    const ventaExist=op.base+op.profit+adicPorCont(surByOp[l.opcion_elegida_id]||[],1);
+    if(Math.abs(ventaExist-mine.venta) > 0.5){  // tarifa distinta
+      conflictos.push({
+        folio:l.versiones?.codigo||"?",
+        cliente:l.versiones?.acuerdos?.clientes?.nombre||"—",
+        ruta:l.pol+"→"+l.pod,
+        vig:(vigDesde||"")+" — "+(vigHasta||""),
+        tarifaExistente:ventaExist, tarifaNueva:mine.venta
+      });
+    }
+  }
+  // dedup por folio+ruta
+  const seen=new Set(); return conflictos.filter(c=>{ const k=c.folio+c.ruta; if(seen.has(k))return false; seen.add(k); return true; });
+}
+
+// ===== Borrado de versiones =====
+// Borra una versión (las líneas en cascada eliminan opciones y recargos)
+export async function deleteVersion(versionId){
+  await supabase.from("lineas").delete().eq("version_id", versionId);
+  const { error } = await supabase.from("versiones").delete().eq("id", versionId);
+  return { error: error ? error.message : null };
+}
+
+// Cuenta de versiones importadas (todas y borradores)
+export async function contarImportadas(){
+  const { count: total } = await supabase.from("versiones").select("id",{count:"exact",head:true}).eq("origen","importado");
+  const { count: borr } = await supabase.from("versiones").select("id",{count:"exact",head:true}).eq("origen","importado").eq("estatus","borrador");
+  return { total: total||0, borradores: borr||0 };
+}
+
+// Borra lo importado: solo borradores, o todo lo importado
+export async function deleteImportadas({ onlyBorradores=true }={}){
+  let q=supabase.from("versiones").select("id").eq("origen","importado");
+  if(onlyBorradores) q=q.eq("estatus","borrador");
+  const { data, error } = await q;
+  if(error) return { borradas:0, errores:[error.message] };
+  let n=0; const errs=[];
+  for(const v of (data||[])){ const r=await deleteVersion(v.id); if(r.error) errs.push(r.error); else n++; }
+  return { borradas:n, errores:errs };
 }

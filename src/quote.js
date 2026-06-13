@@ -23,7 +23,11 @@ const CSS=`
   .subject{margin-top:14px;padding:10px 14px;background:var(--soft);border-left:3px solid var(--red);}
   .subject .s1{font-size:13px;font-weight:bold;color:var(--ink);}
   .lead{font-size:12.5px;line-height:1.5;color:var(--slate);margin:18px 0 12px;}
-  table.rates{width:100%;border-collapse:collapse;font-size:12px;}
+  table.rates{width:100%;border-collapse:collapse;font-size:12px;table-layout:auto;}
+  table.rates.compact tbody td, table.rates.compact thead th{padding:6px 6px;}
+  table.rates.tight tbody td, table.rates.tight thead th{padding:4px 5px;}
+  table.rates.compact tbody td.door, table.rates.compact tbody td .port, table.rates.tight tbody td.door, table.rates.tight tbody td .port{white-space:normal;}
+  table.rates.tight td.num{white-space:nowrap;}
   table.rates thead th{background:var(--ink);color:#fff;font-size:9.5px;letter-spacing:.6px;text-transform:uppercase;font-weight:bold;text-align:left;padding:9px 10px;white-space:nowrap;}
   table.rates thead th.num{text-align:right;} table.rates thead th.ctr{text-align:center;}
   table.rates tbody td{padding:11px 10px;border-bottom:1px solid var(--sep);border-right:1px solid var(--sep);vertical-align:middle;}
@@ -39,13 +43,12 @@ const CSS=`
   .subjto{font-size:11px;color:var(--label);} .subjto .code{color:var(--slate);font-weight:normal;}
   .allin{display:inline-block;font-size:10px;font-weight:bold;letter-spacing:.5px;color:#0B7A3B;background:#E8F5EC;border:1px solid #BfE3CB;border-radius:3px;padding:2px 7px;}
   .cols2{display:flex;gap:24px;margin-top:22px;}
-  .panel{flex:1;} .panel h4{font-size:11px;letter-spacing:1px;text-transform:uppercase;margin:0 0 8px;color:var(--ink);}
-  .panel h4 .dot{display:inline-block;width:8px;height:8px;border-radius:50%;margin-right:7px;vertical-align:middle;}
-  .panel.inc h4 .dot{background:var(--red);} .panel.exc h4 .dot{background:#C0C7CE;}
+  .panel{flex:1;} .panel h4{font-size:11px;letter-spacing:1px;text-transform:uppercase;margin:0 0 8px;color:var(--ink);text-decoration:underline;text-underline-offset:3px;}
   .panel ul{margin:0;padding:0;list-style:none;}
-  .panel li{font-size:12px;color:var(--slate);padding:4px 0 4px 16px;position:relative;line-height:1.35;}
-  .panel li::before{content:'';position:absolute;left:0;top:10px;width:5px;height:5px;border-radius:50%;background:var(--sep2);}
-  .panel.inc li::before{background:var(--red);}
+  .panel li{font-size:12px;color:var(--slate);padding:4px 0 4px 18px;position:relative;line-height:1.35;}
+  .panel li::before{position:absolute;left:0;top:3px;font-size:12px;font-weight:bold;line-height:1.2;}
+  .panel.inc li::before{content:'\\2713';color:#0B7A3B;}
+  .panel.exc li::before{content:'\\00D7';color:#B6BEC6;}
   .valid{margin-top:22px;display:flex;align-items:center;gap:12px;}
   .valid .chip{font-size:11px;font-weight:bold;letter-spacing:.5px;color:#fff;background:var(--slate);border-radius:4px;padding:7px 13px;}
   .valid .txt{font-size:12px;color:var(--label);} .valid .txt b{color:var(--slate);}
@@ -98,6 +101,9 @@ export function buildQuoteHtml(st){
   const incList=Object.keys(incMap).map(k=>'<li><b>'+esc(k)+'</b> — '+esc(incMap[k].d)+_amt(incMap[k])+'</li>').join("")||'<li style="color:#7A8794">—</li>';
   const excList=Object.keys(excMap).map(k=>'<li><b>'+esc(k)+'</b> — '+esc(excMap[k].d)+_amt(excMap[k])+'</li>').join("")||'<li style="color:#7A8794">—</li>';
   const eqTh=eqs.map(e=>'<th class="num">'+esc(e.t)+'</th>').join("");
+  const ncols=eqs.length;
+  const tblCls="rates"+(ncols>5?" tight":ncols>3?" compact":"");
+  const tblFont=ncols<=3?12:ncols<=5?10.5:9.2;
   const dirTxt=st.direccion==="E"?"EXPORTACIÓN":"IMPORTACIÓN";
   const folio=(st.codigo||"")+(st.commodity?(" · "+st.commodity):"");
   const vig=(st.vigDesde||st.vigHasta)?((st.vigDesde?fmtFecha(st.vigDesde):"")+(st.vigHasta?" — "+fmtFecha(st.vigHasta):"")):"Sujeta a confirmación";
@@ -110,9 +116,9 @@ export function buildQuoteHtml(st){
     '<div style="flex:1"><div class="field"><div class="lbl">Emite</div><div class="val">Logistic Dynamics Corporation</div></div><div class="field"><div class="lbl">Modo</div><div class="val">Marítimo · '+(st.direccion==="E"?"Exportación":"Importación")+'</div></div></div></div>'+
     '<div class="subject"><div class="s1">Propuesta de flete marítimo</div></div>'+
     '<div class="lead">Estimado cliente, en atención a su solicitud ponemos a su consideración las siguientes tarifas. Precios de venta por contenedor en USD.</div>'+
-    '<table class="rates"><thead><tr><th>Origin</th><th>POL</th><th>POD</th><th>Destination</th><th class="ctr">Scope</th><th class="ctr">T.T.</th>'+eqTh+'<th>Subject to</th></tr></thead><tbody>'+bodyRows+'</tbody></table>'+
-    '<div class="cols2"><div class="panel inc"><h4><span class="dot"></span>Incluyen</h4><ul>'+incList+'</ul></div>'+
-    '<div class="panel exc"><h4><span class="dot"></span>No incluyen (subject to)</h4><ul>'+excList+'</ul></div></div>'+
+    '<table class="'+tblCls+'" style="font-size:'+tblFont+'px"><thead><tr><th>Origin</th><th>POL</th><th>POD</th><th>Destination</th><th class="ctr">Scope</th><th class="ctr">T.T.</th>'+eqTh+'<th>Subject to</th></tr></thead><tbody>'+bodyRows+'</tbody></table>'+
+    '<div class="cols2"><div class="panel inc"><h4>Incluyen:</h4><ul>'+incList+'</ul></div>'+
+    '<div class="panel exc"><h4>No incluyen (subject to):</h4><ul>'+excList+'</ul></div></div>'+
     '<div class="valid"><span class="chip">VIGENCIA</span><span class="txt"><b>'+esc(vig)+'</b></span></div>'+
     '<div class="sign"><div class="sign-box"><div class="sign-line"></div><div class="sign-name">Pricing Department</div><div class="sign-sub">Logistic Dynamics Corporation</div></div></div>'+
     '<div class="foot"><div class="fr"></div><p><b>Logistic Dynamics Corporation S.A. de C.V.</b> · Nuevo León, México</p><p><a>ldcorporation.com</a></p></div>'+

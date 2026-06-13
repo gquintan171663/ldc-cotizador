@@ -1,8 +1,8 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { supabase } from "./supabaseClient.js";
-import { C, F, EQUIPOS, EQUIPO_CATS, NAVIERAS, navName, CATALOG, COMMODITY_INDUSTRIAS, tx, scopeFull, n, adicPorCont, cargosBL, inclPorCont, inclBL, subjectTo, money, optPuertos, optCiudades } from "./lib.js";
+import { C, F, EQUIPOS, EQUIPO_CATS, NAVIERAS, navName, CATALOG, COMMODITY_INDUSTRIAS, tx, scopeFull, n, adicPorCont, cargosBL, inclPorCont, inclBL, subjectTo, money, optPuertos, optCiudades, paisOrigen, paisDestino, rutaPaisLabel } from "./lib.js";
 import { inS, Lbl, Field, TI, Sel, Chip, Btn, ClaveAutocomplete, ComboBox } from "./ui.jsx";
-import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges } from "./db.js";
+import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges, recargosDeRutaSimilar, checkConflictoTarifa } from "./db.js";
 import { abrirCotizacion } from "./quote.js";
 
 function SurchargeGrid({surs,onChange,catalog}){
@@ -124,7 +124,7 @@ function TarifasGrid({rutas,setRutas,quoteNav,equipos}){
   </div>);
 }
 
-export function Cotizador({ loadId }){
+export function Cotizador({ loadId, onDirty }){
   const [clientes,setClientes]=useState([]);
   const [comms,setComms]=useState([]);
   const [cliente,setCliente]=useState("");
@@ -166,10 +166,34 @@ export function Cotizador({ loadId }){
   };
   const altaRecargo=async(clave,desc)=>{ const r=await altaSurcharge({clave,descripcion:desc}); if(r.ok){ setExtraCat(c=>[...c,{c:r.clave,d:desc||"",g:"Otros"}]); } else if(r.error){ alert("Alta de recargo: "+r.error); } };
 
+  // #2 Auto-poblar recargos desde la última cotización con misma combinación País→País
+  const [autoMsg,setAutoMsg]=useState("");
+  const [autoBusy,setAutoBusy]=useState(false);
+  const autoTried=React.useRef("");
+  const rutaPaises=()=>{ for(const r of rutas){ const o=paisOrigen(r), d=paisDestino(r); if(o&&d) return {o,d}; } return null; };
+  const jalarRecargos=async(force=false)=>{
+    const pp=rutaPaises();
+    if(!pp){ if(force) alert("Primero define la ruta (POL/POD u Origen/Destino) para identificar los países."); return; }
+    if(quoteNav.length && !force){ return; } // no piso lo que ya hay salvo que sea forzado
+    if(quoteNav.length && force && !confirm("Ya hay recargos cargados. ¿Reemplazarlos con los de la ruta similar?")) return;
+    setAutoBusy(true); setAutoMsg("");
+    const res=await recargosDeRutaSimilar(pp.o, pp.d, versionId);
+    setAutoBusy(false);
+    if(res){ setQuoteNav(res.quoteNav); setAutoMsg("Recargos jalados de "+(res.codigo||"cotización previa")+" ("+rutaPaisLabel(pp.o,pp.d)+") — editables."); }
+    else { setAutoMsg("No encontré cotización previa para "+rutaPaisLabel(pp.o,pp.d)+"."); }
+  };
+  useEffect(()=>{
+    if(!started || !editable) return;
+    const pp=rutaPaises(); if(!pp) return;
+    const key=pp.o+">"+pp.d;
+    if(quoteNav.length===0 && autoTried.current!==key){ autoTried.current=key; jalarRecargos(false); }
+  // eslint-disable-next-line
+  },[rutas,started]);
+
   useEffect(()=>{ supabase.from("clientes").select("id,no_cliente,nombre,tipo").order("nombre").then(({data})=>setClientes(data||[])); },[]);
   useEffect(()=>{ supabase.from("commodities").select("id,industria,commodity").eq("activo",true).order("industria").order("commodity").then(({data})=>setComms(data||[])); },[]);
   useEffect(()=>{
-    if(!loadId) return; setLoading(true);
+    if(!loadId) return; setLoading(true); hydrating.current=true;
     loadVersion(loadId).then(st=>{
       setVersionId(st.versionId); setCodigo(st.codigo); setEstatus(st.estatus);
       setCliente(st.cliente||""); setModo(st.modo||"maritimo"); setDireccion(st.direccion||"I");
@@ -177,8 +201,20 @@ export function Cotizador({ loadId }){
       setEquipos(st.equipos&&st.equipos.length?st.equipos:["20DV","40HC"]);
       setRutas(st.rutas&&st.rutas.length?st.rutas:[mkRuta()]);
       setQuoteNav(st.quoteNav||[]); setStarted(true); setLoading(false);
+      setTimeout(()=>{ hydrating.current=false; },0);
     });
   },[loadId]);
+
+  // ===== Aviso de cambios sin guardar (dirty) =====
+  const onDirtyRef=React.useRef(onDirty); onDirtyRef.current=onDirty;
+  const firstRun=React.useRef(true);
+  const hydrating=React.useRef(false);
+  useEffect(()=>{ onDirtyRef.current&&onDirtyRef.current(false); },[]); // montaje limpio
+  useEffect(()=>{
+    if(firstRun.current){ firstRun.current=false; return; }
+    if(hydrating.current) return;
+    onDirtyRef.current&&onDirtyRef.current(true);
+  },[cliente,modo,direccion,commodityId,vigDesde,vigHasta,equipos,rutas,quoteNav,started]);
 
   const editable = estatus==="borrador";
   const comLabel=(comms.find(c=>c.id===commodityId)||{}).commodity||"";
@@ -189,11 +225,21 @@ export function Cotizador({ loadId }){
 
   const guardar=async()=>{
     if(!cliente){ alert("Elige un cliente."); return; }
-    setSaving(true); setSaved(null);
     const cn=(clientes.find(c=>c.id===cliente)||{}).nombre;
-    const res=await saveCotizacion({versionId,codigo,cliente,clienteNombre:cn,modo,direccion,commodity:comLabel,commodity_id:commodityId||null,vigDesde,vigHasta,origen:"cero",equipos,rutas,quoteNav});
+    const st={versionId,codigo,cliente,clienteNombre:cn,modo,direccion,commodity:comLabel,commodity_id:commodityId||null,vigDesde,vigHasta,origen:"cero",equipos,rutas,quoteNav};
+    // #5 Conflicto: misma ruta + misma vigencia con tarifa distinta
+    try{
+      const conf=await checkConflictoTarifa(st);
+      if(conf.length){
+        const lista=conf.slice(0,4).map(c=>"• "+c.folio+" ("+c.cliente+") "+c.ruta+": existe "+money(c.tarifaExistente)+" vs nueva "+money(c.tarifaNueva)).join("\n");
+        if(!confirm("⚠ Conflicto de tarifa\n\nYa existe otra cotización con la MISMA ruta y MISMA vigencia pero TARIFA distinta:\n\n"+lista+"\n\n¿Guardar de todas formas?")) return;
+      }
+    }catch(e){ /* si la verificación falla, no bloquea el guardado */ }
+    setSaving(true); setSaved(null);
+    const res=await saveCotizacion(st);
     setSaving(false); setSaved(res);
     if(res.versionId){ setVersionId(res.versionId); setCodigo(res.codigo); setEstatus("borrador"); }
+    onDirtyRef.current&&onDirtyRef.current(false);
     if(res.errores.length) alert("Guardado con avisos: "+res.errores.slice(0,3).join(" · "));
   };
   const enviar=async()=>{ if(!versionId) return; await markEnviada(versionId); setEstatus("enviada"); };
@@ -210,7 +256,10 @@ export function Cotizador({ loadId }){
     <div style={{background:"#fff",border:"1px solid "+C.sep2,borderRadius:12,padding:16,marginBottom:16,opacity:editable?1:.7,pointerEvents:editable?"auto":"none"}}>
       <div style={{display:"flex",gap:16,alignItems:"flex-end",flexWrap:"wrap"}}>
         <Field label="Cliente / Prospecto" w={2}>
-          <Sel value={cliente} onChange={e=>setCliente(e.target.value)} options={[{v:"",t:"— selecciona —"},...clientes.map(c=>({v:c.id,t:c.no_cliente+" · "+c.nombre+" ("+c.tipo+")"}))]}/>
+          <ComboBox value={cliente} display={(clientes.find(c=>c.id===cliente)||{}).nombre||""} allowFree={false}
+            placeholder="Buscar cliente o prospecto…"
+            items={clientes.map(c=>({v:c.id,label:c.no_cliente+" · "+c.nombre,sub:c.tipo}))}
+            onChange={(v)=>setCliente(v)}/>
           <span onClick={()=>setNuevoOpen(!nuevoOpen)} style={{cursor:"pointer",color:C.red,fontSize:11,fontWeight:"bold",marginTop:3,display:"inline-block"}}>{nuevoOpen?"Cancelar":"＋ Nuevo cliente / prospecto"}</span>
         </Field>
         <Field label="Modo"><Sel value={modo} onChange={e=>setModo(e.target.value)} options={[{v:"maritimo",t:"Marítimo"},{v:"terrestre",t:"Terrestre"},{v:"aereo",t:"Aéreo"}]}/></Field>
@@ -252,6 +301,11 @@ export function Cotizador({ loadId }){
 
     {started&&(<>
       <div style={{opacity:editable?1:.7,pointerEvents:editable?"auto":"none"}}>
+      <div style={{display:"flex",alignItems:"center",gap:10,marginBottom:10,flexWrap:"wrap"}}>
+        <Btn kind="ghost" small onClick={()=>jalarRecargos(true)} disabled={autoBusy}>{autoBusy?"Buscando…":"⟲ Jalar recargos de ruta similar"}</Btn>
+        {(()=>{const pp=rutaPaises();return pp?<span style={{fontSize:11,color:C.label}}>Ruta detectada: <b style={{color:C.slate}}>{rutaPaisLabel(pp.o,pp.d)}</b></span>:<span style={{fontSize:11,color:C.label}}>Define POL/POD para detectar países y autocompletar recargos.</span>;})()}
+        {autoMsg&&<span style={{fontSize:11,color:autoMsg.startsWith("No")?C.label:C.green,fontWeight:"bold"}}>{autoMsg}</span>}
+      </div>
       <NavierasSection quoteNav={quoteNav} setQuoteNav={setQuoteNav} catalog={mergedCat} onAlta={altaRecargo}/>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
         <span style={{fontSize:13,fontWeight:"bold",color:C.ink}}>Tarifas <span style={{fontWeight:"normal",color:C.label,fontSize:12}}>· base y profit por tamaño; costo, venta y subject-to salen solos</span></span>
