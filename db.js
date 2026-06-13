@@ -314,3 +314,29 @@ export async function checkConflictoTarifa(state){
   // dedup por folio+ruta
   const seen=new Set(); return conflictos.filter(c=>{ const k=c.folio+c.ruta; if(seen.has(k))return false; seen.add(k); return true; });
 }
+
+// ===== Borrado de versiones =====
+// Borra una versión (las líneas en cascada eliminan opciones y recargos)
+export async function deleteVersion(versionId){
+  await supabase.from("lineas").delete().eq("version_id", versionId);
+  const { error } = await supabase.from("versiones").delete().eq("id", versionId);
+  return { error: error ? error.message : null };
+}
+
+// Cuenta de versiones importadas (todas y borradores)
+export async function contarImportadas(){
+  const { count: total } = await supabase.from("versiones").select("id",{count:"exact",head:true}).eq("origen","importado");
+  const { count: borr } = await supabase.from("versiones").select("id",{count:"exact",head:true}).eq("origen","importado").eq("estatus","borrador");
+  return { total: total||0, borradores: borr||0 };
+}
+
+// Borra lo importado: solo borradores, o todo lo importado
+export async function deleteImportadas({ onlyBorradores=true }={}){
+  let q=supabase.from("versiones").select("id").eq("origen","importado");
+  if(onlyBorradores) q=q.eq("estatus","borrador");
+  const { data, error } = await q;
+  if(error) return { borradas:0, errores:[error.message] };
+  let n=0; const errs=[];
+  for(const v of (data||[])){ const r=await deleteVersion(v.id); if(r.error) errs.push(r.error); else n++; }
+  return { borradas:n, errores:errs };
+}

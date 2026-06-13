@@ -124,7 +124,7 @@ function TarifasGrid({rutas,setRutas,quoteNav,equipos}){
   </div>);
 }
 
-export function Cotizador({ loadId }){
+export function Cotizador({ loadId, onDirty }){
   const [clientes,setClientes]=useState([]);
   const [comms,setComms]=useState([]);
   const [cliente,setCliente]=useState("");
@@ -193,7 +193,7 @@ export function Cotizador({ loadId }){
   useEffect(()=>{ supabase.from("clientes").select("id,no_cliente,nombre,tipo").order("nombre").then(({data})=>setClientes(data||[])); },[]);
   useEffect(()=>{ supabase.from("commodities").select("id,industria,commodity").eq("activo",true).order("industria").order("commodity").then(({data})=>setComms(data||[])); },[]);
   useEffect(()=>{
-    if(!loadId) return; setLoading(true);
+    if(!loadId) return; setLoading(true); hydrating.current=true;
     loadVersion(loadId).then(st=>{
       setVersionId(st.versionId); setCodigo(st.codigo); setEstatus(st.estatus);
       setCliente(st.cliente||""); setModo(st.modo||"maritimo"); setDireccion(st.direccion||"I");
@@ -201,8 +201,20 @@ export function Cotizador({ loadId }){
       setEquipos(st.equipos&&st.equipos.length?st.equipos:["20DV","40HC"]);
       setRutas(st.rutas&&st.rutas.length?st.rutas:[mkRuta()]);
       setQuoteNav(st.quoteNav||[]); setStarted(true); setLoading(false);
+      setTimeout(()=>{ hydrating.current=false; },0);
     });
   },[loadId]);
+
+  // ===== Aviso de cambios sin guardar (dirty) =====
+  const onDirtyRef=React.useRef(onDirty); onDirtyRef.current=onDirty;
+  const firstRun=React.useRef(true);
+  const hydrating=React.useRef(false);
+  useEffect(()=>{ onDirtyRef.current&&onDirtyRef.current(false); },[]); // montaje limpio
+  useEffect(()=>{
+    if(firstRun.current){ firstRun.current=false; return; }
+    if(hydrating.current) return;
+    onDirtyRef.current&&onDirtyRef.current(true);
+  },[cliente,modo,direccion,commodityId,vigDesde,vigHasta,equipos,rutas,quoteNav,started]);
 
   const editable = estatus==="borrador";
   const comLabel=(comms.find(c=>c.id===commodityId)||{}).commodity||"";
@@ -227,6 +239,7 @@ export function Cotizador({ loadId }){
     const res=await saveCotizacion(st);
     setSaving(false); setSaved(res);
     if(res.versionId){ setVersionId(res.versionId); setCodigo(res.codigo); setEstatus("borrador"); }
+    onDirtyRef.current&&onDirtyRef.current(false);
     if(res.errores.length) alert("Guardado con avisos: "+res.errores.slice(0,3).join(" · "));
   };
   const enviar=async()=>{ if(!versionId) return; await markEnviada(versionId); setEstatus("enviada"); };

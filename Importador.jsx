@@ -1,7 +1,7 @@
-import React, { useState } from "react";
+import React, { useState, useEffect } from "react";
 import { C, NAVIERAS, isKnownScac, money, parseWorkbook, matchCommodity } from "./lib.js";
 import { Btn, Chip } from "./ui.jsx";
-import { importRates } from "./db.js";
+import { importRates, contarImportadas, deleteImportadas } from "./db.js";
 
 export function Importador({ onBack }){
   const [data,setData]=useState(null);
@@ -9,6 +9,21 @@ export function Importador({ onBack }){
   const [err,setErr]=useState("");
   const [result,setResult]=useState(null);
   const [prog,setProg]=useState(null);
+  const [cnt,setCnt]=useState(null);
+  const [delMsg,setDelMsg]=useState("");
+  const refreshCnt=()=>contarImportadas().then(setCnt);
+  useEffect(()=>{ refreshCnt(); },[]);
+  const borrar=async(onlyBorradores)=>{
+    const q=onlyBorradores
+      ? "¿Borrar los BORRADORES importados? Esto elimina las cotizaciones importadas en estado borrador (no las que ya marcaste enviadas)."
+      : "¿Borrar TODO lo importado? Esto elimina TODAS las cotizaciones que entraron por Excel, sin importar su estatus. Esta acción no se puede deshacer.";
+    if(!window.confirm(q)) return;
+    setBusy(true); setDelMsg("");
+    const r=await deleteImportadas({onlyBorradores});
+    setBusy(false);
+    setDelMsg("Se borraron "+r.borradas+" cotizaciones importadas"+(r.errores.length?(" · "+r.errores.length+" errores"):"")+".");
+    refreshCnt();
+  };
 
   const onFile=async(e)=>{
     const f=e.target.files&&e.target.files[0]; if(!f) return;
@@ -19,7 +34,7 @@ export function Importador({ onBack }){
   };
   const doImport=async()=>{
     if(!data) return; setBusy(true); setErr(""); setProg({done:0,totalC:0});
-    try{ const sum=await importRates(data.recs,(p)=>setProg(p)); setResult(sum); }
+    try{ const sum=await importRates(data.recs,(p)=>setProg(p)); setResult(sum); refreshCnt(); }
     catch(ex){ setErr("Error al importar: "+ex.message); }
     setBusy(false);
   };
@@ -38,6 +53,18 @@ export function Importador({ onBack }){
       <div style={{fontSize:11,color:C.label,marginTop:8}}>Todo es costo de naviera: entra como tarifa base (costo). Sin venta ni margen — eso se define al cotizar. Dirección: Exportación.</div>
       {busy&&!prog&&<div style={{marginTop:8,color:C.red,fontSize:12}}>Leyendo…</div>}
       {err&&<div style={{marginTop:8,color:C.red,fontSize:12}}>{err}</div>}
+    </div>
+
+    <div style={{background:"#fff",border:"1px solid "+C.sep2,borderRadius:12,padding:"12px 14px",marginBottom:14,display:"flex",alignItems:"center",justifyContent:"space-between",flexWrap:"wrap",gap:10}}>
+      <div style={{fontSize:12.5,color:C.slate}}>
+        <b style={{color:C.ink}}>Limpieza de importaciones.</b>{" "}
+        {cnt?(<span style={{color:C.label}}>Hay <b style={{color:C.slate}}>{cnt.total}</b> cotizaciones importadas (<b style={{color:C.slate}}>{cnt.borradores}</b> en borrador).</span>):<span style={{color:C.label}}>Contando…</span>}
+        {delMsg&&<span style={{color:C.green,fontWeight:"bold",marginLeft:8}}>{delMsg}</span>}
+      </div>
+      <div style={{display:"flex",gap:8}}>
+        <Btn kind="ghost" small onClick={()=>borrar(true)} disabled={busy||!cnt||cnt.borradores===0}>Borrar borradores importados</Btn>
+        <Btn kind="danger" small onClick={()=>borrar(false)} disabled={busy||!cnt||cnt.total===0}>Borrar TODO lo importado</Btn>
+      </div>
     </div>
 
     {result&&(<div style={{background:C.greenBg,border:"1px solid "+C.greenBd,borderRadius:10,padding:14,marginBottom:14}}>
