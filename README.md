@@ -23,3 +23,4 @@ de costos de naviera desde el Excel maestro.
 
 Auth: Email OTP activado, confirmación de correo desactivada.
 Roles en `allowed_users` (admin / pricing / sales).
+v2
