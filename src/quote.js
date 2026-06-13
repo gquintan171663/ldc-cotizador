@@ -23,20 +23,21 @@ const CSS=`
   .subject{margin-top:14px;padding:10px 14px;background:var(--soft);border-left:3px solid var(--red);}
   .subject .s1{font-size:13px;font-weight:bold;color:var(--ink);}
   .lead{font-size:12.5px;line-height:1.5;color:var(--slate);margin:18px 0 12px;}
-  table.rates{width:100%;border-collapse:collapse;font-size:12px;table-layout:auto;}
+  table.rates{width:100%;border-collapse:collapse;font-size:12px;table-layout:fixed;}
+  table.rates tbody td, table.rates thead th{word-break:break-word;overflow-wrap:anywhere;}
   table.rates.compact tbody td, table.rates.compact thead th{padding:6px 6px;}
   table.rates.tight tbody td, table.rates.tight thead th{padding:4px 5px;}
   table.rates.compact tbody td.door, table.rates.compact tbody td .port, table.rates.tight tbody td.door, table.rates.tight tbody td .port{white-space:normal;}
   table.rates.tight td.num{white-space:nowrap;}
-  table.rates thead th{background:var(--ink);color:#fff;font-size:9.5px;letter-spacing:.6px;text-transform:uppercase;font-weight:bold;text-align:left;padding:9px 10px;white-space:nowrap;}
+  table.rates thead th{background:var(--ink);color:#fff;font-size:9.5px;letter-spacing:.6px;text-transform:uppercase;font-weight:bold;text-align:left;padding:9px 8px;}
   table.rates thead th.num{text-align:right;} table.rates thead th.ctr{text-align:center;}
-  table.rates tbody td{padding:11px 10px;border-bottom:1px solid var(--sep);border-right:1px solid var(--sep);vertical-align:middle;}
+  table.rates tbody td{padding:10px 8px;border-bottom:1px solid var(--sep);border-right:1px solid var(--sep);vertical-align:middle;}
   table.rates th:last-child, table.rates td:last-child{border-right:none;}
   table.rates thead th{border-right:1px solid rgba(255,255,255,.14);}
   .route{line-height:1.35;} .route .port{font-weight:bold;color:var(--slate);} .route .door{color:var(--label);font-size:11px;}
   .route .arr{color:#C0C7CE;margin:0 5px;font-weight:bold;}
-  table.rates tbody td.door{color:var(--label);font-size:11px;white-space:nowrap;}
-  table.rates tbody td .port{font-weight:bold;color:var(--slate);white-space:nowrap;}
+  table.rates tbody td.door{color:var(--label);font-size:11px;white-space:normal;}
+  table.rates tbody td .port{font-weight:bold;color:var(--slate);white-space:normal;}
   table.rates td.tt{color:var(--slate);font-size:11px;white-space:nowrap;}
   .scope{display:inline-block;font-weight:bold;letter-spacing:.5px;color:var(--red);border:1px solid #F0C9CD;background:#FCEEF0;border-radius:3px;padding:2px 7px;white-space:nowrap;font-size:9.5px;}
   td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:bold;color:var(--slate);} td.num .cur{color:var(--label);font-size:10px;margin-right:2px;font-weight:normal;}
@@ -97,7 +98,7 @@ export function buildQuoteHtml(st){
       '<td class="ctr"><span class="scope">'+esc(scopeFull(r))+'</span></td>'+
       '<td class="ctr tt">'+tt+'</td>'+
       tds+
-      '<td>'+subj+'</td></tr>';
+      '</tr>';
   });
 
   const _basis=(b)=>b==="teu"?"/TEU":b==="bl"?"/BL":"/cont.";
@@ -106,8 +107,21 @@ export function buildQuoteHtml(st){
   const excList=Object.keys(excMap).map(k=>'<li><b>'+esc(k)+'</b> — '+esc(excMap[k].d)+_amt(excMap[k])+'</li>').join("")||'<li style="color:#7A8794">—</li>';
   const eqTh=eqs.map(e=>'<th class="num">'+esc(e.t)+'</th>').join("");
   const ncols=eqs.length;
-  const tblCls="rates"+(ncols>5?" tight":ncols>3?" compact":"");
-  const tblFont=ncols<=3?12:ncols<=5?10.5:9.2;
+  const tblFont=ncols<=2?12:ncols<=4?10.5:9.2;
+  // Anchos proporcionales por columna (sin Subject to). Se normalizan a 100% y la
+  // tabla es table-layout:fixed, así que SIEMPRE cabe en la hoja.
+  const tw={ori:15,pol:18,pod:18,dest:15,scope:11,tt:8,eq:14};
+  const totW=tw.ori+tw.pol+tw.pod+tw.dest+tw.scope+tw.tt+tw.eq*ncols;
+  const pc=(w)=>(w/totW*100).toFixed(2)+'%';
+  const colgroup='<colgroup>'
+    +'<col style="width:'+pc(tw.ori)+'">'
+    +'<col style="width:'+pc(tw.pol)+'">'
+    +'<col style="width:'+pc(tw.pod)+'">'
+    +'<col style="width:'+pc(tw.dest)+'">'
+    +'<col style="width:'+pc(tw.scope)+'">'
+    +'<col style="width:'+pc(tw.tt)+'">'
+    +eqs.map(()=>'<col style="width:'+pc(tw.eq)+'">').join('')
+    +'</colgroup>';
   const dirTxt=st.direccion==="E"?"EXPORTACIÓN":"IMPORTACIÓN";
   const folio=(st.codigo||"")+(st.commodity?(" · "+st.commodity):"");
   const vig=(st.vigDesde||st.vigHasta)?((st.vigDesde?fmtFecha(st.vigDesde):"")+(st.vigHasta?" — "+fmtFecha(st.vigHasta):"")):"Sujeta a confirmación";
@@ -122,7 +136,7 @@ export function buildQuoteHtml(st){
     '<div style="flex:1"><div class="field"><div class="lbl">Emite</div><div class="val">Logistic Dynamics Corporation</div></div><div class="field"><div class="lbl">Modo</div><div class="val">Marítimo · '+(st.direccion==="E"?"Exportación":"Importación")+'</div></div></div></div>'+
     '<div class="subject"><div class="s1">Propuesta de flete marítimo</div></div>'+
     '<div class="lead">Estimado cliente, en atención a su solicitud ponemos a su consideración las siguientes tarifas. Precios de venta por contenedor en USD.</div>'+
-    '<table class="'+tblCls+'" style="font-size:'+tblFont+'px"><thead><tr><th>Origin</th><th>POL</th><th>POD</th><th>Destination</th><th class="ctr">Scope</th><th class="ctr">T.T.</th>'+eqTh+'<th>Subject to</th></tr></thead><tbody>'+bodyRows+'</tbody></table>'+
+    '<table class="rates" style="font-size:'+tblFont+'px">'+colgroup+'<thead><tr><th>Origin</th><th>POL</th><th>POD</th><th>Destination</th><th class="ctr">Scope</th><th class="ctr">T.T.</th>'+eqTh+'</tr></thead><tbody>'+bodyRows+'</tbody></table>'+
     '<div class="cols2"><div class="panel inc"><h4>Incluyen:</h4><ul>'+incList+'</ul></div>'+
     '<div class="panel exc"><h4>No incluyen (subject to):</h4><ul>'+excList+'</ul></div></div>'+
     notasBlock+
