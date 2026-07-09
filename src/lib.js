@@ -54,6 +54,21 @@ export const inclBL=(surs)=>(surs||[]).filter(s=>s.incluido&&(s.basis||"contened
 // Formato de dinero con signo $ (USD -> "$1,234" · otras -> "$1,234 MXN")
 export const money=(v,m="USD")=>{const num=Number(v||0).toLocaleString("en-US",{minimumFractionDigits:0,maximumFractionDigits:2});return m==="USD"?("$"+num):("$"+num+" "+m);};
 
+// Catálogo de monedas (ISO 4217) para el selector predictivo de recargos
+export const MONEDAS=[
+  {code:"USD",name:"US Dollar"},{code:"MXN",name:"Peso Mexicano"},{code:"EUR",name:"Euro"},
+  {code:"CNY",name:"Yuan Chino"},{code:"GBP",name:"Libra Esterlina"},{code:"JPY",name:"Yen Japonés"},
+  {code:"CAD",name:"Dólar Canadiense"},{code:"AUD",name:"Dólar Australiano"},{code:"CHF",name:"Franco Suizo"},
+  {code:"HKD",name:"Dólar de Hong Kong"},{code:"SGD",name:"Dólar de Singapur"},{code:"KRW",name:"Won Coreano"},
+  {code:"INR",name:"Rupia India"},{code:"BRL",name:"Real Brasileño"},{code:"CLP",name:"Peso Chileno"},
+  {code:"COP",name:"Peso Colombiano"},{code:"PEN",name:"Sol Peruano"},{code:"ARS",name:"Peso Argentino"},
+  {code:"AED",name:"Dírham EAU"},{code:"SAR",name:"Riyal Saudí"},{code:"ZAR",name:"Rand Sudafricano"},
+  {code:"SEK",name:"Corona Sueca"},{code:"NOK",name:"Corona Noruega"},{code:"DKK",name:"Corona Danesa"},
+  {code:"PLN",name:"Zloty Polaco"},{code:"TRY",name:"Lira Turca"},{code:"THB",name:"Baht Tailandés"},
+  {code:"MYR",name:"Ringgit Malayo"},{code:"IDR",name:"Rupia Indonesia"},{code:"VND",name:"Dong Vietnamita"},
+  {code:"PHP",name:"Peso Filipino"},{code:"NZD",name:"Dólar Neozelandés"},{code:"TWD",name:"Dólar Taiwanés"},
+];
+
 // ====== Parser del Excel maestro de Pricing ======
 const _norm=(s)=>String(s==null?"":s).trim().toLowerCase().replace(/\s+/g," ").replace(/[´’]/g,"'");
 export function parseWorkbook(buf){

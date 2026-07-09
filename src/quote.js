@@ -44,6 +44,9 @@ const CSS=`
   .subjto{font-size:11px;color:var(--label);} .subjto .code{color:var(--slate);font-weight:normal;}
   .allin{display:inline-block;font-size:10px;font-weight:bold;letter-spacing:.5px;color:#0B7A3B;background:#E8F5EC;border:1px solid #BfE3CB;border-radius:3px;padding:2px 7px;}
   .cols2{display:flex;gap:24px;margin-top:34px;}
+  .pgo{display:inline-block;font-size:8.5px;font-weight:bold;letter-spacing:.4px;padding:1px 6px;border-radius:3px;margin-left:7px;vertical-align:middle;text-transform:uppercase;}
+  .pgo.pre{color:#0B7A3B;background:#E8F5EC;border:1px solid #BFE3CB;}
+  .pgo.col{color:#B0640A;background:#FBEFDD;border:1px solid #EED9B8;}
   .notas{margin-top:26px;}
   .notas h4{font-size:11px;letter-spacing:1px;text-transform:uppercase;margin:0 0 6px;color:var(--ink);text-decoration:underline;text-underline-offset:3px;}
   .notas-body{font-size:12px;color:var(--slate);line-height:1.5;white-space:pre-wrap;}
@@ -84,7 +87,7 @@ export function buildQuoteHtml(st){
     const surs=surOf(o.navScac);
     const st_subj=surs.filter(s=>!s.incluido).map(s=>s.c);
     const bl=cargosBL(surs);
-    surs.forEach(s=>{ if(s.incluido&&s.desplegar) incMap[s.c]={d:s.d||s.c,monto:s.monto,moneda:s.moneda,basis:s.basis}; if(!s.incluido) excMap[s.c]={d:s.d||s.c,monto:s.monto,moneda:s.moneda,basis:s.basis}; });
+    surs.forEach(s=>{ const mostrar=s.desplegar!==false; if(s.incluido&&mostrar) incMap[s.c]={d:s.d||s.c,monto:s.monto,moneda:s.moneda,basis:s.basis,pago:s.pago}; if(!s.incluido&&mostrar) excMap[s.c]={d:s.d||s.c,monto:s.monto,moneda:s.moneda,basis:s.basis,pago:s.pago}; });
     const tt = (o.transito!=null && String(o.transito).trim()!=="") ? (esc(o.transito)+" días") : '<span style="color:#C0C7CE">—</span>';
     let tds="";
     eqs.forEach(e=>{ const p=(o.precios&&o.precios[e.k])||{}; const base=n(p.base); const venta=base+adicPorCont(surs,e.teu)+n(p.profit);
@@ -103,8 +106,9 @@ export function buildQuoteHtml(st){
 
   const _basis=(b)=>b==="teu"?"/TEU":b==="bl"?"/BL":"/cont.";
   const _amt=(o)=>{const v=n(o.monto);return v>0?('<span style="color:#1F2D3A;font-weight:bold"> '+money(v,o.moneda||"USD")+'</span><span style="color:#7A8794;font-size:10px">'+_basis(o.basis||"contenedor")+'</span>'):"";};
-  const incList=Object.keys(incMap).map(k=>'<li><b>'+esc(k)+'</b> — '+esc(incMap[k].d)+_amt(incMap[k])+'</li>').join("")||'<li style="color:#7A8794">—</li>';
-  const excList=Object.keys(excMap).map(k=>'<li><b>'+esc(k)+'</b> — '+esc(excMap[k].d)+_amt(excMap[k])+'</li>').join("")||'<li style="color:#7A8794">—</li>';
+  const _pago=(o)=>{const p=(o.pago||"").toLowerCase();return p==="collect"?'<span class="pgo col">Collect</span>':p==="prepaid"?'<span class="pgo pre">Prepaid</span>':"";};
+  const incList=Object.keys(incMap).map(k=>'<li><b>'+esc(k)+'</b> — '+esc(incMap[k].d)+_amt(incMap[k])+_pago(incMap[k])+'</li>').join("")||'<li style="color:#7A8794">—</li>';
+  const excList=Object.keys(excMap).map(k=>'<li><b>'+esc(k)+'</b> — '+esc(excMap[k].d)+_amt(excMap[k])+_pago(excMap[k])+'</li>').join("")||'<li style="color:#7A8794">—</li>';
   const eqTh=eqs.map(e=>'<th class="num">'+esc(e.t)+'</th>').join("");
   const ncols=eqs.length;
   const tblFont=ncols<=2?12:ncols<=4?10.5:9.2;

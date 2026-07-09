@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { supabase } from "./supabaseClient.js";
-import { C, F, EQUIPOS, EQUIPO_CATS, NAVIERAS, navName, CATALOG, COMMODITY_INDUSTRIAS, tx, scopeFull, n, adicPorCont, cargosBL, inclPorCont, inclBL, subjectTo, money, optPuertos, optCiudades, paisOrigen, paisDestino, rutaPaisLabel } from "./lib.js";
+import { C, F, EQUIPOS, EQUIPO_CATS, NAVIERAS, navName, CATALOG, COMMODITY_INDUSTRIAS, tx, scopeFull, n, adicPorCont, cargosBL, inclPorCont, inclBL, subjectTo, money, MONEDAS, optPuertos, optCiudades, paisOrigen, paisDestino, rutaPaisLabel } from "./lib.js";
 import { inS, Lbl, Field, TI, Sel, Chip, Btn, ClaveAutocomplete, ComboBox } from "./ui.jsx";
 import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges, recargosDeRutaSimilar, checkConflictoTarifa } from "./db.js";
 import { abrirCotizacion } from "./quote.js";
@@ -17,23 +17,25 @@ function SurchargeGrid({surs,onChange,catalog}){
   return (<div style={{border:"1px solid "+C.sep2,borderRadius:8,background:"#fff"}}>
     <table style={{width:"100%",borderCollapse:"collapse"}}>
       <thead><tr style={{background:C.soft,borderBottom:"1px solid "+C.sep2}}>
-        <th style={{...th,width:"12%"}}>Clave</th><th style={{...th,width:"28%"}}>Descripción</th><th style={{...th,width:"11%"}}>Monto</th><th style={{...th,width:"8%"}}>Mon.</th>
-        <th style={{...th,width:"13%"}}>Base cobro</th><th style={{...th,width:"8%",textAlign:"center"}}>Incl.</th><th style={{...th,width:"8%",textAlign:"center"}}>Mostrar</th><th style={{...th,width:"9%"}}>Pago</th><th style={{...th,width:"3%"}}></th></tr></thead>
+        <th style={{...th,width:"11%"}}>Clave</th><th style={{...th,width:"22%"}}>Descripción</th><th style={{...th,width:"10%"}}>Monto</th><th style={{...th,width:"9%"}}>Mon.</th>
+        <th style={{...th,width:"12%"}}>Base cobro</th><th style={{...th,width:"8%",textAlign:"center"}}>No Incl.</th><th style={{...th,width:"7%",textAlign:"center"}}>INCL.</th><th style={{...th,width:"8%",textAlign:"center"}}>Mostrar</th><th style={{...th,width:"10%"}}>Pago</th><th style={{...th,width:"3%"}}></th></tr></thead>
       <tbody>
-        {rows.length===0&&<tr><td colSpan={9} style={{padding:10,textAlign:"center",color:C.label,fontSize:12}}>Sin recargos — agrega filas</td></tr>}
+        {rows.length===0&&<tr><td colSpan={10} style={{padding:10,textAlign:"center",color:C.label,fontSize:12}}>Sin recargos — agrega filas</td></tr>}
         {rows.map((r,i)=>(<tr key={i} style={{borderBottom:"1px solid "+C.sep}}>
           <td style={td}><ClaveAutocomplete value={r.c} catalog={cat} cellStyle={cell} onChange={(v)=>onClave(i,v)} onPick={(x)=>set(i,{c:x.c,d:tx(rows[i].d)?rows[i].d:x.d})}/></td>
           <td style={td}><input value={r.d} onChange={e=>set(i,{d:e.target.value})} placeholder="Descripción" style={cell}/></td>
           <td style={td}><input value={r.monto} onChange={e=>set(i,{monto:e.target.value})} inputMode="decimal" placeholder="0" style={{...cell,textAlign:"right"}}/></td>
-          <td style={td}><select value={r.moneda} onChange={e=>set(i,{moneda:e.target.value})} style={{...cell,padding:"5px 4px"}}><option>USD</option><option>MXN</option></select></td>
+          <td style={td}><input list="monedas-dl" value={r.moneda} onChange={e=>set(i,{moneda:e.target.value.toUpperCase()})} placeholder="USD" style={{...cell,padding:"5px 6px",textTransform:"uppercase"}}/></td>
           <td style={td}><select value={r.basis||"contenedor"} onChange={e=>set(i,{basis:e.target.value})} style={{...cell,padding:"5px 4px"}}><option value="contenedor">Contenedor</option><option value="teu">TEU</option><option value="bl">BL</option></select></td>
-          <td style={{...td,textAlign:"center"}}><input type="checkbox" checked={r.incluido} onChange={e=>set(i,{incluido:e.target.checked})}/></td>
-          <td style={{...td,textAlign:"center"}}><input type="checkbox" checked={r.desplegar} onChange={e=>set(i,{desplegar:e.target.checked})}/></td>
+          <td style={{...td,textAlign:"center"}}><input type="checkbox" checked={!r.incluido} onChange={()=>set(i,{incluido:false})} title="No incluido por la naviera (si es Prepaid, se suma al costo)"/></td>
+          <td style={{...td,textAlign:"center"}}><input type="checkbox" checked={!!r.incluido} onChange={()=>set(i,{incluido:true})} title="Incluido en la tarifa base (no se suma)"/></td>
+          <td style={{...td,textAlign:"center"}}><input type="checkbox" checked={r.desplegar!==false} onChange={e=>set(i,{desplegar:e.target.checked})} title="Mostrar en el PDF (sección Incluyen / No incluyen)"/></td>
           <td style={td}><select value={r.pago} onChange={e=>set(i,{pago:e.target.value})} style={{...cell,padding:"5px 4px"}}><option value="prepaid">Prepaid</option><option value="collect">Collect</option></select></td>
           <td style={{...td,textAlign:"center"}}><span onClick={()=>del(i)} style={{cursor:"pointer",color:C.label,fontWeight:"bold"}}>✕</span></td>
         </tr>))}
       </tbody>
     </table>
+    <datalist id="monedas-dl">{MONEDAS.map(m=><option key={m.code} value={m.code}>{m.code+" · "+m.name}</option>)}</datalist>
     <div style={{padding:"7px 9px",borderTop:"1px solid "+C.sep2,background:C.soft,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
       <span onClick={add} style={{cursor:"pointer",color:C.red,fontWeight:"bold",fontSize:12.5}}>＋ Agregar recargo</span>
       <span style={{fontSize:11,color:C.label}}>
