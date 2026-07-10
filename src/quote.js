@@ -39,7 +39,7 @@ const CSS=`
   table.rates tbody td.door{color:var(--label);font-size:11px;white-space:normal;}
   table.rates tbody td .port{font-weight:bold;color:var(--slate);white-space:normal;}
   table.rates td.tt{color:var(--slate);font-size:11px;white-space:nowrap;}
-  .scope{display:inline-block;font-weight:bold;letter-spacing:.3px;color:var(--red);border:1px solid #F0C9CD;background:#FCEEF0;border-radius:3px;padding:2px 6px;white-space:nowrap;font-size:9px;}
+  .scope{display:inline-block;font-weight:bold;letter-spacing:.2px;color:var(--red);border:1px solid #F0C9CD;background:#FCEEF0;border-radius:3px;padding:2px 6px;white-space:nowrap;font-size:8.5px;}
   td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:bold;color:var(--slate);} td.num .cur{color:var(--label);font-size:10px;margin-right:2px;font-weight:normal;}
   .subjto{font-size:11px;color:var(--label);} .subjto .code{color:var(--slate);font-weight:normal;}
   .allin{display:inline-block;font-size:9.5px;font-weight:bold;letter-spacing:.3px;color:#0B7A3B;background:#E8F5EC;border:1px solid #BFE3CB;border-radius:3px;padding:2px 6px;white-space:nowrap;}
@@ -132,7 +132,7 @@ export function buildQuoteHtml(st){
   const tblFont=ncols<=2?12:ncols<=4?10.5:9.2;
   // Anchos proporcionales por columna (sin Subject to). Se normalizan a 100% y la
   // tabla es table-layout:fixed, así que SIEMPRE cabe en la hoja.
-  const tw={ori:14,pol:17,pod:17,dest:14,scope:12,tt:8,eq:14,allin:12};
+  const tw={ori:12,pol:16,pod:16,dest:12,scope:21,tt:7,eq:13,allin:11};
   const totW=(showOri?tw.ori:0)+tw.pol+tw.pod+(showDest?tw.dest:0)+tw.scope+tw.tt+tw.eq*ncols+tw.allin;
   const pc=(w)=>(w/totW*100).toFixed(2)+'%';
   const colgroup='<colgroup>'
