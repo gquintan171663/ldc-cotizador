@@ -157,6 +157,7 @@ export function Cotizador({ loadId, onDirty }){
   const [tradelane,setTradelane]=useState("");
   const [noAcuerdo,setNoAcuerdo]=useState("");
   const [amendment,setAmendment]=useState(1);
+  const [cambios,setCambios]=useState(null);
   const [commodityId,setCommodityId]=useState("");
   const [vigDesde,setVigDesde]=useState("");
   const [vigHasta,setVigHasta]=useState("");
@@ -240,7 +241,7 @@ export function Cotizador({ loadId, onDirty }){
     loadVersion(loadId).then(st=>{
       setVersionId(st.versionId); setCodigo(st.codigo); setEstatus(st.estatus);
       setCliente(st.cliente||""); setModo(st.modo||"maritimo"); setDireccion(st.direccion||"I");
-      setTradelane(st.tradelane||""); setNoAcuerdo(st.no_acuerdo||""); setAmendment(st.amendment||1);
+      setTradelane(st.tradelane||""); setNoAcuerdo(st.no_acuerdo||""); setAmendment(st.amendment||1); setCambios(st.cambios||null);
       setCommodityId(st.commodity_id||""); setVigDesde(st.vigDesde||""); setVigHasta(st.vigHasta||""); setNotas(st.notas||"");
       setEquipos(st.equipos&&st.equipos.length?st.equipos:["20DV","40HC"]);
       setRutas(st.rutas&&st.rutas.length?st.rutas:[mkRuta()]);
@@ -282,12 +283,12 @@ export function Cotizador({ loadId, onDirty }){
     setSaving(true); setSaved(null);
     const res=await saveCotizacion(st);
     setSaving(false); setSaved(res);
-    if(res.versionId){ setVersionId(res.versionId); setCodigo(res.codigo); setEstatus("borrador"); }
+    if(res.versionId){ setVersionId(res.versionId); setCodigo(res.codigo); setEstatus("borrador"); if(res.cambios) setCambios(res.cambios); }
     onDirtyRef.current&&onDirtyRef.current(false);
     if(res.errores.length) alert("Guardado con avisos: "+res.errores.slice(0,3).join(" · "));
   };
   const enviar=async()=>{ if(!versionId) return; await markEnviada(versionId); setEstatus("enviada"); };
-  const nueva=async()=>{ if(!versionId) return; setSaving(true); const res=await nuevaVersion(versionId); setSaving(false); if(res.versionId){ setVersionId(res.versionId); setCodigo(res.codigo); setEstatus("borrador"); setSaved(res); } };
+  const nueva=async()=>{ if(!versionId) return; if(!confirm("¿Crear un nuevo Amendment (AM"+((amendment||1)+1)+")? Se copia el actual para que edites las diferencias; el AM anterior queda superseded.")) return; setSaving(true); const res=await nuevaVersion(versionId); setSaving(false); if(res.errores&&res.errores.length){ alert("Error: "+res.errores.join(" · ")); return; } if(res.versionId){ setVersionId(res.versionId); setCodigo(res.codigo); setAmendment(res.amendment||((amendment||1)+1)); setCambios(null); setEstatus("borrador"); setSaved(res); } };
   const generar=()=>{ const cn=(clientes.find(c=>c.id===cliente)||{}).nombre; abrirCotizacion({clienteNombre:cn,codigo:codigo||codigoPreview,no_acuerdo:noAcuerdo,tradelane,amendment,commodity:comLabel,direccion,equipos,rutas,quoteNav,vigDesde,vigHasta,notas}); };
 
   return (<div style={{maxWidth:1160,margin:"0 auto"}}>
@@ -295,7 +296,11 @@ export function Cotizador({ loadId, onDirty }){
     {folio&&(<div style={{display:"flex",alignItems:"center",gap:12,marginBottom:12,padding:"10px 14px",background:"#fff",border:"1px solid "+C.sep2,borderRadius:10}}>
       <span style={{fontSize:15,fontWeight:"bold",color:C.ink}}>{folio}</span>
       <span style={{fontSize:11,fontWeight:"bold",color:editable?C.label:"#8A6D1F",background:editable?C.soft:"#FBF4E0",border:"1px solid "+C.sep2,borderRadius:4,padding:"2px 8px"}}>{estatus}</span>
-      {!editable&&<span style={{fontSize:11,color:C.label}}>Versión congelada — crea una nueva versión para editar.</span>}
+      {!editable&&<span style={{fontSize:11,color:C.label}}>Versión congelada — crea un nuevo Amendment para editar.</span>}
+    </div>)}
+    {cambios&&cambios.length>0&&(<div style={{marginBottom:12,padding:"10px 14px",background:"#FFF9E9",border:"1px solid #EAD9A0",borderRadius:10}}>
+      <div style={{fontSize:12,fontWeight:"bold",color:"#8A6D1F",marginBottom:6}}>Control de cambios vs. amendment anterior ({cambios.length})</div>
+      <ul style={{margin:0,paddingLeft:18,fontSize:11.5,color:C.slate,lineHeight:1.5}}>{cambios.slice(0,40).map((c,i)=><li key={i}>{c}</li>)}</ul>
     </div>)}
     <div style={{background:"#fff",border:"1px solid "+C.sep2,borderRadius:12,padding:16,marginBottom:16,opacity:editable?1:.7,pointerEvents:editable?"auto":"none"}}>
       <div style={{display:"flex",gap:16,alignItems:"flex-end",flexWrap:"wrap"}}>
@@ -382,7 +387,7 @@ export function Cotizador({ loadId, onDirty }){
           <Btn kind="ghost" onClick={generar}>Generar cotización (PDF)</Btn>
           {editable&&<Btn kind="green" onClick={guardar} disabled={saving}>{saving?"Guardando…":(versionId?"Guardar cambios":"Guardar cotización")}</Btn>}
           {editable&&versionId&&<Btn kind="dark" onClick={enviar} disabled={saving}>Marcar enviada</Btn>}
-          {!editable&&versionId&&<Btn kind="primary" onClick={nueva} disabled={saving}>{saving?"Creando…":"Nueva versión"}</Btn>}
+          {!editable&&versionId&&<Btn kind="primary" onClick={nueva} disabled={saving}>{saving?"Creando…":"＋ Nuevo Amendment"}</Btn>}
         </div>
       </div>
     </>)}

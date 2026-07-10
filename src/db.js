@@ -121,6 +121,45 @@ async function insertChildren(versionId, state, sum){
   }
 }
 
+// ===== Control de cambios: diff legible de un amendment vs la versión anterior =====
+const _rk=(r)=>((r.pol||r.origen||"?")+" → "+(r.pod||r.destino||"?"));
+const _chosen=(r)=>((r.opciones||[])[r.elegida??0]||(r.opciones||[])[0]||{precios:{}});
+export function resumenCambios(nuevo, previo){
+  const out=[]; const nz=(v)=>String(v==null||v===""?0:v);
+  if((nuevo.vigDesde||"")!==(previo.vigDesde||"")||(nuevo.vigHasta||"")!==(previo.vigHasta||""))
+    out.push("Vigencia: "+(previo.vigDesde||"—")+" a "+(previo.vigHasta||"—")+"  ⇒  "+(nuevo.vigDesde||"—")+" a "+(nuevo.vigHasta||"—"));
+  const rN={}, rP={};
+  (nuevo.rutas||[]).forEach(r=>rN[_rk(r)]=r); (previo.rutas||[]).forEach(r=>rP[_rk(r)]=r);
+  Object.keys(rN).forEach(k=>{ if(!rP[k]) out.push("Nueva ruta: "+k); });
+  Object.keys(rP).forEach(k=>{ if(!rN[k]) out.push("Ruta eliminada: "+k); });
+  Object.keys(rN).forEach(k=>{ if(!rP[k]) return; const on=_chosen(rN[k]), op=_chosen(rP[k]);
+    if((on.navScac||"")!==(op.navScac||"")) out.push("Naviera "+k+": "+(op.navScac||"—")+" → "+(on.navScac||"—"));
+    const eqs=new Set([...Object.keys(on.precios||{}),...Object.keys(op.precios||{})]);
+    eqs.forEach(ek=>{ const pn=(on.precios||{})[ek]||{}, pp=(op.precios||{})[ek]||{};
+      if(nz(pn.base)!==nz(pp.base)) out.push("Tarifa "+k+" ("+ek+") base: "+nz(pp.base)+" → "+nz(pn.base));
+      if(nz(pn.profit)!==nz(pp.profit)) out.push("Tarifa "+k+" ("+ek+") profit: "+nz(pp.profit)+" → "+nz(pn.profit));
+    });
+  });
+  const qN={}, qP={};
+  (nuevo.quoteNav||[]).forEach(q=>qN[q.scac+"|"+(q.tl||"")]=q); (previo.quoteNav||[]).forEach(q=>qP[q.scac+"|"+(q.tl||"")]=q);
+  const bks=new Set([...Object.keys(qN),...Object.keys(qP)]);
+  bks.forEach(bk=>{ const bn=qN[bk], bp=qP[bk]; const label=bk.replace("|"," · ");
+    const sN={}, sP={}; ((bn&&bn.surcharges)||[]).forEach(s=>sN[s.c]=s); ((bp&&bp.surcharges)||[]).forEach(s=>sP[s.c]=s);
+    const sk=new Set([...Object.keys(sN),...Object.keys(sP)]);
+    sk.forEach(c=>{ const a=sN[c], b=sP[c];
+      if(a&&!b) out.push("Recargo alta "+label+": "+c+" "+nz(a.monto));
+      else if(!a&&b) out.push("Recargo baja "+label+": "+c);
+      else if(a&&b){
+        if(nz(a.monto)!==nz(b.monto)) out.push("Recargo "+label+" "+c+": monto "+nz(b.monto)+" → "+nz(a.monto));
+        if((a.pago||"")!==(b.pago||"")) out.push("Recargo "+label+" "+c+": "+(b.pago||"")+" → "+(a.pago||""));
+        if(!!a.incluido!==!!b.incluido) out.push("Recargo "+label+" "+c+": "+(b.incluido?"Incl":"No incl")+" → "+(a.incluido?"Incl":"No incl"));
+        if(JSON.stringify(a.montos||null)!==JSON.stringify(b.montos||null)) out.push("Recargo "+label+" "+c+": montos por tamaño actualizados");
+      }
+    });
+  });
+  return out;
+}
+
 export async function saveCotizacion(state){
   const sum={versiones:0,lineas:0,opciones:0,surcharges:0,errores:[],codigo:null,versionId:null};
   const { versionId, cliente, clienteNombre, modo, direccion, commodity, commodity_id, origen, notas, tradelane, vigDesde, vigHasta } = state;
@@ -131,6 +170,16 @@ export async function saveCotizacion(state){
     await supabase.from("lineas").delete().eq("version_id",versionId); // cascade -> opciones + recargos
     sum.versionId=versionId; sum.codigo=state.codigo;
     await insertChildren(versionId, state, sum);
+    // Control de cambios si es amendment (tiene reemplaza_a)
+    try{
+      const { data: vrow } = await supabase.from("versiones").select("reemplaza_a").eq("id",versionId).maybeSingle();
+      if(vrow && vrow.reemplaza_a){
+        const prev = await loadVersion(vrow.reemplaza_a);
+        const cambios = resumenCambios(state, prev||{});
+        await supabase.from("versiones").update({cambios}).eq("id",versionId);
+        sum.cambios=cambios;
+      }
+    }catch(e){ /* el diff no debe romper el guardado */ }
     return sum;
   }
 
@@ -205,6 +254,7 @@ export async function loadVersion(versionId){
   return {
     versionId, codigo:ver.codigo, estatus:ver.estatus, acuerdo_id:ver.acuerdos?.id,
     no_acuerdo:ver.acuerdos?.no_acuerdo||"", tradelane:ver.tradelane||"", amendment:ver.amendment||1,
+    cambios:ver.cambios||null, reemplaza_a:ver.reemplaza_a||null,
     cliente:ver.acuerdos?.cliente_id, clienteNombre:ver.acuerdos?.clientes?.nombre,
     modo:ver.acuerdos?.modo||"maritimo", direccion:ver.direccion,
     commodity:ver.commodity, commodity_id:ver.commodity_id, notas:ver.notas||"",
@@ -217,15 +267,16 @@ export async function markEnviada(versionId){
   return await supabase.from("versiones").update({estatus:"enviada"}).eq("id",versionId);
 }
 
-// ===== Nueva versión (MI1 -> MI2): copia, supersede la anterior =====
+// ===== Nuevo Amendment (AM1 -> AM2): copia, incrementa AM, supersede el anterior =====
 export async function nuevaVersion(versionId){
-  const sum={lineas:0,opciones:0,surcharges:0,errores:[],codigo:null,versionId:null};
+  const sum={lineas:0,opciones:0,surcharges:0,errores:[],codigo:null,versionId:null,amendment:null};
   const st=await loadVersion(versionId);
+  const nextAm=(st.amendment||1)+1;
   let { data: ver, error: ve } = await supabase.from("versiones")
-    .insert({acuerdo_id:st.acuerdo_id,direccion:st.direccion,origen:"desde_cero",commodity:st.commodity||"",commodity_id:st.commodity_id||null,reemplaza_a:versionId,estatus:"borrador"})
+    .insert({acuerdo_id:st.acuerdo_id,direccion:st.direccion,origen:"desde_cero",commodity:st.commodity||"",commodity_id:st.commodity_id||null,tradelane:st.tradelane||null,amendment:nextAm,vig_desde:parseDate(st.vigDesde),vig_hasta:parseDate(st.vigHasta),reemplaza_a:versionId,estatus:"borrador"})
     .select("id,codigo").single();
-  if(ve){ sum.errores.push("nueva version: "+ve.message); return sum; }
-  sum.codigo=ver.codigo; sum.versionId=ver.id;
+  if(ve){ sum.errores.push("nuevo amendment: "+ve.message); return sum; }
+  sum.codigo=ver.codigo; sum.versionId=ver.id; sum.amendment=nextAm;
   await insertChildren(ver.id, st, sum);
   await supabase.from("versiones").update({estatus:"superseded"}).eq("id",versionId);
   return sum;
