@@ -322,10 +322,13 @@ export const rutaEnTradelane=(tl,r)=>{ const rg=TL_REGIONS[tl]; if(!rg) return t
 
 // ====== Selección de naviera por equipo (mejor costo por tamaño) + cambio de costo ======
 export const mkSurOf=(state)=>(scac,tl)=>((state.quoteNav||[]).find(q=>q.scac===scac&&(q.tl||"")===(tl||""))||{}).surcharges||[];
-// Mejor opción (índice) para el equipo ek por menor costo = base + recargos que suman
-export const mejorOpcionEq=(r,ek,eqObj,dir,surOf)=>{ let bi=-1,bc=Infinity; (r.opciones||[]).forEach((o,i)=>{ const pr=(o.precios||{})[ek]; if(!pr||pr.base==null||pr.base==="") return; const c=n(pr.base)+adicPorCont(surOf(o.navScac,tlDe(r)),eqObj,dir); if(c<bc){bc=c;bi=i;} }); return bi; };
+// Selección por equipo: el override puede ser string (naviera) o {nav, razon}
+export const ovNav=(v)=> (v&&typeof v==="object")?v.nav:v;
+export const ovRazon=(v)=> (v&&typeof v==="object")?(v.razon||""):"";
+// Mejor opción (índice) para el equipo ek por menor costo. Ignora base<=0 (no-quote de la naviera para ese tamaño).
+export const mejorOpcionEq=(r,ek,eqObj,dir,surOf)=>{ let bi=-1,bc=Infinity; (r.opciones||[]).forEach((o,i)=>{ const pr=(o.precios||{})[ek]; if(!pr||pr.base==null||pr.base===""||n(pr.base)<=0) return; const c=n(pr.base)+adicPorCont(surOf(o.navScac,tlDe(r)),eqObj,dir); if(c<bc){bc=c;bi=i;} }); return bi; };
 // Opción activa para un equipo: override guardado (por naviera) o la mejor por costo
-export const opcionActivaEq=(r,ek,eqObj,dir,surOf)=>{ const ov=r.elegidaEq&&r.elegidaEq[ek]; if(ov){ const i=(r.opciones||[]).findIndex(o=>o.navScac===ov); if(i>=0) return i; } const b=mejorOpcionEq(r,ek,eqObj,dir,surOf); return b>=0?b:(r.elegida??0); };
+export const opcionActivaEq=(r,ek,eqObj,dir,surOf)=>{ const ov=ovNav(r.elegidaEq&&r.elegidaEq[ek]); if(ov){ const i=(r.opciones||[]).findIndex(o=>o.navScac===ov); if(i>=0) return i; } const b=mejorOpcionEq(r,ek,eqObj,dir,surOf); return b>=0?b:(r.elegida??0); };
 // Venta del equipo usando su opción activa
 export const ventaEq=(r,eqObj,dir,surOf)=>{ const oi=opcionActivaEq(r,eqObj.k,eqObj,dir,surOf); const o=(r.opciones||[])[oi]||{}; const pr=(o.precios||{})[eqObj.k]||{}; return n(pr.base)+adicPorCont(surOf(o.navScac,tlDe(r)),eqObj,dir)+n(pr.profit); };
 // T.T. (rango) de las opciones activas de una ruta para sus equipos
