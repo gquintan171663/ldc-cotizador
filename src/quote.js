@@ -143,7 +143,8 @@ export function buildQuoteHtml(st){
     +'<col style="width:'+pc(tw.allin)+'">'
     +'</colgroup>';
   const dirTxt=st.direccion==="E"?"EXPORTACIÓN":"IMPORTACIÓN";
-  const folio=(st.codigo||"")+(st.commodity?(" · "+st.commodity):"");
+  const folioBase=st.no_acuerdo||st.codigo||"";
+  const folio=folioBase+(st.tradelane?(" · "+st.tradelane):"")+(st.amendment?(" · AM"+st.amendment):"")+(st.commodity?(" · "+st.commodity):"");
   const vig=(st.vigDesde||st.vigHasta)?((st.vigDesde?fmtFecha(st.vigDesde):"")+(st.vigHasta?" — "+fmtFecha(st.vigHasta):"")):"Sujeta a confirmación";
   const notasTxt=(st.notas||"").trim();
   const notasBlock=notasTxt?('<div class="notas"><h4>Notas:</h4><div class="notas-body">'+esc(notasTxt)+'</div></div>'):"";

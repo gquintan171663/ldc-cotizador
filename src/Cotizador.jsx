@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { supabase } from "./supabaseClient.js";
-import { C, F, EQUIPOS, EQUIPO_CATS, NAVIERAS, navName, CATALOG, COMMODITY_INDUSTRIAS, tx, scopeFull, n, adicPorCont, cargosBL, inclPorCont, inclBL, subjectTo, money, MONEDAS, optPuertos, optCiudades, paisOrigen, paisDestino, rutaPaisLabel, tlDe, tlLabel } from "./lib.js";
+import { C, F, EQUIPOS, EQUIPO_CATS, NAVIERAS, navName, CATALOG, COMMODITY_INDUSTRIAS, tx, scopeFull, n, adicPorCont, cargosBL, inclPorCont, inclBL, subjectTo, money, MONEDAS, optPuertos, optCiudades, paisOrigen, paisDestino, rutaPaisLabel, tlDe, tlLabel, TRADELANES, tradeLabel, rutaEnTradelane } from "./lib.js";
 import { inS, Lbl, Field, TI, Sel, Chip, Btn, ClaveAutocomplete, ComboBox } from "./ui.jsx";
 import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges, recargosDeRutaSimilar, recargosDeRutaSimilarPorNaviera, checkConflictoTarifa } from "./db.js";
 import { abrirCotizacion } from "./quote.js";
@@ -140,6 +140,9 @@ export function Cotizador({ loadId, onDirty }){
   const [cliente,setCliente]=useState("");
   const [modo,setModo]=useState("maritimo");
   const [direccion,setDireccion]=useState("I");
+  const [tradelane,setTradelane]=useState("");
+  const [noAcuerdo,setNoAcuerdo]=useState("");
+  const [amendment,setAmendment]=useState(1);
   const [commodityId,setCommodityId]=useState("");
   const [vigDesde,setVigDesde]=useState("");
   const [vigHasta,setVigHasta]=useState("");
@@ -223,6 +226,7 @@ export function Cotizador({ loadId, onDirty }){
     loadVersion(loadId).then(st=>{
       setVersionId(st.versionId); setCodigo(st.codigo); setEstatus(st.estatus);
       setCliente(st.cliente||""); setModo(st.modo||"maritimo"); setDireccion(st.direccion||"I");
+      setTradelane(st.tradelane||""); setNoAcuerdo(st.no_acuerdo||""); setAmendment(st.amendment||1);
       setCommodityId(st.commodity_id||""); setVigDesde(st.vigDesde||""); setVigHasta(st.vigHasta||""); setNotas(st.notas||"");
       setEquipos(st.equipos&&st.equipos.length?st.equipos:["20DV","40HC"]);
       setRutas(st.rutas&&st.rutas.length?st.rutas:[mkRuta()]);
@@ -240,11 +244,11 @@ export function Cotizador({ loadId, onDirty }){
     if(firstRun.current){ firstRun.current=false; return; }
     if(hydrating.current) return;
     onDirtyRef.current&&onDirtyRef.current(true);
-  },[cliente,modo,direccion,commodityId,vigDesde,vigHasta,notas,equipos,rutas,quoteNav,started]);
+  },[cliente,modo,direccion,tradelane,commodityId,vigDesde,vigHasta,notas,equipos,rutas,quoteNav,started]);
 
   const editable = estatus==="borrador";
   const comLabel=(comms.find(c=>c.id===commodityId)||{}).commodity||"";
-  const folio = codigo ? (codigo+(comLabel?(" · "+comLabel):"")) : null;
+  const folio = (noAcuerdo||codigo) ? ((noAcuerdo||codigo)+(tradelane?(" · "+tradelane):"")+(amendment?(" · AM"+amendment):"")+(comLabel?(" · "+comLabel):"")) : null;
   const codigoPreview=useMemo(()=>{const p=modo==="maritimo"?"M":modo==="terrestre"?"T":"A";return p+direccion+"?";},[modo,direccion]);
   const mkRuta=()=>({origen:"",precarriage_mode:"",pol:"",pod:"",oncarriage_mode:"",destino:"",opciones:[{navScac:"",transito:"",precios:{}}],elegida:0});
   const toggleEq=(k)=>setEquipos(equipos.includes(k)?equipos.filter(x=>x!==k):[...equipos,k]);
@@ -252,7 +256,7 @@ export function Cotizador({ loadId, onDirty }){
   const guardar=async()=>{
     if(!cliente){ alert("Elige un cliente."); return; }
     const cn=(clientes.find(c=>c.id===cliente)||{}).nombre;
-    const st={versionId,codigo,cliente,clienteNombre:cn,modo,direccion,commodity:comLabel,commodity_id:commodityId||null,vigDesde,vigHasta,notas,origen:"cero",equipos,rutas,quoteNav};
+    const st={versionId,codigo,cliente,clienteNombre:cn,modo,direccion,tradelane,commodity:comLabel,commodity_id:commodityId||null,vigDesde,vigHasta,notas,origen:"cero",equipos,rutas,quoteNav};
     // #5 Conflicto: misma ruta + misma vigencia con tarifa distinta
     try{
       const conf=await checkConflictoTarifa(st);
@@ -270,7 +274,7 @@ export function Cotizador({ loadId, onDirty }){
   };
   const enviar=async()=>{ if(!versionId) return; await markEnviada(versionId); setEstatus("enviada"); };
   const nueva=async()=>{ if(!versionId) return; setSaving(true); const res=await nuevaVersion(versionId); setSaving(false); if(res.versionId){ setVersionId(res.versionId); setCodigo(res.codigo); setEstatus("borrador"); setSaved(res); } };
-  const generar=()=>{ const cn=(clientes.find(c=>c.id===cliente)||{}).nombre; abrirCotizacion({clienteNombre:cn,codigo:codigo||codigoPreview,commodity:comLabel,direccion,equipos,rutas,quoteNav,vigDesde,vigHasta,notas}); };
+  const generar=()=>{ const cn=(clientes.find(c=>c.id===cliente)||{}).nombre; abrirCotizacion({clienteNombre:cn,codigo:codigo||codigoPreview,no_acuerdo:noAcuerdo,tradelane,amendment,commodity:comLabel,direccion,equipos,rutas,quoteNav,vigDesde,vigHasta,notas}); };
 
   return (<div style={{maxWidth:1160,margin:"0 auto"}}>
     {loading&&<div style={{color:C.label,fontSize:13,padding:10}}>Cargando cotización…</div>}
@@ -290,6 +294,7 @@ export function Cotizador({ loadId, onDirty }){
         </Field>
         <Field label="Modo"><Sel value={modo} onChange={e=>setModo(e.target.value)} options={[{v:"maritimo",t:"Marítimo"},{v:"terrestre",t:"Terrestre"},{v:"aereo",t:"Aéreo"}]}/></Field>
         <Field label="Dirección" w={.9}><Sel value={direccion} onChange={e=>setDireccion(e.target.value)} options={[{v:"E",t:"Exportación"},{v:"I",t:"Importación"}]}/></Field>
+        <Field label="Tradelane" w={1.3}><Sel value={tradelane} onChange={e=>setTradelane(e.target.value)} options={[{v:"",t:"— tradelane —"},...TRADELANES.map(t=>({v:t.code,t:t.code+" · "+t.name}))]}/></Field>
         <Field label="Commodity" w={1.4}>
           <select value={commodityId} onChange={e=>setCommodityId(e.target.value)} style={inS}>
             <option value="">— selecciona commodity —</option>
@@ -332,6 +337,7 @@ export function Cotizador({ loadId, onDirty }){
         {(()=>{const pp=rutaPaises();return pp?<span style={{fontSize:11,color:C.label}}>Ruta detectada: <b style={{color:C.slate}}>{rutaPaisLabel(pp.o,pp.d)}</b></span>:<span style={{fontSize:11,color:C.label}}>Define POL/POD para detectar países y autocompletar recargos.</span>;})()}
         {autoMsg&&<span style={{fontSize:11,color:autoMsg.startsWith("No")?C.label:C.green,fontWeight:"bold"}}>{autoMsg}</span>}
       </div>
+      {tradelane && (()=>{ const off=(rutas||[]).filter(r=>(tx(r.pol)||tx(r.origen))&&(tx(r.pod)||tx(r.destino))&&!rutaEnTradelane(tradelane,r)); return off.length?(<div style={{fontSize:11.5,color:"#8A6D1F",background:"#FBF4E0",border:"1px solid #EAD9A0",borderRadius:8,padding:"7px 10px",marginBottom:10}}>⚠ {off.length} ruta(s) parecen fuera del tradelane <b>{tradelane}</b> ({tradeLabel(tradelane)}). Es solo un aviso, no bloquea.</div>):null; })()}
       <NavierasSection quoteNav={quoteNav} setQuoteNav={setQuoteNav} rutas={rutas} catalog={mergedCat} onAlta={altaRecargo}/>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
         <span style={{fontSize:13,fontWeight:"bold",color:C.ink}}>Tarifas <span style={{fontWeight:"normal",color:C.label,fontSize:12}}>· base y profit por tamaño; costo, venta y subject-to salen solos</span></span>

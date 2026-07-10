@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient.js";
-import { matchCommodity, paisDe, tlDe, n, adicPorCont, tx, eqMeta } from "./lib.js";
+import { matchCommodity, paisDe, tlDe, n, adicPorCont, tx, eqMeta, prefijoCliente, numeroAcuerdo } from "./lib.js";
 
 // Mapa commodity(lower) -> id desde el catálogo
 async function commodityMap(){
@@ -10,6 +10,17 @@ async function commodityMap(){
 const slug=(s)=>String(s||"").toUpperCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^A-Z0-9]/g,"").slice(0,16)||"CLI";
 const parseDate=(s)=>{ if(s==null||s==="")return null; const d=new Date(s); return isNaN(d.getTime())?null:d.toISOString().slice(0,10); };
 const preMode=(m)=>{ const x=String(m||"").toLowerCase(); if(x.includes("rail"))return "Rail"; if(x.includes("truck"))return "Truck"; if(x.includes("barge"))return "Barge"; return ""; };
+
+// Número de acuerdo macro con prefijo del cliente (ROYCE -> ROY-00042) + vigencia ~1 año
+async function nuevoNoAcuerdo(nombre){
+  const { count } = await supabase.from("acuerdos").select("id",{count:"exact",head:true});
+  const prefijo=prefijoCliente(nombre);
+  const no_acuerdo=numeroAcuerdo(prefijo,(count||0)+1);
+  const hoy=new Date();
+  const vig_desde=hoy.toISOString().slice(0,10);
+  const vig_hasta=new Date(hoy.getFullYear()+1,hoy.getMonth(),hoy.getDate()).toISOString().slice(0,10);
+  return { no_acuerdo, prefijo, vig_desde, vig_hasta };
+}
 
 // Encuentra o crea cliente (por nombre) y su acuerdo (por modo)
 async function ensureClienteAcuerdo(nombre, modo, sum){
@@ -28,8 +39,8 @@ async function ensureClienteAcuerdo(nombre, modo, sum){
   let { data: acu } = await supabase.from("acuerdos").select("id").eq("cliente_id",cliente_id).eq("modo",modo).maybeSingle();
   if(acu) acuerdo_id=acu.id;
   else{
-    const no_acuerdo="ACU-"+slug(nombre)+"-"+modo.slice(0,3).toUpperCase();
-    let { data: ai, error } = await supabase.from("acuerdos").insert({no_acuerdo,cliente_id,modo}).select("id").single();
+    const { no_acuerdo, prefijo, vig_desde, vig_hasta } = await nuevoNoAcuerdo(nombre);
+    let { data: ai, error } = await supabase.from("acuerdos").insert({no_acuerdo,prefijo,vig_desde,vig_hasta,cliente_id,modo}).select("id").single();
     if(error){ sum.errores.push("acuerdo "+nombre+": "+error.message); return null; }
     acuerdo_id=ai.id;
   }
@@ -112,11 +123,11 @@ async function insertChildren(versionId, state, sum){
 
 export async function saveCotizacion(state){
   const sum={versiones:0,lineas:0,opciones:0,surcharges:0,errores:[],codigo:null,versionId:null};
-  const { versionId, cliente, clienteNombre, modo, direccion, commodity, commodity_id, origen, notas } = state;
+  const { versionId, cliente, clienteNombre, modo, direccion, commodity, commodity_id, origen, notas, tradelane, vigDesde, vigHasta } = state;
 
   if(versionId){
     // EDITAR borrador existente: actualiza versión y reemplaza hijos
-    await supabase.from("versiones").update({direccion,commodity:commodity||"",commodity_id:commodity_id||null,notas:notas||null}).eq("id",versionId);
+    await supabase.from("versiones").update({direccion,commodity:commodity||"",commodity_id:commodity_id||null,notas:notas||null,tradelane:tradelane||null,vig_desde:parseDate(vigDesde),vig_hasta:parseDate(vigHasta)}).eq("id",versionId);
     await supabase.from("lineas").delete().eq("version_id",versionId); // cascade -> opciones + recargos
     sum.versionId=versionId; sum.codigo=state.codigo;
     await insertChildren(versionId, state, sum);
@@ -128,13 +139,13 @@ export async function saveCotizacion(state){
   let { data: acu } = await supabase.from("acuerdos").select("id").eq("cliente_id",cliente).eq("modo",modo).maybeSingle();
   if(acu) acuerdo_id=acu.id;
   else{
-    const no_acuerdo="ACU-"+slug(clienteNombre||cliente)+"-"+modo.slice(0,3).toUpperCase();
-    let { data: ai, error } = await supabase.from("acuerdos").insert({no_acuerdo,cliente_id:cliente,modo}).select("id").single();
+    const { no_acuerdo, prefijo, vig_desde, vig_hasta } = await nuevoNoAcuerdo(clienteNombre||cliente);
+    let { data: ai, error } = await supabase.from("acuerdos").insert({no_acuerdo,prefijo,vig_desde,vig_hasta,cliente_id:cliente,modo}).select("id").single();
     if(error){ sum.errores.push("acuerdo: "+error.message); return sum; }
     acuerdo_id=ai.id;
   }
   let { data: ver, error: ve } = await supabase.from("versiones")
-    .insert({acuerdo_id,direccion,origen:origen==="rr"?"desde_rate_request":"desde_cero",commodity:commodity||"",commodity_id:commodity_id||null,notas:notas||null,estatus:"borrador"})
+    .insert({acuerdo_id,direccion,origen:origen==="rr"?"desde_rate_request":"desde_cero",commodity:commodity||"",commodity_id:commodity_id||null,notas:notas||null,tradelane:tradelane||null,vig_desde:parseDate(vigDesde),vig_hasta:parseDate(vigHasta),estatus:"borrador"})
     .select("id,codigo").single();
   if(ve){ sum.errores.push("version: "+ve.message); return sum; }
   sum.versiones++; sum.codigo=ver.codigo; sum.versionId=ver.id;
@@ -161,7 +172,7 @@ export async function listCotizaciones(){
 
 // ===== Reconstruir el estado del cotizador desde una versión =====
 export async function loadVersion(versionId){
-  const { data: ver } = await supabase.from("versiones").select("*, acuerdos(id,modo,cliente_id,clientes(nombre))").eq("id",versionId).single();
+  const { data: ver } = await supabase.from("versiones").select("*, acuerdos(id,no_acuerdo,modo,cliente_id,clientes(nombre))").eq("id",versionId).single();
   const { data: lineas } = await supabase.from("lineas").select("*").eq("version_id",versionId).order("created_at");
   const lids=(lineas||[]).map(l=>l.id);
   const { data: opciones } = lids.length ? await supabase.from("opciones_costo").select("*").in("linea_id",lids) : { data:[] };
@@ -193,6 +204,7 @@ export async function loadVersion(versionId){
   const anyL=(lineas||[])[0]||{};
   return {
     versionId, codigo:ver.codigo, estatus:ver.estatus, acuerdo_id:ver.acuerdos?.id,
+    no_acuerdo:ver.acuerdos?.no_acuerdo||"", tradelane:ver.tradelane||"", amendment:ver.amendment||1,
     cliente:ver.acuerdos?.cliente_id, clienteNombre:ver.acuerdos?.clientes?.nombre,
     modo:ver.acuerdos?.modo||"maritimo", direccion:ver.direccion,
     commodity:ver.commodity, commodity_id:ver.commodity_id, notas:ver.notas||"",
