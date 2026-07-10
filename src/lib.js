@@ -336,3 +336,12 @@ export const transitoRango=(r,eqObjs,dir,surOf)=>{ const set=new Set(); eqObjs.f
 const _rkc=(r)=>((r.pol||r.origen||"?")+">"+(r.pod||r.destino||"?"));
 // ¿Cambió la venta final (costo) de alguna ruta+equipo entre dos versiones?
 export const hayCambioCosto=(nuevo,previo,dir)=>{ const soN=mkSurOf(nuevo), soP=mkSurOf(previo); const eqObjs=EQUIPOS.filter(e=>(nuevo.equipos||[]).includes(e.k)); const rp={}; (previo.rutas||[]).forEach(r=>rp[_rkc(r)]=r); const rn={}; (nuevo.rutas||[]).forEach(r=>rn[_rkc(r)]=r); for(const r of (nuevo.rutas||[])){ const p=rp[_rkc(r)]; if(!p) return true; for(const e of eqObjs){ if(ventaEq(r,e,dir,soN)!==ventaEq(p,e,dir,soP)) return true; } } for(const r of (previo.rutas||[])){ if(!rn[_rkc(r)]) return true; } return false; };
+
+// Plantilla genérica de recargos (último recurso al "generar" un bloque naviera×lane)
+export const PLANTILLA_RECARGOS=()=>[
+  {c:"BAF",d:"Bunker Adjustment Factor",monto:"",moneda:"USD",incluido:false,desplegar:false,pago:"prepaid",basis:"contenedor",montos:null},
+  {c:"LSS",d:"Low Sulphur Surcharge",monto:"",moneda:"USD",incluido:false,desplegar:false,pago:"prepaid",basis:"contenedor",montos:null},
+  {c:"THC",d:"Terminal Handling Charge",monto:"",moneda:"USD",incluido:false,desplegar:true,pago:"collect",basis:"contenedor",montos:null},
+  {c:"DOC",d:"Documentation Fee",monto:"",moneda:"USD",incluido:false,desplegar:false,pago:"prepaid",basis:"bl",montos:null},
+  {c:"ISPS",d:"Security Fee (ISPS)",monto:"",moneda:"USD",incluido:false,desplegar:false,pago:"prepaid",basis:"contenedor",montos:null},
+];

@@ -388,6 +388,20 @@ export async function recargosDeRutaSimilarPorNaviera(pais1, pais2, navList, exc
   if(!keys.length) return null;
   return { quoteNav: keys.map(scac=>({scac,tl:targetTl,surcharges:found[scac]})), sources };
 }
+
+// #2 (jerarquía): recargos de ESA naviera en CUALQUIER lane (historial), la más reciente con recargos
+export async function recargosDeNaviera(scac, excludeVersionId){
+  if(!scac) return null;
+  const { data: ops } = await supabase.from("opciones_costo").select("id,created_at,lineas(version_id)").eq("naviera",scac).order("created_at",{ascending:false}).limit(120);
+  for(const op of (ops||[])){
+    if(op.lineas?.version_id===excludeVersionId) continue;
+    const { data: srs } = await supabase.from("opcion_surcharges").select("*").eq("opcion_id",op.id).order("orden");
+    if(srs && srs.length){
+      return { surcharges: srs.map(s=>({c:s.clave,d:s.descripcion,monto:String(s.monto),moneda:s.moneda,incluido:s.incluido,desplegar:s.desplegar,pago:s.pago,basis:s.basis||"contenedor",montos:s.montos||null})) };
+    }
+  }
+  return null;
+}
 // ===== #5 Conflicto: misma ruta + misma vigencia, tarifa distinta (otro cliente o no) =====
 // Devuelve [{folio, cliente, ruta, vig, tarifaExistente, tarifaNueva}]
 export async function checkConflictoTarifa(state){
