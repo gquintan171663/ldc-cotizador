@@ -43,7 +43,8 @@ export const F="Arial, Helvetica, sans-serif";
 
 // ====== Lógica de costo (espejo de Supabase) ======
 export const tx=(s)=>(s||"").trim();
-export function scopeFull(l){const oPre=tx(l.origen)!=="",oOn=tx(l.destino)!=="";const left=oPre?"DR"+(tx(l.precarriage_mode)?"·"+tx(l.precarriage_mode):""):"CY";const right=oOn?"DR"+(tx(l.oncarriage_mode)?"·"+tx(l.oncarriage_mode):""):"CY";return left+"-"+right;}
+const _modoAbrev=(m)=>{const x=String(m||"").trim();return ({"All Truck":"AT","Rail+Truck":"R+T","Rail Ramp":"RR","Truck Ramp":"TR","Barge":"BRG","Truck":"TRK","Rail":"RL"})[x]||x;};
+export function scopeFull(l){const oPre=tx(l.origen)!=="",oOn=tx(l.destino)!=="";const left=oPre?"DR"+(tx(l.precarriage_mode)?"·"+_modoAbrev(l.precarriage_mode):""):"CY";const right=oOn?"DR"+(tx(l.oncarriage_mode)?"·"+_modoAbrev(l.oncarriage_mode):""):"CY";return left+"-"+right;}
 export const n=(v)=>{const x=parseFloat(v);return isFinite(x)?x:0;};
 // Dirección-aware: el pago que SUMA al costo es Prepaid en export ("E") y Collect en import ("I")
 export const paySum=(dir)=>(dir==="I"?"collect":"prepaid");
