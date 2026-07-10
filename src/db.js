@@ -111,7 +111,7 @@ async function insertChildren(versionId, state, sum){
         if((r.elegida??0)===oi) elegidaOpcionId=opt.id;
         const surs=surOf(o.navScac, tlDe(r));
         if(surs.length){
-          const rows=surs.map((s,idx)=>({opcion_id:opt.id,clave:s.c||"",descripcion:s.d||"",monto:parseFloat(s.monto)||0,moneda:s.moneda||"USD",incluido:!!s.incluido,desplegar:s.desplegar!==false,pago:s.pago||"prepaid",basis:s.basis||"contenedor",orden:idx}));
+          const rows=surs.map((s,idx)=>({opcion_id:opt.id,clave:s.c||"",descripcion:s.d||"",monto:parseFloat(s.monto)||0,moneda:s.moneda||"USD",incluido:!!s.incluido,desplegar:s.desplegar!==false,pago:s.pago||"prepaid",basis:s.basis||"contenedor",montos:s.montos||null,orden:idx}));
           let { error: se } = await supabase.from("opcion_surcharges").insert(rows);
           if(se) sum.errores.push("surcharges: "+se.message); else sum.surcharges+=rows.length;
         }
@@ -189,7 +189,7 @@ export async function loadVersion(versionId){
   const lineById={}; (lineas||[]).forEach(l=>{ lineById[l.id]=l; });
   const quoteNavMap={};
   (opciones||[]).forEach(o=>{ if(!o.naviera) return; const l=lineById[o.linea_id]; const tl=l?tlDe(l):""; const key=o.naviera+"|"+tl;
-    const surs=(sursByOpcion[o.id]||[]).map(s=>({c:s.clave,d:s.descripcion,monto:String(s.monto),moneda:s.moneda,incluido:s.incluido,desplegar:s.desplegar,pago:s.pago,basis:s.basis||"contenedor"}));
+    const surs=(sursByOpcion[o.id]||[]).map(s=>({c:s.clave,d:s.descripcion,monto:String(s.monto),moneda:s.moneda,incluido:s.incluido,desplegar:s.desplegar,pago:s.pago,basis:s.basis||"contenedor",montos:s.montos||null}));
     const ex=quoteNavMap[key];
     if(!ex){ quoteNavMap[key]={scac:o.naviera,tl,surcharges:surs}; }
     else if((!ex.surcharges||!ex.surcharges.length) && surs.length){ ex.surcharges=surs; } });
@@ -329,7 +329,7 @@ export async function checkConflictoTarifa(state){
   const ventaNueva=(r)=>{
     const o=(r.opciones||[])[r.elegida??0]||r.opciones[0]||{}; const ek=equipos[0];
     const pr=(o.precios&&o.precios[ek])||{}; const surs=surOf(o.navScac, tlDe(r));
-    return n(pr.base)+n(pr.profit)+adicPorCont(surs, (eqMeta(ek).teu||1), direccion);
+    return n(pr.base)+n(pr.profit)+adicPorCont(surs, eqMeta(ek), direccion);
   };
   const rutasReq=(rutas||[]).filter(r=>tx(r.pol)&&tx(r.pod)).map(r=>({pol:r.pol,pod:r.pod,venta:ventaNueva(r)}));
   if(!rutasReq.length) return [];
@@ -342,15 +342,15 @@ export async function checkConflictoTarifa(state){
   const { data: ops } = lids.length ? await supabase.from("opciones_costo").select("id,costo_base,profit").in("id",lids) : { data:[] };
   const opMap={}; (ops||[]).forEach(o=>{ opMap[o.id]={base:n(o.costo_base),profit:n(o.profit)}; });
   // surcharges de esas opciones para sumar adicional
-  const { data: surExist } = lids.length ? await supabase.from("opcion_surcharges").select("opcion_id,monto,incluido,pago,basis").in("opcion_id",lids) : { data:[] };
-  const surByOp={}; (surExist||[]).forEach(s=>{ (surByOp[s.opcion_id]=surByOp[s.opcion_id]||[]).push({monto:s.monto,incluido:s.incluido,pago:s.pago,basis:s.basis,c:""}); });
+  const { data: surExist } = lids.length ? await supabase.from("opcion_surcharges").select("opcion_id,monto,incluido,pago,basis,montos").in("opcion_id",lids) : { data:[] };
+  const surByOp={}; (surExist||[]).forEach(s=>{ (surByOp[s.opcion_id]=surByOp[s.opcion_id]||[]).push({monto:s.monto,incluido:s.incluido,pago:s.pago,basis:s.basis,montos:s.montos,c:""}); });
   const conflictos=[];
   for(const l of data){
     if(l.version_id===versionId) continue;
     const mine=rutasReq.find(x=>x.pol===l.pol && x.pod===l.pod);
     if(!mine) continue;
     const op=opMap[l.opcion_elegida_id]; if(!op) continue;
-    const ventaExist=op.base+op.profit+adicPorCont(surByOp[l.opcion_elegida_id]||[],1,l.versiones?.direccion||"E");
+    const ventaExist=op.base+op.profit+adicPorCont(surByOp[l.opcion_elegida_id]||[],eqMeta("20DV"),l.versiones?.direccion||"E");
     if(Math.abs(ventaExist-mine.venta) > 0.5){  // tarifa distinta
       conflictos.push({
         folio:l.versiones?.codigo||"?",

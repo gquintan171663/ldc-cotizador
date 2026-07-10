@@ -101,7 +101,7 @@ export function buildQuoteHtml(st){
     const allInCell = excShown===0 ? '<td class="ctr"><span class="allin">ALL-IN</span></td>' : '<td class="ctr"></td>';
     const tt = (o.transito!=null && String(o.transito).trim()!=="") ? (esc(o.transito)+" días") : '<span style="color:#C0C7CE">—</span>';
     let tds="";
-    eqs.forEach(e=>{ const p=(o.precios&&o.precios[e.k])||{}; const base=n(p.base); const venta=base+adicPorCont(surs,e.teu,dir)+n(p.profit);
+    eqs.forEach(e=>{ const p=(o.precios&&o.precios[e.k])||{}; const base=n(p.base); const venta=base+adicPorCont(surs,e,dir)+n(p.profit);
       tds+='<td class="num">'+(base?money(venta).replace("USD ",""):'<span style="color:#C0C7CE">—</span>')+'</td>'; });
     bodyRows+='<tr>'+
       (showOri?('<td class="door">'+cel(r.origen)+'</td>'):'')+

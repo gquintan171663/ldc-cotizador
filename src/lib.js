@@ -47,7 +47,9 @@ export function scopeFull(l){const oPre=tx(l.origen)!=="",oOn=tx(l.destino)!==""
 export const n=(v)=>{const x=parseFloat(v);return isFinite(x)?x:0;};
 // Dirección-aware: el pago que SUMA al costo es Prepaid en export ("E") y Collect en import ("I")
 export const paySum=(dir)=>(dir==="I"?"collect":"prepaid");
-export const adicPorCont=(surs,teu,dir="E")=>{const pay=paySum(dir);return (surs||[]).filter(s=>!s.incluido&&(s.pago||"prepaid")===pay).reduce((a,s)=>{const bas=s.basis||"contenedor";if(bas==="bl")return a;return a+n(s.monto)*(bas==="teu"?teu:1);},0);};
+// Monto del recargo para un equipo e={k,teu}: usa el monto por tamaño si existe, si no el general
+export const montoDe=(s,e)=>{ const k=e&&e.k; const m=(k&&s.montos)?s.montos[k]:null; return (m!=null&&m!=="")?n(m):n(s.monto); };
+export const adicPorCont=(surs,e,dir="E")=>{const pay=paySum(dir);return (surs||[]).filter(s=>!s.incluido&&(s.pago||"prepaid")===pay).reduce((a,s)=>{const bas=s.basis||"contenedor";if(bas==="bl")return a;const perEq=!!(e&&e.k&&s.montos&&s.montos[e.k]!=null&&s.montos[e.k]!=="");const amt=perEq?n(s.montos[e.k]):n(s.monto);return a+(perEq?amt:amt*(bas==="teu"?((e&&e.teu)||1):1));},0);};
 export const cargosBL=(surs,dir="E")=>{const pay=paySum(dir);return (surs||[]).filter(s=>!s.incluido&&(s.pago||"prepaid")===pay&&(s.basis||"contenedor")==="bl").reduce((a,s)=>a+n(s.monto),0);};
 // ¿va dentro del precio (panel INCLUYEN)? = incluido, o no-incluido cuyo pago SUMA según dirección
 export const enPrecio=(s,dir="E")=>!!s.incluido || (!s.incluido && (s.pago||"prepaid")===paySum(dir));
@@ -55,7 +57,7 @@ export const enPrecio=(s,dir="E")=>!!s.incluido || (!s.incluido && (s.pago||"pre
 export const esSubjectTo=(s,dir="E")=>!s.incluido && (s.pago||"prepaid")!==paySum(dir);
 export const subjectTo=(surs,dir="E")=>(surs||[]).filter(s=>esSubjectTo(s,dir)).map(s=>s.c);
 // Monto de recargos INCLUIDOS por contenedor (informativo; ya van en la base)
-export const inclPorCont=(surs,teu)=>(surs||[]).filter(s=>s.incluido).reduce((a,s)=>{const bas=s.basis||"contenedor";if(bas==="bl")return a;return a+n(s.monto)*(bas==="teu"?teu:1);},0);
+export const inclPorCont=(surs,e)=>(surs||[]).filter(s=>s.incluido).reduce((a,s)=>{const bas=s.basis||"contenedor";if(bas==="bl")return a;const perEq=!!(e&&e.k&&s.montos&&s.montos[e.k]!=null&&s.montos[e.k]!=="");const amt=perEq?n(s.montos[e.k]):n(s.monto);return a+(perEq?amt:amt*(bas==="teu"?((e&&e.teu)||1):1));},0);
 export const inclBL=(surs)=>(surs||[]).filter(s=>s.incluido&&(s.basis||"contenedor")==="bl").reduce((a,s)=>a+n(s.monto),0);
 // Formato de dinero con signo $ (USD -> "$1,234" · otras -> "$1,234 MXN")
 export const money=(v,m="USD")=>{const num=Number(v||0).toLocaleString("en-US",{minimumFractionDigits:0,maximumFractionDigits:2});return m==="USD"?("$"+num):("$"+num+" "+m);};

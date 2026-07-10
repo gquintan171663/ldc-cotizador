@@ -5,9 +5,13 @@ import { inS, Lbl, Field, TI, Sel, Chip, Btn, ClaveAutocomplete, ComboBox } from
 import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges, recargosDeRutaSimilar, recargosDeRutaSimilarPorNaviera, checkConflictoTarifa } from "./db.js";
 import { abrirCotizacion } from "./quote.js";
 
-function SurchargeGrid({surs,onChange,catalog,dir}){
+function SurchargeGrid({surs,onChange,catalog,dir,equipos}){
   const cat=catalog||CATALOG;
   const rows=surs||[];
+  const eqsQ=EQUIPOS.filter(e=>(equipos||[]).includes(e.k));
+  const e20=eqsQ.find(e=>e.teu<2)||{k:"20DV",teu:1};
+  const e40=eqsQ.find(e=>e.teu>=2)||{k:"40HC",teu:2};
+  const [openSize,setOpenSize]=useState({});
   const set=(i,p)=>onChange(rows.map((x,j)=>j===i?{...x,...p}:x));
   const add=()=>onChange([...rows,{c:"",d:"",monto:"",moneda:"USD",incluido:false,desplegar:true,pago:"prepaid",basis:"contenedor"}]);
   const del=(i)=>onChange(rows.filter((_,j)=>j!==i));
@@ -21,10 +25,11 @@ function SurchargeGrid({surs,onChange,catalog,dir}){
         <th style={{...th,width:"12%"}}>Base cobro</th><th style={{...th,width:"8%",textAlign:"center"}}>No Incl.</th><th style={{...th,width:"7%",textAlign:"center"}}>INCL.</th><th style={{...th,width:"8%",textAlign:"center"}}>Mostrar</th><th style={{...th,width:"10%"}}>Pago</th><th style={{...th,width:"3%"}}></th></tr></thead>
       <tbody>
         {rows.length===0&&<tr><td colSpan={10} style={{padding:10,textAlign:"center",color:C.label,fontSize:12}}>Sin recargos — agrega filas</td></tr>}
-        {rows.map((r,i)=>(<tr key={i} style={{borderBottom:"1px solid "+C.sep}}>
+        {rows.map((r,i)=>{const hasSizes=r.montos&&Object.values(r.montos).some(v=>v!==""&&v!=null);return (<React.Fragment key={i}>
+        <tr style={{borderBottom:openSize[i]?"none":"1px solid "+C.sep}}>
           <td style={td}><ClaveAutocomplete value={r.c} catalog={cat} cellStyle={cell} onChange={(v)=>onClave(i,v)} onPick={(x)=>set(i,{c:x.c,d:tx(rows[i].d)?rows[i].d:x.d})}/></td>
           <td style={td}><input value={r.d} onChange={e=>set(i,{d:e.target.value})} placeholder="Descripción" style={cell}/></td>
-          <td style={td}><input value={r.monto} onChange={e=>set(i,{monto:e.target.value})} inputMode="decimal" placeholder="0" style={{...cell,textAlign:"right"}}/></td>
+          <td style={td}><input value={r.monto} onChange={e=>set(i,{monto:e.target.value})} onFocus={e=>e.target.select()} inputMode="decimal" placeholder="0" style={{...cell,textAlign:"right"}}/><div><span onClick={()=>setOpenSize(o=>({...o,[i]:!o[i]}))} title="Montos distintos por tipo de contenedor" style={{cursor:"pointer",fontSize:9,fontWeight:"bold",color:hasSizes?C.red:C.label}}>⊞ por tamaño{hasSizes?" ✓":""}</span></div></td>
           <td style={td}><input list="monedas-dl" value={r.moneda} onChange={e=>set(i,{moneda:e.target.value.toUpperCase()})} placeholder="USD" style={{...cell,padding:"5px 6px",textTransform:"uppercase"}}/></td>
           <td style={td}><select value={r.basis||"contenedor"} onChange={e=>set(i,{basis:e.target.value})} style={{...cell,padding:"5px 4px"}}><option value="contenedor">Contenedor</option><option value="teu">TEU</option><option value="bl">BL</option></select></td>
           <td style={{...td,textAlign:"center"}}><input type="checkbox" checked={!r.incluido} onChange={()=>set(i,{incluido:false})} title="No incluido por la naviera (si es Prepaid, se suma al costo)"/></td>
@@ -32,22 +37,28 @@ function SurchargeGrid({surs,onChange,catalog,dir}){
           <td style={{...td,textAlign:"center"}}><input type="checkbox" checked={r.desplegar!==false} onChange={e=>set(i,{desplegar:e.target.checked})} title="Mostrar en el PDF (sección Incluyen / No incluyen)"/></td>
           <td style={td}><select value={r.pago} onChange={e=>set(i,{pago:e.target.value})} style={{...cell,padding:"5px 4px"}}><option value="prepaid">Prepaid</option><option value="collect">Collect</option></select></td>
           <td style={{...td,textAlign:"center"}}><span onClick={()=>del(i)} style={{cursor:"pointer",color:C.label,fontWeight:"bold"}}>✕</span></td>
-        </tr>))}
+        </tr>
+        {openSize[i]&&<tr style={{borderBottom:"1px solid "+C.sep,background:C.soft}}><td colSpan={10} style={{padding:"6px 10px"}}>
+          <span style={{fontSize:10,color:C.label,fontWeight:"bold",marginRight:10}}>Monto por tamaño (vacío = usa el general{r.monto?" $"+r.monto:""}):</span>
+          {eqsQ.length===0&&<span style={{fontSize:11,color:C.label}}>Selecciona equipos arriba para capturar por tamaño.</span>}
+          {eqsQ.map(eq=>(<span key={eq.k} style={{display:"inline-flex",alignItems:"center",gap:4,marginRight:12,marginBottom:2}}><span style={{fontSize:11,color:C.slate}}>{eq.t}</span><input value={(r.montos&&r.montos[eq.k])||""} onChange={e=>set(i,{montos:{...(r.montos||{}),[eq.k]:e.target.value}})} onFocus={e=>e.target.select()} inputMode="decimal" placeholder={r.monto||"0"} style={{...cell,width:60,textAlign:"right",padding:"3px 6px"}}/></span>))}
+        </td></tr>}
+        </React.Fragment>);})}
       </tbody>
     </table>
     <datalist id="monedas-dl">{MONEDAS.map(m=><option key={m.code} value={m.code}>{m.code+" · "+m.name}</option>)}</datalist>
     <div style={{padding:"7px 9px",borderTop:"1px solid "+C.sep2,background:C.soft,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
       <span onClick={add} style={{cursor:"pointer",color:C.red,fontWeight:"bold",fontSize:12.5}}>＋ Agregar recargo</span>
       <span style={{fontSize:11,color:C.label}}>
-        <span style={{color:C.green,fontWeight:"bold"}}>Incluidos:</span> <b style={{color:C.slate}}>{money(inclPorCont(rows,1))}</b>/20' · <b style={{color:C.slate}}>{money(inclPorCont(rows,2))}</b>/40'{inclBL(rows)>0&&<span> · BL <b style={{color:C.slate}}>{money(inclBL(rows))}</b></span>}
+        <span style={{color:C.green,fontWeight:"bold"}}>Incluidos:</span> <b style={{color:C.slate}}>{money(inclPorCont(rows,e20))}</b>/20' · <b style={{color:C.slate}}>{money(inclPorCont(rows,e40))}</b>/40'{inclBL(rows)>0&&<span> · BL <b style={{color:C.slate}}>{money(inclBL(rows))}</b></span>}
         <span style={{margin:"0 8px",color:C.sep2}}>|</span>
-        <span style={{color:C.red,fontWeight:"bold"}}>No incluidos (suman):</span> <b style={{color:C.slate}}>{money(adicPorCont(rows,1,dir))}</b>/20' · <b style={{color:C.slate}}>{money(adicPorCont(rows,2,dir))}</b>/40'{cargosBL(rows,dir)>0&&<span> · BL <b style={{color:C.slate}}>{money(cargosBL(rows,dir))}</b></span>}
+        <span style={{color:C.red,fontWeight:"bold"}}>No incluidos (suman):</span> <b style={{color:C.slate}}>{money(adicPorCont(rows,e20,dir))}</b>/20' · <b style={{color:C.slate}}>{money(adicPorCont(rows,e40,dir))}</b>/40'{cargosBL(rows,dir)>0&&<span> · BL <b style={{color:C.slate}}>{money(cargosBL(rows,dir))}</b></span>}
       </span>
     </div>
   </div>);
 }
 
-function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir}){
+function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos}){
   const [altaOpen,setAltaOpen]=useState(false);
   const [nc,setNc]=useState(""); const [nd,setNd]=useState("");
   const doAlta=async()=>{ const c=nc.trim().toUpperCase(); if(!c) return; await onAlta(c,nd.trim()); setNc(""); setNd(""); setAltaOpen(false); };
@@ -81,7 +92,7 @@ function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir}){
             {others.map(x=><option key={x.tl} value={x.tl}>{tlLabel(x.tl)}</option>)}
           </select>}
         </div>
-        <SurchargeGrid surs={surs} catalog={catalog} dir={dir} onChange={(s)=>setSurs(b.scac,b.tl,s)}/>
+        <SurchargeGrid surs={surs} catalog={catalog} dir={dir} equipos={equipos} onChange={(s)=>setSurs(b.scac,b.tl,s)}/>
       </div>);
     })}
   </div>);
@@ -96,7 +107,7 @@ function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir}){
   const setOpt=(ri,oi,patch)=>setRutas(rutas.map((r,i)=>i!==ri?r:{...r,opciones:r.opciones.map((o,j)=>j===oi?{...o,...patch}:o)}));
   const addOpt=(ri)=>setRutas(rutas.map((r,i)=>i!==ri?r:{...r,opciones:[...r.opciones,{navScac:"",transito:"",precios:{}}],elegida:r.elegida??0}));
   const delOpt=(ri,oi)=>setRutas(rutas.map((r,i)=>i!==ri?r:{...r,opciones:r.opciones.filter((_,j)=>j!==oi)}));
-  const totCosto=(o,r)=>eqs.reduce((a,e)=>a+n(getP(o,e.k).base)+adicPorCont(surOf(o.navScac,tlDe(r)),e.teu,dir),0);
+  const totCosto=(o,r)=>eqs.reduce((a,e)=>a+n(getP(o,e.k).base)+adicPorCont(surOf(o.navScac,tlDe(r)),e,dir),0);
   const sugerida=(r)=>{if(!r.opciones.length)return -1;let bi=0,bc=Infinity;r.opciones.forEach((o,i)=>{const c=totCosto(o,r);if(c<bc){bc=c;bi=i;}});return bi;};
   const th={fontSize:9.5,letterSpacing:.5,textTransform:"uppercase",color:"#fff",fontWeight:"bold",padding:"7px 8px",whiteSpace:"nowrap"};
   const td={padding:"6px 8px",verticalAlign:"middle",borderBottom:"1px solid "+C.sep};
@@ -119,9 +130,10 @@ function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir}){
               <td style={{...td,textAlign:"center",borderTop:first?"2px solid "+C.sep2:"none"}}>{first&&<Chip>{scopeFull(r)}</Chip>}</td>
               <td style={td}><select value={o.navScac} onChange={e=>setOpt(ri,oi,{navScac:e.target.value})} style={{...inS,padding:"5px 7px",fontSize:12,fontWeight:"bold",width:170,maxWidth:190}}>{navOpts.map(x=><option key={x.v} value={x.v}>{x.t}</option>)}</select></td>
               <td style={{...td,textAlign:"center"}}><input value={o.transito||""} onChange={e=>setOpt(ri,oi,{transito:e.target.value})} inputMode="numeric" placeholder="días" style={{...inS,padding:"5px 6px",fontSize:12.5,width:56,textAlign:"center"}}/></td>
-              {eqs.map(e=>{const p=getP(o,e.k);const base=n(p.base),prof=n(p.profit);const adic=adicPorCont(surs,e.teu,dir);const venta=base+adic+prof;
+              {eqs.map(e=>{const p=getP(o,e.k);const base=n(p.base),prof=n(p.profit);const adic=adicPorCont(surs,e,dir);const venta=base+adic+prof;
                 const _summ=surs.filter(s=>!s.incluido&&enPrecio(s,dir)&&(s.basis||"contenedor")!=="bl");
-                const _tip=o.navScac?(o.navScac+" · "+tlLabel(tlDe(r))+"\nRecargos que suman ("+e.t+"):\n"+(_summ.length?_summ.map(s=>{const b=s.basis||"contenedor";return "• "+(s.c||"")+"  "+money(n(s.monto),s.moneda||"USD")+(b==="teu"?("/TEU ×"+e.teu):"/cont");}).join("\n"):"(ninguno)")+"\n= "+money(adic)):"";
+                const _contrib=(s)=>{const perEq=s.montos&&s.montos[e.k]!=null&&s.montos[e.k]!=="";const bas=s.basis||"contenedor";return perEq?n(s.montos[e.k]):n(s.monto)*(bas==="teu"?e.teu:1);};
+                const _tip=o.navScac?(o.navScac+" · "+tlLabel(tlDe(r))+"\nRecargos que suman ("+e.t+"):\n"+(_summ.length?_summ.map(s=>"• "+(s.c||"")+"  "+money(_contrib(s),s.moneda||"USD")).join("\n"):"(ninguno)")+"\n= "+money(adic)):"";
                 return [<td key={e.k+"b"} style={{...td,borderLeft:"1px solid "+C.sep2}}><input value={p.base||""} onFocus={ev=>ev.target.select()} onChange={ev=>setP(ri,oi,e.k,{base:ev.target.value})} inputMode="decimal" placeholder="0" style={cell}/></td>,
                   <td key={e.k+"r"} style={{...td,textAlign:"right",fontVariantNumeric:"tabular-nums",color:adic>0?C.slate:C.label,cursor:o.navScac?"help":"default"}} title={_tip}>{o.navScac?money(adic):""}</td>,
                   <td key={e.k+"p"} style={td}><input value={p.profit||""} onFocus={ev=>ev.target.select()} onChange={ev=>setP(ri,oi,e.k,{profit:ev.target.value})} inputMode="decimal" placeholder="0" style={cell}/></td>,
@@ -340,7 +352,7 @@ export function Cotizador({ loadId, onDirty }){
         {autoMsg&&<span style={{fontSize:11,color:autoMsg.startsWith("No")?C.label:C.green,fontWeight:"bold"}}>{autoMsg}</span>}
       </div>
       {tradelane && (()=>{ const off=(rutas||[]).filter(r=>(tx(r.pol)||tx(r.origen))&&(tx(r.pod)||tx(r.destino))&&!rutaEnTradelane(tradelane,r)); return off.length?(<div style={{fontSize:11.5,color:"#8A6D1F",background:"#FBF4E0",border:"1px solid #EAD9A0",borderRadius:8,padding:"7px 10px",marginBottom:10}}>⚠ {off.length} ruta(s) parecen fuera del tradelane <b>{tradelane}</b> ({tradeLabel(tradelane)}). Es solo un aviso, no bloquea.</div>):null; })()}
-      <NavierasSection quoteNav={quoteNav} setQuoteNav={setQuoteNav} rutas={rutas} catalog={mergedCat} onAlta={altaRecargo} dir={direccion}/>
+      <NavierasSection quoteNav={quoteNav} setQuoteNav={setQuoteNav} rutas={rutas} catalog={mergedCat} onAlta={altaRecargo} dir={direccion} equipos={equipos}/>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
         <span style={{fontSize:13,fontWeight:"bold",color:C.ink}}>Tarifas <span style={{fontWeight:"normal",color:C.label,fontSize:12}}>· base y profit por tamaño; costo, venta y subject-to salen solos</span></span>
         <div style={{display:"flex",gap:8}}><Btn kind="ghost" small onClick={()=>setEditRutas(!editRutas)}>{editRutas?"Ocultar rutas":"Editar rutas"}</Btn><Btn kind="ghost" small onClick={()=>setRutas([...rutas,mkRuta()])}>＋ Agregar ruta</Btn></div>
