@@ -322,20 +322,20 @@ export async function recargosDeRutaSimilarPorNaviera(pais1, pais2, navList, exc
 // ===== #5 Conflicto: misma ruta + misma vigencia, tarifa distinta (otro cliente o no) =====
 // Devuelve [{folio, cliente, ruta, vig, tarifaExistente, tarifaNueva}]
 export async function checkConflictoTarifa(state){
-  const { versionId, vigDesde, vigHasta, rutas, equipos, quoteNav } = state;
+  const { versionId, vigDesde, vigHasta, rutas, equipos, quoteNav, direccion } = state;
   if(!vigDesde && !vigHasta) return [];
   const surOf=(scac,tl)=>((quoteNav||[]).find(q=>q.scac===scac&&(q.tl||"")===(tl||""))||{}).surcharges||[];
-  // venta (base+profit+adicional prepaid por contenedor) de la opción elegida, primer equipo
+  // venta (base+profit+recargos que suman según dirección) de la opción elegida, primer equipo
   const ventaNueva=(r)=>{
     const o=(r.opciones||[])[r.elegida??0]||r.opciones[0]||{}; const ek=equipos[0];
     const pr=(o.precios&&o.precios[ek])||{}; const surs=surOf(o.navScac, tlDe(r));
-    return n(pr.base)+n(pr.profit)+adicPorCont(surs, (eqMeta(ek).teu||1));
+    return n(pr.base)+n(pr.profit)+adicPorCont(surs, (eqMeta(ek).teu||1), direccion);
   };
   const rutasReq=(rutas||[]).filter(r=>tx(r.pol)&&tx(r.pod)).map(r=>({pol:r.pol,pod:r.pod,venta:ventaNueva(r)}));
   if(!rutasReq.length) return [];
   // Trae versiones con misma vigencia (en lineas) y sus tarifas
   const { data } = await supabase.from("lineas")
-    .select("pol,pod,validez_desde,validez_hasta,version_id,opcion_elegida_id,versiones(id,codigo,estatus,acuerdos(clientes(nombre)))")
+    .select("pol,pod,validez_desde,validez_hasta,version_id,opcion_elegida_id,versiones(id,codigo,estatus,direccion,acuerdos(clientes(nombre)))")
     .eq("validez_desde", vigDesde||null).eq("validez_hasta", vigHasta||null).limit(500);
   if(!data || !data.length) return [];
   const lids=data.filter(l=>l.opcion_elegida_id).map(l=>l.opcion_elegida_id);
@@ -350,7 +350,7 @@ export async function checkConflictoTarifa(state){
     const mine=rutasReq.find(x=>x.pol===l.pol && x.pod===l.pod);
     if(!mine) continue;
     const op=opMap[l.opcion_elegida_id]; if(!op) continue;
-    const ventaExist=op.base+op.profit+adicPorCont(surByOp[l.opcion_elegida_id]||[],1);
+    const ventaExist=op.base+op.profit+adicPorCont(surByOp[l.opcion_elegida_id]||[],1,l.versiones?.direccion||"E");
     if(Math.abs(ventaExist-mine.venta) > 0.5){  // tarifa distinta
       conflictos.push({
         folio:l.versiones?.codigo||"?",

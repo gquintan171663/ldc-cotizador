@@ -1,11 +1,11 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { supabase } from "./supabaseClient.js";
-import { C, F, EQUIPOS, EQUIPO_CATS, NAVIERAS, navName, CATALOG, COMMODITY_INDUSTRIAS, tx, scopeFull, n, adicPorCont, cargosBL, inclPorCont, inclBL, subjectTo, money, MONEDAS, optPuertos, optCiudades, paisOrigen, paisDestino, rutaPaisLabel, tlDe, tlLabel, TRADELANES, tradeLabel, rutaEnTradelane } from "./lib.js";
+import { C, F, EQUIPOS, EQUIPO_CATS, NAVIERAS, navName, CATALOG, COMMODITY_INDUSTRIAS, tx, scopeFull, n, adicPorCont, cargosBL, inclPorCont, inclBL, subjectTo, enPrecio, money, MONEDAS, optPuertos, optCiudades, paisOrigen, paisDestino, rutaPaisLabel, tlDe, tlLabel, TRADELANES, tradeLabel, rutaEnTradelane } from "./lib.js";
 import { inS, Lbl, Field, TI, Sel, Chip, Btn, ClaveAutocomplete, ComboBox } from "./ui.jsx";
 import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges, recargosDeRutaSimilar, recargosDeRutaSimilarPorNaviera, checkConflictoTarifa } from "./db.js";
 import { abrirCotizacion } from "./quote.js";
 
-function SurchargeGrid({surs,onChange,catalog}){
+function SurchargeGrid({surs,onChange,catalog,dir}){
   const cat=catalog||CATALOG;
   const rows=surs||[];
   const set=(i,p)=>onChange(rows.map((x,j)=>j===i?{...x,...p}:x));
@@ -41,13 +41,13 @@ function SurchargeGrid({surs,onChange,catalog}){
       <span style={{fontSize:11,color:C.label}}>
         <span style={{color:C.green,fontWeight:"bold"}}>Incluidos:</span> <b style={{color:C.slate}}>{money(inclPorCont(rows,1))}</b>/20' · <b style={{color:C.slate}}>{money(inclPorCont(rows,2))}</b>/40'{inclBL(rows)>0&&<span> · BL <b style={{color:C.slate}}>{money(inclBL(rows))}</b></span>}
         <span style={{margin:"0 8px",color:C.sep2}}>|</span>
-        <span style={{color:C.red,fontWeight:"bold"}}>No incluidos:</span> <b style={{color:C.slate}}>{money(adicPorCont(rows,1))}</b>/20' · <b style={{color:C.slate}}>{money(adicPorCont(rows,2))}</b>/40'{cargosBL(rows)>0&&<span> · BL <b style={{color:C.slate}}>{money(cargosBL(rows))}</b></span>}
+        <span style={{color:C.red,fontWeight:"bold"}}>No incluidos (suman):</span> <b style={{color:C.slate}}>{money(adicPorCont(rows,1,dir))}</b>/20' · <b style={{color:C.slate}}>{money(adicPorCont(rows,2,dir))}</b>/40'{cargosBL(rows,dir)>0&&<span> · BL <b style={{color:C.slate}}>{money(cargosBL(rows,dir))}</b></span>}
       </span>
     </div>
   </div>);
 }
 
-function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta}){
+function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir}){
   const [altaOpen,setAltaOpen]=useState(false);
   const [nc,setNc]=useState(""); const [nd,setNd]=useState("");
   const doAlta=async()=>{ const c=nc.trim().toUpperCase(); if(!c) return; await onAlta(c,nd.trim()); setNc(""); setNd(""); setAltaOpen(false); };
@@ -81,13 +81,13 @@ function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta}){
             {others.map(x=><option key={x.tl} value={x.tl}>{tlLabel(x.tl)}</option>)}
           </select>}
         </div>
-        <SurchargeGrid surs={surs} catalog={catalog} onChange={(s)=>setSurs(b.scac,b.tl,s)}/>
+        <SurchargeGrid surs={surs} catalog={catalog} dir={dir} onChange={(s)=>setSurs(b.scac,b.tl,s)}/>
       </div>);
     })}
   </div>);
 }
 
-function TarifasGrid({rutas,setRutas,quoteNav,equipos}){
+function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir}){
   const navOpts=[{v:"",t:"— naviera —"},...NAVIERAS.map(x=>({v:x.scac,t:x.scac+" · "+x.nombre}))];
   const surOf=(scac,tl)=>(quoteNav.find(q=>q.scac===scac&&(q.tl||"")===(tl||""))||{}).surcharges||[];
   const eqs=EQUIPOS.filter(e=>equipos.includes(e.k));
@@ -96,8 +96,8 @@ function TarifasGrid({rutas,setRutas,quoteNav,equipos}){
   const setOpt=(ri,oi,patch)=>setRutas(rutas.map((r,i)=>i!==ri?r:{...r,opciones:r.opciones.map((o,j)=>j===oi?{...o,...patch}:o)}));
   const addOpt=(ri)=>setRutas(rutas.map((r,i)=>i!==ri?r:{...r,opciones:[...r.opciones,{navScac:"",transito:"",precios:{}}],elegida:r.elegida??0}));
   const delOpt=(ri,oi)=>setRutas(rutas.map((r,i)=>i!==ri?r:{...r,opciones:r.opciones.filter((_,j)=>j!==oi)}));
-  const totBase=(o)=>eqs.reduce((a,e)=>a+n(getP(o,e.k).base),0);
-  const sugerida=(r)=>{if(!r.opciones.length)return -1;let bi=0,bc=Infinity;r.opciones.forEach((o,i)=>{const c=totBase(o);if(c<bc){bc=c;bi=i;}});return bi;};
+  const totCosto=(o,r)=>eqs.reduce((a,e)=>a+n(getP(o,e.k).base)+adicPorCont(surOf(o.navScac,tlDe(r)),e.teu,dir),0);
+  const sugerida=(r)=>{if(!r.opciones.length)return -1;let bi=0,bc=Infinity;r.opciones.forEach((o,i)=>{const c=totCosto(o,r);if(c<bc){bc=c;bi=i;}});return bi;};
   const th={fontSize:9.5,letterSpacing:.5,textTransform:"uppercase",color:"#fff",fontWeight:"bold",padding:"7px 8px",whiteSpace:"nowrap"};
   const td={padding:"6px 8px",verticalAlign:"middle",borderBottom:"1px solid "+C.sep};
   const cell={...inS,padding:"5px 7px",fontSize:12.5,width:72,textAlign:"right"};
@@ -113,15 +113,17 @@ function TarifasGrid({rutas,setRutas,quoteNav,equipos}){
       </thead>
       <tbody>
         {rutas.map((r,ri)=>{const sug=sugerida(r);
-          return r.opciones.map((o,oi)=>{const surs=surOf(o.navScac,tlDe(r)),st=subjectTo(surs),bl=cargosBL(surs),first=oi===0;
+          return r.opciones.map((o,oi)=>{const surs=surOf(o.navScac,tlDe(r)),st=subjectTo(surs,dir),bl=cargosBL(surs,dir),first=oi===0;
             return (<tr key={ri+"-"+oi} style={{background:first?"#fff":C.soft}}>
               <td style={{...td,borderTop:first?"2px solid "+C.sep2:"none"}}>{first?<div style={{fontSize:12.5}}><b style={{color:C.slate}}>{r.pol}</b><span style={{color:"#C0C7CE",margin:"0 4px"}}>›</span><b style={{color:C.slate}}>{r.pod}</b>{(r.origen||r.destino)&&<div style={{fontSize:11,color:C.label,marginTop:1}}>{r.origen?r.origen+" › ":""}{r.pol} › {r.pod}{r.destino?" › "+r.destino:""}</div>}</div>:<span style={{fontSize:11,color:C.label}}>↳ alt.</span>}</td>
               <td style={{...td,textAlign:"center",borderTop:first?"2px solid "+C.sep2:"none"}}>{first&&<Chip>{scopeFull(r)}</Chip>}</td>
               <td style={td}><select value={o.navScac} onChange={e=>setOpt(ri,oi,{navScac:e.target.value})} style={{...inS,padding:"5px 7px",fontSize:12,fontWeight:"bold",width:170,maxWidth:190}}>{navOpts.map(x=><option key={x.v} value={x.v}>{x.t}</option>)}</select></td>
               <td style={{...td,textAlign:"center"}}><input value={o.transito||""} onChange={e=>setOpt(ri,oi,{transito:e.target.value})} inputMode="numeric" placeholder="días" style={{...inS,padding:"5px 6px",fontSize:12.5,width:56,textAlign:"center"}}/></td>
-              {eqs.map(e=>{const p=getP(o,e.k);const base=n(p.base),prof=n(p.profit);const adic=adicPorCont(surs,e.teu);const venta=base+adic+prof;
+              {eqs.map(e=>{const p=getP(o,e.k);const base=n(p.base),prof=n(p.profit);const adic=adicPorCont(surs,e.teu,dir);const venta=base+adic+prof;
+                const _summ=surs.filter(s=>!s.incluido&&enPrecio(s,dir)&&(s.basis||"contenedor")!=="bl");
+                const _tip=o.navScac?(o.navScac+" · "+tlLabel(tlDe(r))+"\nRecargos que suman ("+e.t+"):\n"+(_summ.length?_summ.map(s=>{const b=s.basis||"contenedor";return "• "+(s.c||"")+"  "+money(n(s.monto),s.moneda||"USD")+(b==="teu"?("/TEU ×"+e.teu):"/cont");}).join("\n"):"(ninguno)")+"\n= "+money(adic)):"";
                 return [<td key={e.k+"b"} style={{...td,borderLeft:"1px solid "+C.sep2}}><input value={p.base||""} onFocus={ev=>ev.target.select()} onChange={ev=>setP(ri,oi,e.k,{base:ev.target.value})} inputMode="decimal" placeholder="0" style={cell}/></td>,
-                  <td key={e.k+"r"} style={{...td,textAlign:"right",fontVariantNumeric:"tabular-nums",color:adic>0?C.slate:C.label}} title="Suma de recargos No Incl. + Prepaid (se suman al costo)">{o.navScac?money(adic):""}</td>,
+                  <td key={e.k+"r"} style={{...td,textAlign:"right",fontVariantNumeric:"tabular-nums",color:adic>0?C.slate:C.label,cursor:o.navScac?"help":"default"}} title={_tip}>{o.navScac?money(adic):""}</td>,
                   <td key={e.k+"p"} style={td}><input value={p.profit||""} onFocus={ev=>ev.target.select()} onChange={ev=>setP(ri,oi,e.k,{profit:ev.target.value})} inputMode="decimal" placeholder="0" style={cell}/></td>,
                   <td key={e.k+"v"} style={{...td,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{base?<span><b style={{color:C.red}}>{money(venta)}</b><div style={{fontSize:10,color:C.label}}>costo {money(base+adic)}{(prof>0&&(base+adic)>0)?" · "+Math.round(prof/(base+adic)*100)+"% profit":""}</div></span>:""}</td>];})}
               <td style={{...td,borderLeft:"1px solid "+C.sep2}}>{o.navScac?(st.length?<span style={{fontSize:11}}><b style={{color:C.slate}}>{st.join(" · ")}</b>{bl>0&&<div style={{color:C.label,marginTop:1}}>+ BL {money(bl)}</div>}</span>:<Chip kind="green">ALL-IN</Chip>):""}</td>
@@ -338,7 +340,7 @@ export function Cotizador({ loadId, onDirty }){
         {autoMsg&&<span style={{fontSize:11,color:autoMsg.startsWith("No")?C.label:C.green,fontWeight:"bold"}}>{autoMsg}</span>}
       </div>
       {tradelane && (()=>{ const off=(rutas||[]).filter(r=>(tx(r.pol)||tx(r.origen))&&(tx(r.pod)||tx(r.destino))&&!rutaEnTradelane(tradelane,r)); return off.length?(<div style={{fontSize:11.5,color:"#8A6D1F",background:"#FBF4E0",border:"1px solid #EAD9A0",borderRadius:8,padding:"7px 10px",marginBottom:10}}>⚠ {off.length} ruta(s) parecen fuera del tradelane <b>{tradelane}</b> ({tradeLabel(tradelane)}). Es solo un aviso, no bloquea.</div>):null; })()}
-      <NavierasSection quoteNav={quoteNav} setQuoteNav={setQuoteNav} rutas={rutas} catalog={mergedCat} onAlta={altaRecargo}/>
+      <NavierasSection quoteNav={quoteNav} setQuoteNav={setQuoteNav} rutas={rutas} catalog={mergedCat} onAlta={altaRecargo} dir={direccion}/>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
         <span style={{fontSize:13,fontWeight:"bold",color:C.ink}}>Tarifas <span style={{fontWeight:"normal",color:C.label,fontSize:12}}>· base y profit por tamaño; costo, venta y subject-to salen solos</span></span>
         <div style={{display:"flex",gap:8}}><Btn kind="ghost" small onClick={()=>setEditRutas(!editRutas)}>{editRutas?"Ocultar rutas":"Editar rutas"}</Btn><Btn kind="ghost" small onClick={()=>setRutas([...rutas,mkRuta()])}>＋ Agregar ruta</Btn></div>
@@ -356,7 +358,7 @@ export function Cotizador({ loadId, onDirty }){
           <span onClick={()=>setRutas(rutas.filter((_,i)=>i!==ri))} style={{cursor:"pointer",color:C.label,fontSize:11,marginBottom:6}}>✕</span>
         </div>))}
       </div>)}
-      <TarifasGrid rutas={rutas} setRutas={setRutas} quoteNav={quoteNav} equipos={equipos}/>
+      <TarifasGrid rutas={rutas} setRutas={setRutas} quoteNav={quoteNav} equipos={equipos} dir={direccion}/>
       </div>
       <div style={{background:"#fff",border:"1px solid "+C.sep2,borderRadius:12,padding:14,marginTop:14,opacity:editable?1:.7,pointerEvents:editable?"auto":"none"}}>
         <Lbl>Notas <span style={{fontWeight:"normal",color:C.label,textTransform:"none"}}>· texto libre que aparece en el PDF (condiciones, comentarios, etc.)</span></Lbl>

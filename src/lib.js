@@ -45,9 +45,15 @@ export const F="Arial, Helvetica, sans-serif";
 export const tx=(s)=>(s||"").trim();
 export function scopeFull(l){const oPre=tx(l.origen)!=="",oOn=tx(l.destino)!=="";const left=oPre?"DR"+(tx(l.precarriage_mode)?"·"+tx(l.precarriage_mode):""):"CY";const right=oOn?"DR"+(tx(l.oncarriage_mode)?"·"+tx(l.oncarriage_mode):""):"CY";return left+"-"+right;}
 export const n=(v)=>{const x=parseFloat(v);return isFinite(x)?x:0;};
-export const adicPorCont=(surs,teu)=>(surs||[]).filter(s=>!s.incluido&&s.pago==="prepaid").reduce((a,s)=>{const bas=s.basis||"contenedor";if(bas==="bl")return a;return a+n(s.monto)*(bas==="teu"?teu:1);},0);
-export const cargosBL=(surs)=>(surs||[]).filter(s=>!s.incluido&&s.pago==="prepaid"&&(s.basis||"contenedor")==="bl").reduce((a,s)=>a+n(s.monto),0);
-export const subjectTo=(surs)=>(surs||[]).filter(s=>!s.incluido).map(s=>s.c);
+// Dirección-aware: el pago que SUMA al costo es Prepaid en export ("E") y Collect en import ("I")
+export const paySum=(dir)=>(dir==="I"?"collect":"prepaid");
+export const adicPorCont=(surs,teu,dir="E")=>{const pay=paySum(dir);return (surs||[]).filter(s=>!s.incluido&&(s.pago||"prepaid")===pay).reduce((a,s)=>{const bas=s.basis||"contenedor";if(bas==="bl")return a;return a+n(s.monto)*(bas==="teu"?teu:1);},0);};
+export const cargosBL=(surs,dir="E")=>{const pay=paySum(dir);return (surs||[]).filter(s=>!s.incluido&&(s.pago||"prepaid")===pay&&(s.basis||"contenedor")==="bl").reduce((a,s)=>a+n(s.monto),0);};
+// ¿va dentro del precio (panel INCLUYEN)? = incluido, o no-incluido cuyo pago SUMA según dirección
+export const enPrecio=(s,dir="E")=>!!s.incluido || (!s.incluido && (s.pago||"prepaid")===paySum(dir));
+// ¿es subject-to (panel NO INCLUYEN)? = no incluido cuyo pago NO suma según dirección
+export const esSubjectTo=(s,dir="E")=>!s.incluido && (s.pago||"prepaid")!==paySum(dir);
+export const subjectTo=(surs,dir="E")=>(surs||[]).filter(s=>esSubjectTo(s,dir)).map(s=>s.c);
 // Monto de recargos INCLUIDOS por contenedor (informativo; ya van en la base)
 export const inclPorCont=(surs,teu)=>(surs||[]).filter(s=>s.incluido).reduce((a,s)=>{const bas=s.basis||"contenedor";if(bas==="bl")return a;return a+n(s.monto)*(bas==="teu"?teu:1);},0);
 export const inclBL=(surs)=>(surs||[]).filter(s=>s.incluido&&(s.basis||"contenedor")==="bl").reduce((a,s)=>a+n(s.monto),0);
