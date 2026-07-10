@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient.js";
-import { matchCommodity, paisDe, tlDe, n, adicPorCont, tx, eqMeta, prefijoCliente, numeroAcuerdo } from "./lib.js";
+import { matchCommodity, paisDe, tlDe, n, adicPorCont, tx, eqMeta, prefijoCliente, numeroAcuerdo, hayCambioCosto } from "./lib.js";
 
 // Mapa commodity(lower) -> id desde el catálogo
 async function commodityMap(){
@@ -95,7 +95,7 @@ async function insertChildren(versionId, state, sum){
   for(const r of rutas){
     for(const ek of equipos){
       let { data: lin, error: le } = await supabase.from("lineas")
-        .insert({version_id:versionId,origen:r.origen||"",precarriage_mode:r.precarriage_mode||"",pol:r.pol||"",pod:r.pod||"",oncarriage_mode:r.oncarriage_mode||"",destino:r.destino||"",equipo:ek,validez_desde:vigDesde||null,validez_hasta:vigHasta||null})
+        .insert({version_id:versionId,origen:r.origen||"",precarriage_mode:r.precarriage_mode||"",pol:r.pol||"",pod:r.pod||"",oncarriage_mode:r.oncarriage_mode||"",destino:r.destino||"",equipo:ek,validez_desde:vigDesde||null,validez_hasta:vigHasta||null,elegida_eq:r.elegidaEq||null})
         .select("id").single();
       if(le){ sum.errores.push("linea: "+le.message); continue; }
       sum.lineas++;
@@ -248,7 +248,7 @@ export async function loadVersion(versionId){
     Object.values(rm.equipos).forEach(l=>{ (opByLinea[l.id]||[]).forEach(o=>{ if(!navSet.includes(o.naviera)) navSet.push(o.naviera); }); });
     const ops=navSet.map(nav=>{ const precios={}; let transito=""; Object.entries(rm.equipos).forEach(([eq,l])=>{ const op=(opByLinea[l.id]||[]).find(o=>o.naviera===nav); if(op){ precios[eq]={base:String(op.costo_base??""),profit:String(op.profit??"")}; if(op.transito_dias!=null) transito=String(op.transito_dias); } }); return {navScac:nav,transito,precios}; });
     let elegida=0; Object.values(rm.equipos).forEach(l=>{ if(l.opcion_elegida_id){ const op=(opByLinea[l.id]||[]).find(o=>o.id===l.opcion_elegida_id); if(op){ const idx=navSet.indexOf(op.naviera); if(idx>=0) elegida=idx; } } });
-    return {origen:l0.origen||"",precarriage_mode:l0.precarriage_mode||"",pol:l0.pol||"",pod:l0.pod||"",oncarriage_mode:l0.oncarriage_mode||"",destino:l0.destino||"",opciones:ops.length?ops:[{navScac:"",precios:{}}],elegida};
+    return {origen:l0.origen||"",precarriage_mode:l0.precarriage_mode||"",pol:l0.pol||"",pod:l0.pod||"",oncarriage_mode:l0.oncarriage_mode||"",destino:l0.destino||"",opciones:ops.length?ops:[{navScac:"",precios:{}}],elegida,elegidaEq:l0.elegida_eq||null};
   });
   const anyL=(lineas||[])[0]||{};
   return {
@@ -264,7 +264,24 @@ export async function loadVersion(versionId){
 }
 
 export async function markEnviada(versionId){
-  return await supabase.from("versiones").update({estatus:"enviada"}).eq("id",versionId);
+  const res = await supabase.from("versiones").update({estatus:"enviada"}).eq("id",versionId);
+  // Reglas de vigencia: si es amendment con cambio de costo, el AM anterior expira hoy y el nuevo arranca mañana (sin huecos ni empalmes).
+  try{
+    const { data: vrow } = await supabase.from("versiones").select("reemplaza_a").eq("id",versionId).maybeSingle();
+    if(vrow && vrow.reemplaza_a){
+      const cur = await loadVersion(versionId);
+      const prev = await loadVersion(vrow.reemplaza_a);
+      if(cur && prev && hayCambioCosto(cur, prev, cur.direccion||"E")){
+        const hoy=new Date().toISOString().slice(0,10);
+        const man=new Date(Date.now()+86400000).toISOString().slice(0,10);
+        await supabase.from("versiones").update({vig_hasta:hoy}).eq("id",vrow.reemplaza_a);
+        await supabase.from("lineas").update({validez_hasta:hoy}).eq("version_id",vrow.reemplaza_a);
+        await supabase.from("versiones").update({vig_desde:man}).eq("id",versionId);
+        await supabase.from("lineas").update({validez_desde:man}).eq("version_id",versionId);
+      }
+    }
+  }catch(e){ /* el ajuste de vigencias no debe romper el envío */ }
+  return res;
 }
 
 // ===== Nuevo Amendment (AM1 -> AM2): copia, incrementa AM, supersede el anterior =====
@@ -272,11 +289,12 @@ export async function nuevaVersion(versionId){
   const sum={lineas:0,opciones:0,surcharges:0,errores:[],codigo:null,versionId:null,amendment:null};
   const st=await loadVersion(versionId);
   const nextAm=(st.amendment||1)+1;
+  st.vigDesde=new Date(Date.now()+86400000).toISOString().slice(0,10); // el AM nuevo arranca mañana (editable)
   let { data: ver, error: ve } = await supabase.from("versiones")
     .insert({acuerdo_id:st.acuerdo_id,direccion:st.direccion,origen:"desde_cero",commodity:st.commodity||"",commodity_id:st.commodity_id||null,tradelane:st.tradelane||null,amendment:nextAm,vig_desde:parseDate(st.vigDesde),vig_hasta:parseDate(st.vigHasta),reemplaza_a:versionId,estatus:"borrador"})
     .select("id,codigo").single();
   if(ve){ sum.errores.push("nuevo amendment: "+ve.message); return sum; }
-  sum.codigo=ver.codigo; sum.versionId=ver.id; sum.amendment=nextAm;
+  sum.codigo=ver.codigo; sum.versionId=ver.id; sum.amendment=nextAm; sum.vigDesde=st.vigDesde;
   await insertChildren(ver.id, st, sum);
   await supabase.from("versiones").update({estatus:"superseded"}).eq("id",versionId);
   return sum;

@@ -319,3 +319,17 @@ export const REGION={ US:"NA",CA:"NA",MX:"NA", CN:"AS",HK:"AS",KR:"AS",TW:"AS",S
 const TL_REGIONS={ TPEB:{from:["AS"],to:["NA"]}, TPWB:{from:["NA"],to:["AS"]}, TAWB:{from:["EU"],to:["NA"]}, TAEB:{from:["NA"],to:["EU"]}, LANB:{from:["LA"],to:["NA","EU"]}, LASB:{from:["NA","EU"],to:["LA"]} };
 // ¿La ruta (país POL→país POD) cae dentro del tradelane comercial? (aviso suave; true si no se puede determinar)
 export const rutaEnTradelane=(tl,r)=>{ const rg=TL_REGIONS[tl]; if(!rg) return true; const o=REGION[paisDe(r.pol)||paisDe(r.origen)]; const d=REGION[paisDe(r.pod)||paisDe(r.destino)]; if(!o||!d) return true; return rg.from.includes(o)&&rg.to.includes(d); };
+
+// ====== Selección de naviera por equipo (mejor costo por tamaño) + cambio de costo ======
+export const mkSurOf=(state)=>(scac,tl)=>((state.quoteNav||[]).find(q=>q.scac===scac&&(q.tl||"")===(tl||""))||{}).surcharges||[];
+// Mejor opción (índice) para el equipo ek por menor costo = base + recargos que suman
+export const mejorOpcionEq=(r,ek,eqObj,dir,surOf)=>{ let bi=-1,bc=Infinity; (r.opciones||[]).forEach((o,i)=>{ const pr=(o.precios||{})[ek]; if(!pr||pr.base==null||pr.base==="") return; const c=n(pr.base)+adicPorCont(surOf(o.navScac,tlDe(r)),eqObj,dir); if(c<bc){bc=c;bi=i;} }); return bi; };
+// Opción activa para un equipo: override guardado (por naviera) o la mejor por costo
+export const opcionActivaEq=(r,ek,eqObj,dir,surOf)=>{ const ov=r.elegidaEq&&r.elegidaEq[ek]; if(ov){ const i=(r.opciones||[]).findIndex(o=>o.navScac===ov); if(i>=0) return i; } const b=mejorOpcionEq(r,ek,eqObj,dir,surOf); return b>=0?b:(r.elegida??0); };
+// Venta del equipo usando su opción activa
+export const ventaEq=(r,eqObj,dir,surOf)=>{ const oi=opcionActivaEq(r,eqObj.k,eqObj,dir,surOf); const o=(r.opciones||[])[oi]||{}; const pr=(o.precios||{})[eqObj.k]||{}; return n(pr.base)+adicPorCont(surOf(o.navScac,tlDe(r)),eqObj,dir)+n(pr.profit); };
+// T.T. (rango) de las opciones activas de una ruta para sus equipos
+export const transitoRango=(r,eqObjs,dir,surOf)=>{ const set=new Set(); eqObjs.forEach(e=>{ const oi=opcionActivaEq(r,e.k,e,dir,surOf); const o=(r.opciones||[])[oi]; const t=o&&o.transito; if(t!=null&&String(t).trim()!=="") set.add(String(t).trim()); }); const arr=[...set]; if(!arr.length) return ""; if(arr.length===1) return arr[0]; const nums=arr.map(Number).filter(x=>!isNaN(x)); if(nums.length===arr.length){ return Math.min(...nums)+"–"+Math.max(...nums); } return arr.join(" / "); };
+const _rkc=(r)=>((r.pol||r.origen||"?")+">"+(r.pod||r.destino||"?"));
+// ¿Cambió la venta final (costo) de alguna ruta+equipo entre dos versiones?
+export const hayCambioCosto=(nuevo,previo,dir)=>{ const soN=mkSurOf(nuevo), soP=mkSurOf(previo); const eqObjs=EQUIPOS.filter(e=>(nuevo.equipos||[]).includes(e.k)); const rp={}; (previo.rutas||[]).forEach(r=>rp[_rkc(r)]=r); const rn={}; (nuevo.rutas||[]).forEach(r=>rn[_rkc(r)]=r); for(const r of (nuevo.rutas||[])){ const p=rp[_rkc(r)]; if(!p) return true; for(const e of eqObjs){ if(ventaEq(r,e,dir,soN)!==ventaEq(p,e,dir,soP)) return true; } } for(const r of (previo.rutas||[])){ if(!rn[_rkc(r)]) return true; } return false; };
