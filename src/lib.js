@@ -269,15 +269,22 @@ export const optCiudades=()=>CIUDADES.map(c=>({v:c.city+", "+c.country,label:c.c
 export const puertoLabel=(code)=>{const p=PUERTOS.find(x=>x.code===_up(code));return p?(p.code+" · "+p.name):code;};
 
 // ====== Derivación de país (para auto-poblar recargos por ruta similar) ======
+const _pnorm=(s)=>String(s||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().trim();
 export const paisDe=(v)=>{
   const s=String(v||"").trim(); if(!s) return "";
   const m=s.match(/,\s*([A-Za-z]{2})\s*$/); if(m) return m[1].toUpperCase();         // "Ciudad, MX"
   const up=s.toUpperCase();
   const p=PUERTOS.find(x=>x.code===up); if(p) return p.country;                       // código de puerto exacto
   if(/^[A-Z]{2}[A-Z0-9]{2,3}$/.test(up) && PAIS_NOMBRE[up.slice(0,2)]) return up.slice(0,2); // UN/LOCODE genérico
+  const nu=_pnorm(s);
+  const pn=PUERTOS.find(x=>_pnorm(x.name)===nu); if(pn) return pn.country;             // nombre de puerto (sin acentos) — Excel trae nombres
   const c=CIUDADES.find(x=>x.city.toUpperCase()===up); if(c) return c.country;        // ciudad por nombre
+  const cn=CIUDADES.find(x=>_pnorm(x.city)===nu); if(cn) return cn.country;            // ciudad sin acentos
   return "";
 };
 export const paisOrigen=(r)=>paisDe(r.pol)||paisDe(r.origen);
 export const paisDestino=(r)=>paisDe(r.pod)||paisDe(r.destino);
 export const rutaPaisLabel=(o,d)=>((PAIS_NOMBRE[o]||o||"?")+" → "+(PAIS_NOMBRE[d]||d||"?"));
+// Tradelane = país(POL) → país(POD). Clave "MX>CN" y etiqueta legible.
+export const tlDe=(r)=>{ const o=paisDe(r.pol)||paisDe(r.origen); const d=paisDe(r.pod)||paisDe(r.destino); return (o&&d)?(o+">"+d):""; };
+export const tlLabel=(tl)=>{ if(!tl) return "Sin tradelane (define POL/POD)"; const [o,d]=String(tl).split(">"); return rutaPaisLabel(o,d); };

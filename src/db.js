@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient.js";
-import { matchCommodity, paisDe, n, adicPorCont, tx, eqMeta } from "./lib.js";
+import { matchCommodity, paisDe, tlDe, n, adicPorCont, tx, eqMeta } from "./lib.js";
 
 // Mapa commodity(lower) -> id desde el catálogo
 async function commodityMap(){
@@ -80,7 +80,7 @@ export async function importRates(recs, onProgress=()=>{}){
 // Inserta las líneas/opciones/recargos de un estado en una versión dada
 async function insertChildren(versionId, state, sum){
   const { vigDesde, vigHasta, equipos, rutas, quoteNav } = state;
-  const surOf=(scac)=>((quoteNav||[]).find(q=>q.scac===scac)||{}).surcharges||[];
+  const surOf=(scac,tl)=>((quoteNav||[]).find(q=>q.scac===scac&&(q.tl||"")===(tl||""))||{}).surcharges||[];
   for(const r of rutas){
     for(const ek of equipos){
       let { data: lin, error: le } = await supabase.from("lineas")
@@ -98,7 +98,7 @@ async function insertChildren(versionId, state, sum){
         if(oe){ sum.errores.push("opcion: "+oe.message); continue; }
         sum.opciones++;
         if((r.elegida??0)===oi) elegidaOpcionId=opt.id;
-        const surs=surOf(o.navScac);
+        const surs=surOf(o.navScac, tlDe(r));
         if(surs.length){
           const rows=surs.map((s,idx)=>({opcion_id:opt.id,clave:s.c||"",descripcion:s.d||"",monto:parseFloat(s.monto)||0,moneda:s.moneda||"USD",incluido:!!s.incluido,desplegar:s.desplegar!==false,pago:s.pago||"prepaid",basis:s.basis||"contenedor",orden:idx}));
           let { error: se } = await supabase.from("opcion_surcharges").insert(rows);
@@ -175,8 +175,13 @@ export async function loadVersion(versionId){
   const equiposSet=new Set(); const rutasMap={};
   (lineas||[]).forEach(l=>{ equiposSet.add(l.equipo); const s=sig(l); (rutasMap[s]=rutasMap[s]||{l,equipos:{}}); rutasMap[s].equipos[l.equipo]=l; });
 
+  const lineById={}; (lineas||[]).forEach(l=>{ lineById[l.id]=l; });
   const quoteNavMap={};
-  (opciones||[]).forEach(o=>{ if(o.naviera && !quoteNavMap[o.naviera]){ quoteNavMap[o.naviera]={scac:o.naviera,surcharges:(sursByOpcion[o.id]||[]).map(s=>({c:s.clave,d:s.descripcion,monto:String(s.monto),moneda:s.moneda,incluido:s.incluido,desplegar:s.desplegar,pago:s.pago,basis:s.basis||"contenedor"}))}; } });
+  (opciones||[]).forEach(o=>{ if(!o.naviera) return; const l=lineById[o.linea_id]; const tl=l?tlDe(l):""; const key=o.naviera+"|"+tl;
+    const surs=(sursByOpcion[o.id]||[]).map(s=>({c:s.clave,d:s.descripcion,monto:String(s.monto),moneda:s.moneda,incluido:s.incluido,desplegar:s.desplegar,pago:s.pago,basis:s.basis||"contenedor"}));
+    const ex=quoteNavMap[key];
+    if(!ex){ quoteNavMap[key]={scac:o.naviera,tl,surcharges:surs}; }
+    else if((!ex.surcharges||!ex.surcharges.length) && surs.length){ ex.surcharges=surs; } });
 
   const rutas=Object.values(rutasMap).map(rm=>{
     const l0=rm.l; const navSet=[];
@@ -269,16 +274,49 @@ export async function recargosDeRutaSimilar(pais1, pais2, excludeVersionId){
   return null;
 }
 
+// #2b Auto-poblar recargos POR NAVIERA: para cada SCAC en navList, jala sus recargos
+// de la cotización previa más reciente (misma combinación País→País) que haya usado ESA naviera.
+// Cada naviera puede venir de una cotización distinta. Sin fallback a otra naviera.
+export async function recargosDeRutaSimilarPorNaviera(pais1, pais2, navList, excludeVersionId){
+  if(!pais1 || !pais2) return null;
+  const targetTl=pais1+">"+pais2;
+  const want=[...new Set((navList||[]).filter(Boolean))];
+  const { data } = await supabase.from("versiones")
+    .select("id,updated_at,lineas(pol,pod,origen,destino)")
+    .order("updated_at",{ascending:false}).limit(150);
+  const found={}, sources={};
+  for(const v of (data||[])){
+    if(v.id===excludeVersionId) continue;
+    if(want.length && Object.keys(found).length>=want.length) break;
+    const hit=(v.lineas||[]).some(l=>{
+      const o=paisDe(l.pol)||paisDe(l.origen);
+      const d=paisDe(l.pod)||paisDe(l.destino);
+      return o===pais1 && d===pais2;
+    });
+    if(!hit) continue;
+    const st=await loadVersion(v.id);
+    if(!st || !st.quoteNav) continue;
+    for(const q of st.quoteNav){
+      if(found[q.scac]) continue;
+      if(want.length && !want.includes(q.scac)) continue;
+      if(q.tl && q.tl!==targetTl) continue;                 // mismo tradelane (versiones nuevas). Legacy sin tl: se acepta por naviera.
+      if(q.surcharges && q.surcharges.length){ found[q.scac]=q.surcharges; sources[q.scac]=st.codigo||v.id; }
+    }
+  }
+  const keys=Object.keys(found);
+  if(!keys.length) return null;
+  return { quoteNav: keys.map(scac=>({scac,tl:targetTl,surcharges:found[scac]})), sources };
+}
 // ===== #5 Conflicto: misma ruta + misma vigencia, tarifa distinta (otro cliente o no) =====
 // Devuelve [{folio, cliente, ruta, vig, tarifaExistente, tarifaNueva}]
 export async function checkConflictoTarifa(state){
   const { versionId, vigDesde, vigHasta, rutas, equipos, quoteNav } = state;
   if(!vigDesde && !vigHasta) return [];
-  const surOf=(scac)=>((quoteNav||[]).find(q=>q.scac===scac)||{}).surcharges||[];
+  const surOf=(scac,tl)=>((quoteNav||[]).find(q=>q.scac===scac&&(q.tl||"")===(tl||""))||{}).surcharges||[];
   // venta (base+profit+adicional prepaid por contenedor) de la opción elegida, primer equipo
   const ventaNueva=(r)=>{
     const o=(r.opciones||[])[r.elegida??0]||r.opciones[0]||{}; const ek=equipos[0];
-    const pr=(o.precios&&o.precios[ek])||{}; const surs=surOf(o.navScac);
+    const pr=(o.precios&&o.precios[ek])||{}; const surs=surOf(o.navScac, tlDe(r));
     return n(pr.base)+n(pr.profit)+adicPorCont(surs, (eqMeta(ek).teu||1));
   };
   const rutasReq=(rutas||[]).filter(r=>tx(r.pol)&&tx(r.pod)).map(r=>({pol:r.pol,pod:r.pod,venta:ventaNueva(r)}));
