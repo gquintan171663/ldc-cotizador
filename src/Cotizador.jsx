@@ -289,7 +289,7 @@ export function Cotizador({ loadId, onDirty }){
 
   const guardar=async()=>{
     if(!cliente){ alert("Elige un cliente."); return; }
-    const falt=faltanPOLPOD(); if(falt.length){ alert("POL, POD y naviera son obligatorios en cada ruta. Corrige:\n\n• "+falt.join("\n• ")); return; }
+    const falt=faltanPOLPOD(); if(falt.length){ alert("Faltan datos obligatorios en las rutas (POL, POD, naviera y modo si hay ciudad):\n\n• "+falt.join("\n• ")); return; }
     const cn=(clientes.find(c=>c.id===cliente)||{}).nombre;
     const st={versionId,codigo,cliente,clienteNombre:cn,modo,direccion,tradelane,commodity:comLabel,commodity_id:commodityId||null,vigDesde,vigHasta,notas,origen:"cero",equipos,rutas,quoteNav};
     // #5 Conflicto: misma ruta + misma vigencia con tarifa distinta
@@ -310,10 +310,10 @@ export function Cotizador({ loadId, onDirty }){
   const surOfMain=(scac,tl)=>(quoteNav.find(q=>q.scac===scac&&(q.tl||"")===(tl||""))||{}).surcharges||[];
   const bajoProfit=()=>{ const eqObjs=EQUIPOS.filter(e=>equipos.includes(e.k)); const out=[]; (rutas||[]).forEach(r=>{ eqObjs.forEach(e=>{ const oi=opcionActivaEq(r,e.k,e,direccion,surOfMain); const o=(r.opciones||[])[oi]; if(!o) return; const pr=(o.precios||{})[e.k]||{}; if(pr.base==null||pr.base===""||n(pr.base)<=0) return; const prof=n(pr.profit); if(prof<250) out.push((r.pol||r.origen||"?")+"→"+(r.pod||r.destino||"?")+" "+e.t+" ("+(o.navScac||"—")+"): "+(prof>0?("$"+prof):"SIN PROFIT")); }); }); return out; };
   const confirmProfit=()=>{ const low=bajoProfit(); if(!low.length) return true; return confirm("⚠ Profit bajo o nulo (menor a $250 USD) en:\n\n• "+low.slice(0,12).join("\n• ")+"\n\n¿Continuar de todas formas?"); };
-  const faltanPOLPOD=()=>{ const out=[]; (rutas||[]).forEach((r,i)=>{ const f=[]; if(!tx(r.pol))f.push("POL"); if(!tx(r.pod))f.push("POD"); if(!(r.opciones||[]).some(o=>tx(o.navScac)))f.push("naviera"); if(f.length) out.push("R"+(i+1)+": falta "+f.join(" y ")); }); return out; };
+  const faltanPOLPOD=()=>{ const out=[]; (rutas||[]).forEach((r,i)=>{ const f=[]; if(!tx(r.pol))f.push("POL"); if(!tx(r.pod))f.push("POD"); if(!(r.opciones||[]).some(o=>tx(o.navScac)))f.push("naviera"); if(tx(r.origen)&&!tx(r.precarriage_mode))f.push("modo (origen)"); if(tx(r.destino)&&!tx(r.oncarriage_mode))f.push("modo (destino)"); if(f.length) out.push("R"+(i+1)+": falta "+f.join(", ")); }); return out; };
   const enviar=async()=>{ if(!versionId) return; if(!confirmProfit()) return; await markEnviada(versionId); setEstatus("enviada"); };
   const nueva=async()=>{ if(!versionId) return; if(!confirm("¿Crear un nuevo Amendment (AM"+((amendment||1)+1)+")? Se copia el actual para que edites las diferencias; el AM anterior queda superseded.")) return; setSaving(true); const res=await nuevaVersion(versionId); setSaving(false); if(res.errores&&res.errores.length){ alert("Error: "+res.errores.join(" · ")); return; } if(res.versionId){ setVersionId(res.versionId); setCodigo(res.codigo); setAmendment(res.amendment||((amendment||1)+1)); if(res.vigDesde) setVigDesde(res.vigDesde); setCambios(null); setEstatus("borrador"); setSaved(res); } };
-  const generar=()=>{ const falt=faltanPOLPOD(); if(falt.length){ alert("POL, POD y naviera son obligatorios. Corrige:\n\n• "+falt.join("\n• ")); return; } if(!confirmProfit()) return; const cn=(clientes.find(c=>c.id===cliente)||{}).nombre; abrirCotizacion({clienteNombre:cn,codigo:codigo||codigoPreview,no_acuerdo:noAcuerdo,tradelane,amendment,commodity:comLabel,direccion,equipos,rutas,quoteNav,vigDesde,vigHasta,notas}); };
+  const generar=()=>{ const falt=faltanPOLPOD(); if(falt.length){ alert("Faltan datos obligatorios en las rutas (POL, POD, naviera y modo si hay ciudad):\n\n• "+falt.join("\n• ")); return; } if(!confirmProfit()) return; const cn=(clientes.find(c=>c.id===cliente)||{}).nombre; abrirCotizacion({clienteNombre:cn,codigo:codigo||codigoPreview,no_acuerdo:noAcuerdo,tradelane,amendment,commodity:comLabel,direccion,equipos,rutas,quoteNav,vigDesde,vigHasta,notas}); };
 
   return (<div style={{maxWidth:1160,margin:"0 auto"}}>
     {loading&&<div style={{color:C.label,fontSize:13,padding:10}}>Cargando cotización…</div>}
@@ -390,10 +390,10 @@ export function Cotizador({ loadId, onDirty }){
         {rutas.map((r,ri)=>(<div key={ri} style={{display:"flex",gap:8,alignItems:"flex-end",marginBottom:8,paddingBottom:8,borderBottom:ri<rutas.length-1?"1px solid "+C.sep:"none"}}>
           <span style={{fontSize:11,fontWeight:"bold",color:"#fff",background:C.ink,borderRadius:5,padding:"3px 8px",marginBottom:4}}>R{ri+1}</span>
           <Field label="Origen (ciudad)"><ComboBox value={r.origen} items={optCiudades()} placeholder="Ciudad…" onChange={(v)=>setRutas(rutas.map((x,i)=>i===ri?{...x,origen:v}:x))}/></Field>
-          <Field label="Modo" w={.7}><Sel value={r.precarriage_mode} onChange={e=>setRutas(rutas.map((x,i)=>i===ri?{...x,precarriage_mode:e.target.value}:x))} options={["","Truck","Rail","Barge"]}/></Field>
+          <Field label="Modo" w={.8}><Sel value={r.precarriage_mode} onChange={e=>setRutas(rutas.map((x,i)=>i===ri?{...x,precarriage_mode:e.target.value}:x))} options={["","All Truck","Rail+Truck","Rail Ramp","Truck Ramp","Barge"]}/></Field>
           <Field label="POL"><ComboBox value={r.pol} items={optPuertos()} placeholder="Puerto / UNLOCODE…" onChange={(v)=>setRutas(rutas.map((x,i)=>i===ri?{...x,pol:v}:x))}/></Field>
           <Field label="POD"><ComboBox value={r.pod} items={optPuertos()} placeholder="Puerto / UNLOCODE…" onChange={(v)=>setRutas(rutas.map((x,i)=>i===ri?{...x,pod:v}:x))}/></Field>
-          <Field label="Modo" w={.7}><Sel value={r.oncarriage_mode} onChange={e=>setRutas(rutas.map((x,i)=>i===ri?{...x,oncarriage_mode:e.target.value}:x))} options={["","Truck","Rail","Barge"]}/></Field>
+          <Field label="Modo" w={.8}><Sel value={r.oncarriage_mode} onChange={e=>setRutas(rutas.map((x,i)=>i===ri?{...x,oncarriage_mode:e.target.value}:x))} options={["","All Truck","Rail+Truck","Rail Ramp","Truck Ramp","Barge"]}/></Field>
           <Field label="Destino (ciudad)"><ComboBox value={r.destino} items={optCiudades()} placeholder="Ciudad…" onChange={(v)=>setRutas(rutas.map((x,i)=>i===ri?{...x,destino:v}:x))}/></Field>
           <Chip>{scopeFull(r)}</Chip>
           <span onClick={()=>setRutas(rutas.filter((_,i)=>i!==ri))} style={{cursor:"pointer",color:C.label,fontSize:11,marginBottom:6}}>✕</span>
