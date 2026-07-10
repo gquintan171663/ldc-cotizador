@@ -288,3 +288,26 @@ export const rutaPaisLabel=(o,d)=>((PAIS_NOMBRE[o]||o||"?")+" → "+(PAIS_NOMBRE
 // Tradelane = país(POL) → país(POD). Clave "MX>CN" y etiqueta legible.
 export const tlDe=(r)=>{ const o=paisDe(r.pol)||paisDe(r.origen); const d=paisDe(r.pod)||paisDe(r.destino); return (o&&d)?(o+">"+d):""; };
 export const tlLabel=(tl)=>{ if(!tl) return "Sin tradelane (define POL/POD)"; const [o,d]=String(tl).split(">"); return rutaPaisLabel(o,d); };
+
+// ====== Tradelanes COMERCIALES (alcance de la cotización / amendment) ======
+export const TRADELANES=[
+  {code:"TPEB", name:"Transpacific Eastbound",   desc:"Asia → Norteamérica (headhaul)"},
+  {code:"TPWB", name:"Transpacific Westbound",   desc:"Norteamérica → Asia (backhaul)"},
+  {code:"TAWB", name:"Transatlantic Westbound",  desc:"Europa → Norteamérica"},
+  {code:"TAEB", name:"Transatlantic Eastbound",  desc:"Norteamérica → Europa"},
+  {code:"LANB", name:"Latin America Northbound", desc:"Latam → Norteamérica/Europa"},
+  {code:"LASB", name:"Latin America Southbound", desc:"Norteamérica/Europa → Latam"},
+];
+export const tradeName=(code)=>{const t=TRADELANES.find(x=>x.code===code);return t?t.name:(code||"");};
+export const tradeLabel=(code)=>{const t=TRADELANES.find(x=>x.code===code);return t?(t.code+" · "+t.name):(code||"");};
+
+// Prefijo de acuerdo aludiendo al cliente (ROYCE -> ROY): 3 letras A-Z del nombre
+export const prefijoCliente=(nombre)=>{ const s=String(nombre||"").normalize("NFD").replace(/[\u0300-\u036f]/g,"").toUpperCase().replace(/[^A-Z]/g,""); return (s.slice(0,3)||"CLT"); };
+// Número de acuerdo: PREFIJO-00042 (correlativo con padding)
+export const numeroAcuerdo=(prefijo,seq)=>String(prefijo||"CLT")+"-"+String(seq||1).padStart(5,"0");
+
+// Región por país (para aviso suave si una ruta se sale del tradelane comercial)
+export const REGION={ US:"NA",CA:"NA",MX:"NA", CN:"AS",HK:"AS",KR:"AS",TW:"AS",SG:"AS",MY:"AS",TH:"AS",VN:"AS",ID:"AS",IN:"AS",LK:"AS",JP:"AS", NL:"EU",BE:"EU",DE:"EU",FR:"EU",ES:"EU",IT:"EU",GR:"EU",GB:"EU",PL:"EU",PT:"EU", AE:"ME",SA:"ME",ZA:"AF",MA:"AF", BR:"LA",AR:"LA",CO:"LA",PE:"LA",CL:"LA",EC:"LA",PA:"LA",JM:"LA",DO:"LA", AU:"OC" };
+const TL_REGIONS={ TPEB:{from:["AS"],to:["NA"]}, TPWB:{from:["NA"],to:["AS"]}, TAWB:{from:["EU"],to:["NA"]}, TAEB:{from:["NA"],to:["EU"]}, LANB:{from:["LA"],to:["NA","EU"]}, LASB:{from:["NA","EU"],to:["LA"]} };
+// ¿La ruta (país POL→país POD) cae dentro del tradelane comercial? (aviso suave; true si no se puede determinar)
+export const rutaEnTradelane=(tl,r)=>{ const rg=TL_REGIONS[tl]; if(!rg) return true; const o=REGION[paisDe(r.pol)||paisDe(r.origen)]; const d=REGION[paisDe(r.pod)||paisDe(r.destino)]; if(!o||!d) return true; return rg.from.includes(o)&&rg.to.includes(d); };

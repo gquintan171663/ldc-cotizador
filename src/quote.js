@@ -39,13 +39,14 @@ const CSS=`
   table.rates tbody td.door{color:var(--label);font-size:11px;white-space:normal;}
   table.rates tbody td .port{font-weight:bold;color:var(--slate);white-space:normal;}
   table.rates td.tt{color:var(--slate);font-size:11px;white-space:nowrap;}
-  .scope{display:inline-block;font-weight:bold;letter-spacing:.5px;color:var(--red);border:1px solid #F0C9CD;background:#FCEEF0;border-radius:3px;padding:2px 7px;white-space:nowrap;font-size:9.5px;}
+  .scope{display:inline-block;font-weight:bold;letter-spacing:.3px;color:var(--red);border:1px solid #F0C9CD;background:#FCEEF0;border-radius:3px;padding:2px 6px;white-space:normal;line-height:1.2;font-size:9px;}
   td.num{text-align:right;font-variant-numeric:tabular-nums;white-space:nowrap;font-weight:bold;color:var(--slate);} td.num .cur{color:var(--label);font-size:10px;margin-right:2px;font-weight:normal;}
   .subjto{font-size:11px;color:var(--label);} .subjto .code{color:var(--slate);font-weight:normal;}
   .allin{display:inline-block;font-size:10px;font-weight:bold;letter-spacing:.5px;color:#0B7A3B;background:#E8F5EC;border:1px solid #BfE3CB;border-radius:3px;padding:2px 7px;}
   .cols2{display:flex;gap:24px;margin-top:34px;}
   .tlhead{font-size:11px;font-weight:bold;color:#1F2D3A;margin:20px 0 0;padding-bottom:3px;border-bottom:1px solid #E4E8EC;text-transform:uppercase;letter-spacing:.5px;}
   .tlhead + .cols2{margin-top:8px;}
+  .allinnote{margin-top:14px;font-size:10.5px;color:#0B7A3B;background:#E8F5EC;border:1px solid #BFE3CB;border-radius:5px;padding:6px 10px;}
   .pgo{display:inline-block;font-size:8.5px;font-weight:bold;letter-spacing:.4px;padding:1px 6px;border-radius:3px;margin-left:7px;vertical-align:middle;text-transform:uppercase;}
   .pgo.pre{color:#0B7A3B;background:#E8F5EC;border:1px solid #BFE3CB;}
   .pgo.col{color:#B0640A;background:#FBEFDD;border:1px solid #EED9B8;}
@@ -81,6 +82,9 @@ export function buildQuoteHtml(st){
   const eqs=EQUIPOS.filter(e=>(st.equipos||[]).includes(e.k));
   const surOf=(scac,tl)=>((st.quoteNav||[]).find(q=>q.scac===scac&&(q.tl||"")===(tl||""))||{}).surcharges||[];
 
+  // ¿Mostrar columnas Origen/Destino? Solo si al menos una ruta trae dato.
+  const showOri=(st.rutas||[]).some(r=>tx(r.origen));
+  const showDest=(st.rutas||[]).some(r=>tx(r.destino));
   // Filas de tarifas (opción elegida por ruta) + recargos agrupados por tradelane
   let bodyRows=""; const panelByTl={}; const tlOrder=[];
   const cel=(v)=> v&&String(v).trim()!=="" ? esc(v) : '<span style="color:#C0C7CE">—</span>';
@@ -88,24 +92,25 @@ export function buildQuoteHtml(st){
     const o=(r.opciones||[])[r.elegida??0]||r.opciones[0]||{navScac:"",precios:{}};
     const tl=tlDe(r);
     const surs=surOf(o.navScac,tl);
-    const st_subj=surs.filter(s=>!s.incluido).map(s=>s.c);
-    const bl=cargosBL(surs);
     if(!panelByTl[tl]){ panelByTl[tl]={tl,inc:{},exc:{}}; tlOrder.push(tl); }
     const P=panelByTl[tl];
-    surs.forEach(s=>{ const mostrar=s.desplegar!==false; if(s.incluido&&mostrar) P.inc[s.c]={d:s.d||s.c,monto:s.monto,moneda:s.moneda,basis:s.basis,pago:s.pago}; if(!s.incluido&&mostrar) P.exc[s.c]={d:s.d||s.c,monto:s.monto,moneda:s.moneda,basis:s.basis,pago:s.pago}; });
+    let excShown=0;
+    surs.forEach(s=>{ const mostrar=s.desplegar!==false; if(!mostrar) return; if(s.incluido) P.inc[s.c]={d:s.d||s.c,monto:s.monto,moneda:s.moneda,basis:s.basis,pago:s.pago}; else { P.exc[s.c]={d:s.d||s.c,monto:s.monto,moneda:s.moneda,basis:s.basis,pago:s.pago}; excShown++; } });
+    // ALL-IN al final de la ruta: solo si NO hay recargos subject-to mostrados. Si los hay, se deja en blanco (el cliente ve la sección de abajo).
+    const allInCell = excShown===0 ? '<td class="ctr"><span class="allin">ALL-IN</span></td>' : '<td class="ctr"></td>';
     const tt = (o.transito!=null && String(o.transito).trim()!=="") ? (esc(o.transito)+" días") : '<span style="color:#C0C7CE">—</span>';
     let tds="";
     eqs.forEach(e=>{ const p=(o.precios&&o.precios[e.k])||{}; const base=n(p.base); const venta=base+adicPorCont(surs,e.teu)+n(p.profit);
       tds+='<td class="num">'+(base?money(venta).replace("USD ",""):'<span style="color:#C0C7CE">—</span>')+'</td>'; });
-    const subj = st_subj.length ? ('<span class="subjto"><span class="code">'+st_subj.map(esc).join(' · ')+'</span>'+(bl>0?('<br><span style="font-size:10px">+ BL '+money(bl).replace("USD ","USD ")+'</span>'):'')+'</span>') : '<span class="allin">ALL-IN</span>';
     bodyRows+='<tr>'+
-      '<td class="door">'+cel(r.origen)+'</td>'+
+      (showOri?('<td class="door">'+cel(r.origen)+'</td>'):'')+
       '<td><span class="port">'+(tx(r.pol)?esc(puertoLabel(r.pol)):cel(r.pol))+'</span></td>'+
       '<td><span class="port">'+(tx(r.pod)?esc(puertoLabel(r.pod)):cel(r.pod))+'</span></td>'+
-      '<td class="door">'+cel(r.destino)+'</td>'+
+      (showDest?('<td class="door">'+cel(r.destino)+'</td>'):'')+
       '<td class="ctr"><span class="scope">'+esc(scopeFull(r))+'</span></td>'+
       '<td class="ctr tt">'+tt+'</td>'+
       tds+
+      allInCell+
       '</tr>';
   });
 
@@ -124,17 +129,18 @@ export function buildQuoteHtml(st){
   const tblFont=ncols<=2?12:ncols<=4?10.5:9.2;
   // Anchos proporcionales por columna (sin Subject to). Se normalizan a 100% y la
   // tabla es table-layout:fixed, así que SIEMPRE cabe en la hoja.
-  const tw={ori:15,pol:18,pod:18,dest:15,scope:11,tt:8,eq:14};
-  const totW=tw.ori+tw.pol+tw.pod+tw.dest+tw.scope+tw.tt+tw.eq*ncols;
+  const tw={ori:14,pol:17,pod:17,dest:14,scope:14,tt:8,eq:14,allin:10};
+  const totW=(showOri?tw.ori:0)+tw.pol+tw.pod+(showDest?tw.dest:0)+tw.scope+tw.tt+tw.eq*ncols+tw.allin;
   const pc=(w)=>(w/totW*100).toFixed(2)+'%';
   const colgroup='<colgroup>'
-    +'<col style="width:'+pc(tw.ori)+'">'
+    +(showOri?('<col style="width:'+pc(tw.ori)+'">'):'')
     +'<col style="width:'+pc(tw.pol)+'">'
     +'<col style="width:'+pc(tw.pod)+'">'
-    +'<col style="width:'+pc(tw.dest)+'">'
+    +(showDest?('<col style="width:'+pc(tw.dest)+'">'):'')
     +'<col style="width:'+pc(tw.scope)+'">'
     +'<col style="width:'+pc(tw.tt)+'">'
     +eqs.map(()=>'<col style="width:'+pc(tw.eq)+'">').join('')
+    +'<col style="width:'+pc(tw.allin)+'">'
     +'</colgroup>';
   const dirTxt=st.direccion==="E"?"EXPORTACIÓN":"IMPORTACIÓN";
   const folio=(st.codigo||"")+(st.commodity?(" · "+st.commodity):"");
@@ -150,7 +156,7 @@ export function buildQuoteHtml(st){
     '<div style="flex:1"><div class="field"><div class="lbl">Emite</div><div class="val">Logistic Dynamics Corporation</div></div><div class="field"><div class="lbl">Modo</div><div class="val">Marítimo · '+(st.direccion==="E"?"Exportación":"Importación")+'</div></div></div></div>'+
     '<div class="subject"><div class="s1">Propuesta de flete marítimo</div></div>'+
     '<div class="lead">Estimado cliente, en atención a su solicitud ponemos a su consideración las siguientes tarifas. Precios de venta por contenedor en USD.</div>'+
-    '<table class="rates" style="font-size:'+tblFont+'px">'+colgroup+'<thead><tr><th>Origin</th><th>POL</th><th>POD</th><th>Destination</th><th class="ctr">Scope</th><th class="ctr">T.T.</th>'+eqTh+'</tr></thead><tbody>'+bodyRows+'</tbody></table>'+
+    '<table class="rates" style="font-size:'+tblFont+'px">'+colgroup+'<thead><tr>'+(showOri?'<th>Origin</th>':'')+'<th>POL</th><th>POD</th>'+(showDest?'<th>Destination</th>':'')+'<th class="ctr">Scope</th><th class="ctr">T.T.</th>'+eqTh+'<th class="ctr">Cargos</th></tr></thead><tbody>'+bodyRows+'</tbody></table>'+
     panelsHtml+
     notasBlock+
     '<div class="tail">'+

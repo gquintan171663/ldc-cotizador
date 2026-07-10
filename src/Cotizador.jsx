@@ -88,7 +88,7 @@ function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta}){
 }
 
 function TarifasGrid({rutas,setRutas,quoteNav,equipos}){
-  const navOpts=[{v:"",t:"—"},...quoteNav.map(q=>({v:q.scac,t:q.scac}))];
+  const navOpts=[{v:"",t:"— naviera —"},...NAVIERAS.map(x=>({v:x.scac,t:x.scac+" · "+x.nombre}))];
   const surOf=(scac,tl)=>(quoteNav.find(q=>q.scac===scac&&(q.tl||"")===(tl||""))||{}).surcharges||[];
   const eqs=EQUIPOS.filter(e=>equipos.includes(e.k));
   const getP=(o,k)=>(o.precios&&o.precios[k])||{};
@@ -117,13 +117,13 @@ function TarifasGrid({rutas,setRutas,quoteNav,equipos}){
             return (<tr key={ri+"-"+oi} style={{background:first?"#fff":C.soft}}>
               <td style={{...td,borderTop:first?"2px solid "+C.sep2:"none"}}>{first?<div style={{fontSize:12.5}}><b style={{color:C.slate}}>{r.pol}</b><span style={{color:"#C0C7CE",margin:"0 4px"}}>›</span><b style={{color:C.slate}}>{r.pod}</b>{(r.origen||r.destino)&&<div style={{fontSize:11,color:C.label,marginTop:1}}>{r.origen?r.origen+" › ":""}{r.pol} › {r.pod}{r.destino?" › "+r.destino:""}</div>}</div>:<span style={{fontSize:11,color:C.label}}>↳ alt.</span>}</td>
               <td style={{...td,textAlign:"center",borderTop:first?"2px solid "+C.sep2:"none"}}>{first&&<Chip>{scopeFull(r)}</Chip>}</td>
-              <td style={td}><select value={o.navScac} onChange={e=>setOpt(ri,oi,{navScac:e.target.value})} style={{...inS,padding:"5px 7px",fontSize:12.5,fontWeight:"bold",width:96}}>{navOpts.map(x=><option key={x.v} value={x.v}>{x.t}</option>)}</select></td>
+              <td style={td}><select value={o.navScac} onChange={e=>setOpt(ri,oi,{navScac:e.target.value})} style={{...inS,padding:"5px 7px",fontSize:12,fontWeight:"bold",width:170,maxWidth:190}}>{navOpts.map(x=><option key={x.v} value={x.v}>{x.t}</option>)}</select></td>
               <td style={{...td,textAlign:"center"}}><input value={o.transito||""} onChange={e=>setOpt(ri,oi,{transito:e.target.value})} inputMode="numeric" placeholder="días" style={{...inS,padding:"5px 6px",fontSize:12.5,width:56,textAlign:"center"}}/></td>
               {eqs.map(e=>{const p=getP(o,e.k);const base=n(p.base),prof=n(p.profit);const adic=adicPorCont(surs,e.teu);const venta=base+adic+prof;
-                return [<td key={e.k+"b"} style={{...td,borderLeft:"1px solid "+C.sep2}}><input value={p.base||""} onChange={ev=>setP(ri,oi,e.k,{base:ev.target.value})} inputMode="decimal" placeholder="0" style={cell}/></td>,
+                return [<td key={e.k+"b"} style={{...td,borderLeft:"1px solid "+C.sep2}}><input value={p.base||""} onFocus={ev=>ev.target.select()} onChange={ev=>setP(ri,oi,e.k,{base:ev.target.value})} inputMode="decimal" placeholder="0" style={cell}/></td>,
                   <td key={e.k+"r"} style={{...td,textAlign:"right",fontVariantNumeric:"tabular-nums",color:adic>0?C.slate:C.label}} title="Suma de recargos No Incl. + Prepaid (se suman al costo)">{o.navScac?money(adic):""}</td>,
-                  <td key={e.k+"p"} style={td}><input value={p.profit||""} onChange={ev=>setP(ri,oi,e.k,{profit:ev.target.value})} inputMode="decimal" placeholder="0" style={cell}/></td>,
-                  <td key={e.k+"v"} style={{...td,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{base?<span><b style={{color:C.red}}>{money(venta)}</b><div style={{fontSize:10,color:C.label}}>costo {money(base+adic)}</div></span>:""}</td>];})}
+                  <td key={e.k+"p"} style={td}><input value={p.profit||""} onFocus={ev=>ev.target.select()} onChange={ev=>setP(ri,oi,e.k,{profit:ev.target.value})} inputMode="decimal" placeholder="0" style={cell}/></td>,
+                  <td key={e.k+"v"} style={{...td,textAlign:"right",fontVariantNumeric:"tabular-nums"}}>{base?<span><b style={{color:C.red}}>{money(venta)}</b><div style={{fontSize:10,color:C.label}}>costo {money(base+adic)}{(prof>0&&(base+adic)>0)?" · "+Math.round(prof/(base+adic)*100)+"% profit":""}</div></span>:""}</td>];})}
               <td style={{...td,borderLeft:"1px solid "+C.sep2}}>{o.navScac?(st.length?<span style={{fontSize:11}}><b style={{color:C.slate}}>{st.join(" · ")}</b>{bl>0&&<div style={{color:C.label,marginTop:1}}>+ BL {money(bl)}</div>}</span>:<Chip kind="green">ALL-IN</Chip>):""}</td>
               <td style={{...td,textAlign:"center"}}><input type="radio" checked={(r.elegida??0)===oi} onChange={()=>setRutas(rutas.map((x,i)=>i===ri?{...x,elegida:oi}:x))}/>{r.opciones.length>1&&<div><span onClick={()=>delOpt(ri,oi)} style={{cursor:"pointer",color:C.label,fontSize:10}}>✕</span></div>}</td>
             </tr>);
