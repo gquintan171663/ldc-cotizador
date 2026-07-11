@@ -44,6 +44,10 @@ export const F="Arial, Helvetica, sans-serif";
 // ====== Lógica de costo (espejo de Supabase) ======
 export const tx=(s)=>(s||"").trim();
 export function scopeFull(l){const oPre=tx(l.origen)!=="",oOn=tx(l.destino)!=="";const left=oPre?"DR"+(tx(l.precarriage_mode)?"·"+tx(l.precarriage_mode):""):"CY";const right=oOn?"DR"+(tx(l.oncarriage_mode)?"·"+tx(l.oncarriage_mode):""):"CY";return left+"-"+right;}
+// Service Mode: CY-CY (puerto-puerto), DR-CY (origen ciudad→puerto), CY-DR (puerto→destino ciudad), DR-DR (ambos ciudad)
+export const serviceMode=(l)=>((tx(l.origen)!==""?"DR":"CY")+"-"+(tx(l.destino)!==""?"DR":"CY"));
+// Transport Mode: por lado, CY si es puerto o el modo si es ciudad (ej. "Rail+Truck/CY", "CY/All Truck"). Vacío en CY-CY.
+export const transportMode=(l)=>{const oCity=tx(l.origen)!=="",dCity=tx(l.destino)!=="";if(!oCity&&!dCity)return "";const leftT=oCity?(tx(l.precarriage_mode)||"—"):"CY";const rightT=dCity?(tx(l.oncarriage_mode)||"—"):"CY";return leftT+"/"+rightT;};
 export const n=(v)=>{const x=parseFloat(v);return isFinite(x)?x:0;};
 // Dirección-aware: el pago que SUMA al costo es Prepaid en export ("E") y Collect en import ("I")
 export const paySum=(dir)=>(dir==="I"?"collect":"prepaid");
