@@ -349,3 +349,42 @@ export const PLANTILLA_RECARGOS=()=>[
   {c:"DOC",d:"Documentation Fee",monto:"",moneda:"USD",incluido:false,desplegar:false,pago:"prepaid",basis:"bl",montos:null},
   {c:"ISPS",d:"Security Fee (ISPS)",monto:"",moneda:"USD",incluido:false,desplegar:false,pago:"prepaid",basis:"contenedor",montos:null},
 ];
+
+// ====== Importador de tarifario del cliente (Excel Omnisource-style) ======
+const _NAVALIAS={"hapag":"HLCU","hapag-lloyd":"HLCU","hpl":"HLCU","cma":"CMDU","cma cgm":"CMDU","cmacgm":"CMDU","maersk":"MAEU","msk":"MAEU","msc":"MSCU","one":"ONEY","cosco":"COSU","evergreen":"EGLV","hmm":"HDMU","yang ming":"YMLU","zim":"ZIMU","oocl":"OOLU","wan hai":"WHLC","hamburg sud":"SUDU","matson":"MATS"};
+export const scacTarifario=(name)=>{ const k=String(name||"").trim().toLowerCase(); return _NAVALIAS[k]||String(name||"").trim().toUpperCase().slice(0,4); };
+export const codigoPuerto=(name)=>{ let s=String(name||"").trim(); if(!s) return ""; s=s.replace(/,\s*[A-Za-z]{2}\s*$/,"").trim(); const nu=_pnorm(s); const p=PUERTOS.find(x=>x.code===s.toUpperCase()||_pnorm(x.name)===nu); return p?p.code:String(name||"").trim(); };
+// Abreviaturas del tarifario para POL y modo (columna "Via" tipo "Mzo Truck", "Lazaro R+T")
+const _POLABBR={"mzo":"MXZLO","manzanillo":"MXZLO","lazaro":"MXLZC","lzc":"MXLZC","ler":"MXLZC","ver":"MXVER","veracruz":"MXVER","altamira":"MXATM","atm":"MXATM","tam":"MXTAM","tampico":"MXTAM"};
+const _MODEABBR={"r+t":"Rail+Truck","rail+truck":"Rail+Truck","rt":"Rail+Truck","truck":"All Truck","alltruck":"All Truck","rail":"Rail Ramp","ramp":"Rail Ramp","barge":"Barge"};
+const _parseVia=(v)=>{ const t=String(v||"").trim().split(/\s+/).filter(Boolean); if(!t.length) return {pol:"",mode:""}; const pol=_POLABBR[t[0].toLowerCase()]||t[0]; const rest=t.slice(1).join(" ").toLowerCase(); const mode=_MODEABBR[rest]||_MODEABBR[rest.replace(/\s/g,"")]||(rest?t.slice(1).join(" "):""); return {pol,mode}; };
+// rows = arreglo de arreglos (fila 0 = encabezados). Devuelve rutas con opciones por naviera.
+export function parseTarifario(rows){
+  if(!rows||!rows.length) return [];
+  const H=(rows[0]||[]).map(x=>String(x==null?"":x).trim());
+  const idx=(names)=>{ for(let i=0;i<H.length;i++){ const h=H[i].toLowerCase(); if(names.some(n=>h===n||h.startsWith(n))) return i; } return -1; };
+  const cOri=idx(["origen"]), cPol=idx(["pol"]), cPod=idx(["pod"]), cDest=idx(["destination","destino"]), cSrvc=idx(["srvc","service","scope"]), cTr=idx(["transp","transport"]);
+  const full = cPol>=0 && cPod>=0; // formato completo (MTY) vs simple (Origen/Destino + Via)
+  const blocks=[];
+  for(let i=0;i<H.length;i++){ const h=H[i].toLowerCase(); const m=h.match(/^(.+?)\s*20\s*$/); if(m && !h.includes("cliente") && !h.startsWith("pft")){ blocks.push({name:H[i].replace(/\s*20\s*$/i,"").trim(), b20:i, p20:i+1, b40:i+2, p40:i+3, via:i+4}); } }
+  const num=(v)=>{ if(v==null) return null; const s=String(v).trim(); if(s===""||s.toUpperCase()==="X") return null; const x=parseFloat(s.replace(/[,$\s]/g,"")); return isNaN(x)?null:x; };
+  const out=[];
+  for(let r=1;r<rows.length;r++){ const row=rows[r]||[];
+    // opciones por naviera (mismo en ambos formatos)
+    const opciones=[]; let viaVal="";
+    blocks.forEach(b=>{ const base20=num(row[b.b20]),pft20=num(row[b.p20]),base40=num(row[b.b40]),pft40=num(row[b.p40]); if(!viaVal && row[b.via]) viaVal=String(row[b.via]).trim(); const precios={}; if(base20!=null&&pft20!=null) precios["20DV"]={base:String(base20),profit:String(pft20)}; if(base40!=null&&pft40!=null) precios["40HC"]={base:String(base40),profit:String(pft40)}; if(Object.keys(precios).length) opciones.push({navScac:scacTarifario(b.name),transito:"",precios}); });
+    let origen="",pre="",pol="",pod="",on="",destino="";
+    if(full){ pol=String(row[cPol]==null?"":row[cPol]).trim(); pod=String(row[cPod]==null?"":row[cPod]).trim(); if(!pol&&!pod) continue;
+      const srvc=String((cSrvc>=0?row[cSrvc]:"")||"").trim().toUpperCase(); const transp=String((cTr>=0?row[cTr]:"")||"").trim();
+      if(srvc.startsWith("DR")) pre=transp.includes("/")?transp.split("/")[0].trim():transp; if(srvc.endsWith("DR")) on=transp.includes("/")?(transp.split("/")[1]||"").trim():transp;
+      origen=(cOri>=0 && srvc.startsWith("DR"))?String(row[cOri]||"").trim():""; destino=(cDest>=0 && srvc.endsWith("DR"))?String(row[cDest]||"").trim():"";
+      pol=codigoPuerto(pol); pod=codigoPuerto(pod);
+    } else { // simple: Origen (ciudad) + Destino (POD) + POL/modo desde "Via"
+      origen=String((cOri>=0?row[cOri]:row[0])||"").trim(); pod=codigoPuerto(String((cDest>=0?row[cDest]:row[1])||"").trim()); if(!pod && !opciones.length) continue;
+      const vp=_parseVia(viaVal); pol=vp.pol; pre=vp.mode;
+    }
+    if(!pol&&!pod&&!opciones.length) continue;
+    out.push({origen,precarriage_mode:pre,pol,pod,oncarriage_mode:on,destino,opciones,elegida:0});
+  }
+  return out;
+}
