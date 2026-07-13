@@ -115,7 +115,7 @@ function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,
   </div>);
 }
 
-function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir,onFoco}){
+function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir,onFoco,editarProp}){
   const navOpts=[{v:"",t:"— naviera —"},...NAVIERAS.map(x=>({v:x.scac,t:x.scac+" · "+x.nombre}))];
   const surOf=(scac,tl)=>(quoteNav.find(q=>q.scac===scac&&(q.tl||"")===(tl||""))||{}).surcharges||[];
   const eqs=EQUIPOS.filter(e=>equipos.includes(e.k));
@@ -155,12 +155,14 @@ function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir,onFoco}){
                 const _anchored=_ancla!=null;
                 const _profitR=_anchored?(_ancla-base-adic):prof;
                 const _pcol=_profitR<=0?"#C8202E":(_profitR<250?"#8A6D1F":"#0B7A3B");
+                const _locked=_anchored&&!editarProp;
+                const _modif=_anchored&&editarProp&&Math.round(venta)!==Math.round(_ancla);
                 return [<td key={e.k+"b"} style={{...td,borderLeft:"1px solid "+C.sep2}}><input value={p.base||""} onFocus={ev=>ev.target.select()} onChange={ev=>setP(ri,oi,e.k,{base:ev.target.value})} inputMode="decimal" placeholder="0" style={cell}/></td>,
                   <td key={e.k+"r"} onClick={()=>{ if(o.navScac&&onFoco) onFoco(o.navScac,tlDe(r)); }} style={{...td,textAlign:"right",fontVariantNumeric:"tabular-nums",color:adic>0?C.slate:C.label,cursor:o.navScac?"pointer":"default",textDecoration:o.navScac?"underline dotted":"none"}} title={o.navScac?(_tip+"\n\n(clic: ir a editar estos recargos)"):""}>{o.navScac?money(adic):""}</td>,
-                  (_anchored
+                  ((_anchored && !editarProp)
                     ? <td key={e.k+"p"} style={{...td,textAlign:"right"}} title={"Profit resultante = venta anclada − costo. Propuesta bloqueada en "+money(_ancla)+"."}><b style={{color:_pcol,fontSize:12.5}}>{money(_profitR)}</b><div style={{fontSize:8,color:C.label,whiteSpace:"nowrap"}}>🔒 propuesta</div></td>
                     : <td key={e.k+"p"} style={td}><input value={p.profit||""} onFocus={ev=>ev.target.select()} onChange={ev=>setP(ri,oi,e.k,{profit:ev.target.value})} inputMode="decimal" placeholder="0" style={cell}/></td>),
-                  <td key={e.k+"v"} onClick={()=>{ if(!base||base<=0) return; setRutas(rutas.map((x,i)=>{ if(i!==ri) return x; const ne={...(x.elegidaEq||{})}; if(oi===_best){ delete ne[e.k]; return {...x,elegidaEq:ne}; } const razon=prompt("Eliges una naviera que NO es la de menor costo para "+e.t+".\nEscribe la razón (tránsito, servicio, etc.):", ovRazon(ne[e.k])||""); if(razon===null) return x; ne[e.k]={nav:o.navScac,razon:(razon||"").trim()}; return {...x,elegidaEq:ne}; })); }} title={base?(_act?(_isBest?"Mejor costo para "+e.t:"Selección manual (no es el menor costo)"+(_razon?" — Razón: "+_razon:"")):("Clic para elegir "+(o.navScac||"esta naviera")+" en "+e.t)):""} style={{...td,textAlign:"right",fontVariantNumeric:"tabular-nums",cursor:base>0?"pointer":"default",background:_act?(_isBest?"#E8F5EC":"#FBF4E0"):"transparent"}}>{base?<span style={{display:"inline-flex",alignItems:"center",gap:5,justifyContent:"flex-end"}}><span style={{fontSize:12,color:_act?(_isBest?"#0B7A3B":"#8A6D1F"):"#C0C7CE"}}>{_act?"●":"○"}</span><span><b style={{color:_anchored?C.ink:(_act?(_isBest?"#0B7A3B":"#8A6D1F"):C.slate),fontWeight:(_act||_anchored)?"bold":"normal"}}>{money(_anchored?_ancla:venta)}{_anchored?<span style={{fontSize:8,marginLeft:2}}>🔒</span>:null}</b><div style={{fontSize:9,color:C.label,whiteSpace:"nowrap"}}>{money(base+adic)}{_anchored?<span> · <b style={{color:_pcol}}>{money(_profitR)}</b></span>:((prof>0&&(base+adic)>0)?" · "+Math.round(prof/(base+adic)*100)+"%":"")}</div></span></span>:""}</td>];})}
+                  <td key={e.k+"v"} onClick={()=>{ if(!base||base<=0) return; setRutas(rutas.map((x,i)=>{ if(i!==ri) return x; const ne={...(x.elegidaEq||{})}; if(oi===_best){ delete ne[e.k]; return {...x,elegidaEq:ne}; } const razon=prompt("Eliges una naviera que NO es la de menor costo para "+e.t+".\nEscribe la razón (tránsito, servicio, etc.):", ovRazon(ne[e.k])||""); if(razon===null) return x; ne[e.k]={nav:o.navScac,razon:(razon||"").trim()}; return {...x,elegidaEq:ne}; })); }} title={base?(_act?(_isBest?"Mejor costo para "+e.t:"Selección manual (no es el menor costo)"+(_razon?" — Razón: "+_razon:"")):("Clic para elegir "+(o.navScac||"esta naviera")+" en "+e.t)):""} style={{...td,textAlign:"right",fontVariantNumeric:"tabular-nums",cursor:base>0?"pointer":"default",background:_act?(_isBest?"#E8F5EC":"#FBF4E0"):"transparent"}}>{base?<span style={{display:"inline-flex",alignItems:"center",gap:5,justifyContent:"flex-end"}}><span style={{fontSize:12,color:_act?(_isBest?"#0B7A3B":"#8A6D1F"):"#C0C7CE"}}>{_act?"●":"○"}</span><span><b style={{color:_locked?C.ink:(_modif?"#C77800":(_act?(_isBest?"#0B7A3B":"#8A6D1F"):C.slate)),fontWeight:(_act||_anchored)?"bold":"normal"}}>{money(_locked?_ancla:venta)}{_locked?<span style={{fontSize:8,marginLeft:2}}>🔒</span>:(_modif?<span style={{fontSize:8,marginLeft:2,color:"#C77800"}}>▲</span>:null)}</b><div style={{fontSize:9,color:C.label,whiteSpace:"nowrap"}}>{money(base+adic)}{_locked?<span> · <b style={{color:_pcol}}>{money(_profitR)}</b></span>:(_modif?<span> · antes {money(_ancla)}</span>:((prof>0&&(base+adic)>0)?" · "+Math.round(prof/(base+adic)*100)+"%":""))}</div></span></span>:""}</td>];})}
               <td style={{...td,borderLeft:"1px solid "+C.sep2}}>{o.navScac?(st.length?<span style={{fontSize:11}}><b style={{color:C.slate}}>{st.join(" · ")}</b>{bl>0&&<div style={{color:C.label,marginTop:1}}>+ BL {money(bl)}</div>}</span>:<Chip kind="green">ALL-IN</Chip>):""}</td>
               <td style={{...td,textAlign:"center"}}>{r.opciones.length>1&&<span onClick={()=>delOpt(ri,oi)} title="Quitar naviera alterna" style={{cursor:"pointer",color:C.label,fontSize:12}}>✕</span>}</td>
             </tr>);
@@ -188,6 +190,7 @@ export function Cotizador({ loadId, onDirty }){
   const [equipos,setEquipos]=useState(["20DV","40HC"]);
   const [impSheets,setImpSheets]=useState(null);
   const [focoRecargo,setFocoRecargo]=useState(null);
+  const [editarPropuesta,setEditarPropuesta]=useState(false);
   const impWbRef=React.useRef(null);
   const impInputRef=React.useRef(null);
   const onTarifarioFile=async(e)=>{ const f=e.target.files&&e.target.files[0]; if(e.target) e.target.value=""; if(!f) return; try{ const buf=await f.arrayBuffer(); const wb=XLSX.read(buf,{type:"array"}); impWbRef.current=wb; if(wb.SheetNames.length===1) aplicarTarifario(wb.SheetNames[0]); else setImpSheets(wb.SheetNames); }catch(ex){ alert("No se pudo leer el archivo: "+ex.message); } };
@@ -319,7 +322,7 @@ export function Cotizador({ loadId, onDirty }){
     if(!cliente){ alert("Elige un cliente."); return; }
     const falt=faltanPOLPOD(); if(falt.length){ alert("Faltan datos obligatorios en las rutas (POL, POD, naviera y modo si hay ciudad):\n\n• "+falt.join("\n• ")); return; }
     const cn=(clientes.find(c=>c.id===cliente)||{}).nombre;
-    const st={versionId,codigo,cliente,clienteNombre:cn,modo,direccion,tradelane,commodity:comLabel,commodity_id:commodityId||null,vigDesde,vigHasta,notas,origen:"cero",equipos,rutas:derivarAnclaje(rutas),quoteNav};
+    const st={versionId,codigo,cliente,clienteNombre:cn,modo,direccion,tradelane,commodity:comLabel,commodity_id:commodityId||null,vigDesde,vigHasta,notas,origen:"cero",equipos,rutas:(editarPropuesta?rutas:derivarAnclaje(rutas)),quoteNav};
     // #5 Conflicto: misma ruta + misma vigencia con tarifa distinta
     try{
       const conf=await checkConflictoTarifa(st);
@@ -342,7 +345,9 @@ export function Cotizador({ loadId, onDirty }){
   const faltanPOLPOD=()=>{ const out=[]; (rutas||[]).forEach((r,i)=>{ const f=[]; if(!tx(r.pol))f.push("POL"); if(!tx(r.pod))f.push("POD"); if(!(r.opciones||[]).some(o=>tx(o.navScac)))f.push("naviera"); if(tx(r.origen)&&!tx(r.precarriage_mode))f.push("modo (origen)"); if(tx(r.destino)&&!tx(r.oncarriage_mode))f.push("modo (destino)"); if(f.length) out.push("R"+(i+1)+": falta "+f.join(", ")); }); return out; };
   const enviar=async()=>{ if(!versionId) return; if(!confirmProfit()) return; await markEnviada(versionId); setEstatus("enviada"); };
   const nueva=async()=>{ if(!versionId) return; if(!confirm("¿Crear un nuevo Amendment (AM"+((amendment||1)+1)+")? Se copia el actual para que edites las diferencias; el AM anterior queda superseded.")) return; setSaving(true); const res=await nuevaVersion(versionId); setSaving(false); if(res.errores&&res.errores.length){ alert("Error: "+res.errores.join(" · ")); return; } if(res.versionId){ setVersionId(res.versionId); setCodigo(res.codigo); setAmendment(res.amendment||((amendment||1)+1)); if(res.vigDesde) setVigDesde(res.vigDesde); setCambios(null); setEstatus("borrador"); setSaved(res); } };
-  const generar=()=>{ const falt=faltanPOLPOD(); if(falt.length){ alert("Faltan datos obligatorios en las rutas (POL, POD, naviera y modo si hay ciudad):\n\n• "+falt.join("\n• ")); return; } if(!confirmProfit()) return; const cn=(clientes.find(c=>c.id===cliente)||{}).nombre; abrirCotizacion({clienteNombre:cn,codigo:codigo||codigoPreview,no_acuerdo:noAcuerdo,tradelane,amendment,commodity:comLabel,direccion,equipos,rutas:derivarAnclaje(rutas),quoteNav,vigDesde,vigHasta,notas}); };
+  const generar=()=>{ const falt=faltanPOLPOD(); if(falt.length){ alert("Faltan datos obligatorios en las rutas (POL, POD, naviera y modo si hay ciudad):\n\n• "+falt.join("\n• ")); return; } if(!confirmProfit()) return; const cn=(clientes.find(c=>c.id===cliente)||{}).nombre; abrirCotizacion({clienteNombre:cn,codigo:codigo||codigoPreview,no_acuerdo:noAcuerdo,tradelane,amendment,commodity:comLabel,direccion,equipos,rutas:(editarPropuesta?rutas:derivarAnclaje(rutas)),quoteNav,vigDesde,vigHasta,notas}); };
+  const toggleEditProp=()=>{ setRutas(derivarAnclaje(rutas)); setEditarPropuesta(v=>!v); };
+  const lineasPropModificada=()=>{ const out=[]; (rutas||[]).forEach(r=>{ if(!r.ventaAncla) return; Object.keys(r.ventaAncla).forEach(ek=>{ const eqObj=EQUIPOS.find(x=>x.k===ek); if(!eqObj) return; const oi=opcionActivaEq(r,ek,eqObj,direccion,surOfMain); const o=(r.opciones||[])[oi]; if(!o) return; const pr=(o.precios||{})[ek]||{}; if(pr.base==null||pr.base==="") return; const venta=n(pr.base)+adicPorCont(surOfMain(o.navScac,tlDe(r)),eqObj,direccion)+n(pr.profit); if(Math.round(venta)!==Math.round(Number(r.ventaAncla[ek]))) out.push((r.pol||r.origen||"?")+"→"+(r.pod||r.destino||"?")+" "+eqObj.t+": "+money(Number(r.ventaAncla[ek]))+" → "+money(venta)); }); }); return out; };
   const anclar=async()=>{ if(!versionId){ alert("Guarda la cotización antes de anclar la venta como propuesta."); return; } if(faltanPOLPOD().length){ alert("Completa POL, POD y naviera antes de anclar."); return; } if(!confirm("¿Anclar la venta actual como propuesta (modo vivo)?\n\nDespués, al mover costos verás el profit resultante contra este precio. Para cambiarle el precio al cliente, usa un nuevo Amendment.")) return; setSaving(true); try{ await guardar(); const res=await anclarVenta(versionId); const st=await loadVersion(versionId); if(st&&st.rutas) setRutas(st.rutas); alert("Venta anclada en "+((res&&res.anclados)||0)+" línea(s). Modo vivo activo."); }catch(ex){ alert("Error al anclar: "+ex.message); } setSaving(false); };
   const hayAncla=(rutas||[]).some(r=>r.ventaAncla&&Object.keys(r.ventaAncla).length>0);
 
@@ -357,6 +362,11 @@ export function Cotizador({ loadId, onDirty }){
       <div style={{fontSize:12,fontWeight:"bold",color:"#8A6D1F",marginBottom:6}}>Control de cambios vs. amendment anterior ({cambios.length})</div>
       <ul style={{margin:0,paddingLeft:18,fontSize:11.5,color:C.slate,lineHeight:1.5}}>{cambios.slice(0,40).map((c,i)=><li key={i}>{c}</li>)}</ul>
     </div>)}
+    {editarPropuesta&&(()=>{ const pm=lineasPropModificada(); return (<div style={{marginBottom:12,padding:"10px 14px",background:"#FFF3E0",border:"1px solid #F0C79A",borderRadius:10}}>
+      <div style={{fontSize:12,fontWeight:"bold",color:"#C77800",marginBottom:pm.length?6:0}}>✎ Editar propuesta activo — el profit está desbloqueado y la venta puede cambiar.{pm.length?" Cambios de precio ("+pm.length+"):":" (aún sin cambios de precio)"}</div>
+      {pm.length>0&&<ul style={{margin:0,paddingLeft:18,fontSize:11.5,color:C.slate,lineHeight:1.5}}>{pm.slice(0,20).map((c,i)=><li key={i}>{c}</li>)}</ul>}
+      {pm.length>0&&<div style={{fontSize:11,color:C.label,marginTop:6}}>Para formalizar el nuevo precio con el cliente: crea un <b>Nuevo Amendment</b> (al enviarlo se re-ancla), o dale <b>Re-anclar venta</b> para fijar este precio como la nueva base viva.</div>}
+    </div>); })()}
     <div style={{background:"#fff",border:"1px solid "+C.sep2,borderRadius:12,padding:16,marginBottom:16,opacity:editable?1:.7,pointerEvents:editable?"auto":"none"}}>
       <div style={{display:"flex",gap:16,alignItems:"flex-end",flexWrap:"wrap"}}>
         <Field label="Cliente / Prospecto" w={2}>
@@ -435,7 +445,7 @@ export function Cotizador({ loadId, onDirty }){
           <span onClick={()=>setRutas(rutas.filter((_,i)=>i!==ri))} style={{cursor:"pointer",color:C.label,fontSize:11,marginBottom:6}}>✕</span>
         </div>))}
       </div>)}
-      <TarifasGrid rutas={rutas} setRutas={setRutas} quoteNav={quoteNav} equipos={equipos} dir={direccion} onFoco={(scac,tl)=>setFocoRecargo({scac,tl,ts:Date.now()})}/>
+      <TarifasGrid rutas={rutas} setRutas={setRutas} quoteNav={quoteNav} equipos={equipos} dir={direccion} editarProp={editarPropuesta} onFoco={(scac,tl)=>setFocoRecargo({scac,tl,ts:Date.now()})}/>
       </fieldset>
       <div style={{background:"#fff",border:"1px solid "+C.sep2,borderRadius:12,padding:14,marginTop:14,opacity:editable?1:.7,pointerEvents:editable?"auto":"none"}}>
         <Lbl>Notas <span style={{fontWeight:"normal",color:C.label,textTransform:"none"}}>· texto libre que aparece en el PDF (condiciones, comentarios, etc.)</span></Lbl>
@@ -448,6 +458,7 @@ export function Cotizador({ loadId, onDirty }){
           {editable&&<Btn kind="green" onClick={guardar} disabled={saving}>{saving?"Guardando…":(versionId?"Guardar cambios":"Guardar cotización")}</Btn>}
           {editable&&versionId&&<Btn kind="dark" onClick={enviar} disabled={saving}>Marcar enviada</Btn>}
           {editable&&versionId&&<Btn kind="ghost" onClick={anclar} disabled={saving}>{hayAncla?"Re-anclar venta":"Anclar venta (modo vivo)"}</Btn>}
+          {editable&&hayAncla&&<Btn kind={editarPropuesta?"primary":"ghost"} onClick={toggleEditProp}>{editarPropuesta?"🔒 Bloquear propuesta":"✎ Editar propuesta"}</Btn>}
           {hayAncla&&<span style={{fontSize:11,fontWeight:"bold",color:"#0B7A3B",background:"#E8F5EC",border:"1px solid #BFE3CB",borderRadius:6,padding:"4px 9px",alignSelf:"center"}}>🔒 Modo vivo · venta anclada</span>}
           {!editable&&versionId&&<Btn kind="primary" onClick={nueva} disabled={saving}>{saving?"Creando…":"＋ Nuevo Amendment"}</Btn>}
         </div>
