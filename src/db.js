@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient.js";
-import { matchCommodity, paisDe, tlDe, n, adicPorCont, tx, eqMeta, prefijoCliente, numeroAcuerdo, hayCambioCosto } from "./lib.js";
+import { matchCommodity, paisDe, tlDe, n, adicPorCont, tx, eqMeta, prefijoCliente, numeroAcuerdo, hayCambioCosto, ventaEq, mkSurOf } from "./lib.js";
 
 // Mapa commodity(lower) -> id desde el catálogo
 async function commodityMap(){
@@ -95,7 +95,7 @@ async function insertChildren(versionId, state, sum){
   for(const r of rutas){
     for(const ek of equipos){
       let { data: lin, error: le } = await supabase.from("lineas")
-        .insert({version_id:versionId,origen:r.origen||"",precarriage_mode:r.precarriage_mode||"",pol:r.pol||"",pod:r.pod||"",oncarriage_mode:r.oncarriage_mode||"",destino:r.destino||"",equipo:ek,validez_desde:vigDesde||null,validez_hasta:vigHasta||null,elegida_eq:r.elegidaEq||null})
+        .insert({version_id:versionId,origen:r.origen||"",precarriage_mode:r.precarriage_mode||"",pol:r.pol||"",pod:r.pod||"",oncarriage_mode:r.oncarriage_mode||"",destino:r.destino||"",equipo:ek,validez_desde:vigDesde||null,validez_hasta:vigHasta||null,elegida_eq:r.elegidaEq||null,venta_anclada:(r.ventaAncla&&r.ventaAncla[ek]!=null)?r.ventaAncla[ek]:null})
         .select("id").single();
       if(le){ sum.errores.push("linea: "+le.message); continue; }
       sum.lineas++;
@@ -248,7 +248,8 @@ export async function loadVersion(versionId){
     Object.values(rm.equipos).forEach(l=>{ (opByLinea[l.id]||[]).forEach(o=>{ if(!navSet.includes(o.naviera)) navSet.push(o.naviera); }); });
     const ops=navSet.map(nav=>{ const precios={}; let transito=""; Object.entries(rm.equipos).forEach(([eq,l])=>{ const op=(opByLinea[l.id]||[]).find(o=>o.naviera===nav); if(op){ precios[eq]={base:String(op.costo_base??""),profit:String(op.profit??"")}; if(op.transito_dias!=null) transito=String(op.transito_dias); } }); return {navScac:nav,transito,precios}; });
     let elegida=0; Object.values(rm.equipos).forEach(l=>{ if(l.opcion_elegida_id){ const op=(opByLinea[l.id]||[]).find(o=>o.id===l.opcion_elegida_id); if(op){ const idx=navSet.indexOf(op.naviera); if(idx>=0) elegida=idx; } } });
-    return {origen:l0.origen||"",precarriage_mode:l0.precarriage_mode||"",pol:l0.pol||"",pod:l0.pod||"",oncarriage_mode:l0.oncarriage_mode||"",destino:l0.destino||"",opciones:ops.length?ops:[{navScac:"",precios:{}}],elegida,elegidaEq:l0.elegida_eq||null};
+    const ventaAncla={}; Object.entries(rm.equipos).forEach(([ek,l])=>{ if(l.venta_anclada!=null&&l.venta_anclada!=="") ventaAncla[ek]=Number(l.venta_anclada); });
+    return {origen:l0.origen||"",precarriage_mode:l0.precarriage_mode||"",pol:l0.pol||"",pod:l0.pod||"",oncarriage_mode:l0.oncarriage_mode||"",destino:l0.destino||"",opciones:ops.length?ops:[{navScac:"",precios:{}}],elegida,elegidaEq:l0.elegida_eq||null,ventaAncla:Object.keys(ventaAncla).length?ventaAncla:null};
   });
   const anyL=(lineas||[])[0]||{};
   return {
@@ -261,6 +262,18 @@ export async function loadVersion(versionId){
     vigDesde:anyL.validez_desde||"", vigHasta:anyL.validez_hasta||"",
     equipos:[...equiposSet], rutas:rutas.length?rutas:[], quoteNav:Object.values(quoteNavMap),
   };
+}
+
+// ===== Documento vivo: anclar la venta actual (por ruta+equipo) como propuesta =====
+export async function anclarVenta(versionId){
+  const st=await loadVersion(versionId); if(!st) return {ok:false,anclados:0};
+  const dir=st.direccion||"E"; const so=mkSurOf(st);
+  const rk=(x)=>((x.pol||x.origen||"")+"|"+(x.pod||x.destino||""));
+  const rutaByKey={}; (st.rutas||[]).forEach(r=>{ rutaByKey[rk(r)]=r; });
+  const { data: lins } = await supabase.from("lineas").select("id,pol,pod,origen,destino,equipo").eq("version_id",versionId);
+  let cnt=0;
+  for(const l of (lins||[])){ const r=rutaByKey[rk(l)]; if(!r) continue; const v=ventaEq(r,eqMeta(l.equipo),dir,so); await supabase.from("lineas").update({venta_anclada:v}).eq("id",l.id); cnt++; }
+  return {ok:true,anclados:cnt};
 }
 
 export async function markEnviada(versionId){
@@ -281,6 +294,8 @@ export async function markEnviada(versionId){
       }
     }
   }catch(e){ /* el ajuste de vigencias no debe romper el envío */ }
+  // Documento vivo: al enviar, la venta de esta propuesta queda anclada
+  try{ await anclarVenta(versionId); }catch(e){ /* no romper el envío */ }
   return res;
 }
 
