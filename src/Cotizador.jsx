@@ -73,6 +73,9 @@ function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,
   const [colap,setColap]=useState({});
   const bkey=(b)=>b.scac+"|"+(b.tl||"");
   const eid=(b)=>"blk_"+b.scac+"_"+String(b.tl||"nl").replace(/[^A-Za-z0-9]/g,"_");
+  // Arranca colapsado cuando hay más de 2 bloques (una sola vez, al aparecer)
+  const colapInit=React.useRef(false);
+  useEffect(()=>{ if(colapInit.current) return; if(blocks.length>2){ const m={}; blocks.forEach(b=>{m[bkey(b)]=true;}); setColap(m); } if(blocks.length>0) colapInit.current=true; },[blocks.length]);
   const toggle=(b)=>setColap(c=>({...c,[bkey(b)]:!c[bkey(b)]}));
   const setAll=(v)=>{ const m={}; blocks.forEach(b=>{m[bkey(b)]=v;}); setColap(m); };
   const allCol=blocks.length>0 && blocks.every(b=>colap[bkey(b)]);
