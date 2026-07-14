@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { PUERTOS } from "./puertos.js";
 
 // ====== Catálogo de recargos (74 claves) ======
 const CATALOG = [{"c": "BAF", "d": "Bunker Adjustment Factor", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Fuel"}, {"c": "EBS", "d": "Emergency Bunker Surcharge", "n": ["CMA", "Hapag", "MSC"], "g": "Fuel"}, {"c": "LSS", "d": "Low Sulphur Surcharge", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Fuel"}, {"c": "MFR", "d": "Marine Fuel Recovery", "n": ["Maersk"], "g": "Fuel"}, {"c": "EFF", "d": "Environmental Fuel Fee", "n": ["Maersk"], "g": "Fuel"}, {"c": "ETS", "d": "EU Emissions Trading System Surcharge", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Regulatory"}, {"c": "GHG", "d": "Greenhouse Gas Surcharge", "n": ["CMA", "Hapag"], "g": "Regulatory"}, {"c": "PSS", "d": "Peak Season Surcharge", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Commercial"}, {"c": "GRI", "d": "General Rate Increase", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Commercial"}, {"c": "PCS", "d": "Port Congestion Surcharge", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Port"}, {"c": "ECS", "d": "Emergency Congestion Surcharge", "n": ["CMA", "MSC"], "g": "Port"}, {"c": "THC", "d": "Terminal Handling Charge", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Port"}, {"c": "OHC", "d": "Origin Handling Charge", "n": ["Hapag", "Maersk"], "g": "Port"}, {"c": "DHC", "d": "Destination Handling Charge", "n": ["Hapag", "Maersk"], "g": "Port"}, {"c": "ISPS", "d": "International Ship & Port Security Charge", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Security"}, {"c": "SEC", "d": "Security Charge", "n": ["CMA", "Hapag", "MSC"], "g": "Security"}, {"c": "WRS", "d": "War Risk Surcharge", "n": ["CMA", "Hapag", "MSC"], "g": "Security"}, {"c": "ERS", "d": "Emergency Risk Surcharge", "n": ["Maersk"], "g": "Security"}, {"c": "CRS", "d": "Crisis Recovery Surcharge", "n": ["CMA", "MSC"], "g": "Security"}, {"c": "PCC", "d": "Panama Canal Charge", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Canal"}, {"c": "PCS-PAN", "d": "Panama Canal Surcharge", "n": ["CMA", "Hapag", "MSC"], "g": "Canal"}, {"c": "SCS", "d": "Suez Canal Surcharge", "n": ["CMA", "Hapag", "MSC"], "g": "Canal"}, {"c": "CAF", "d": "Currency Adjustment Factor", "n": ["CMA", "Hapag", "MSC"], "g": "Financial"}, {"c": "CIC", "d": "Container Imbalance Charge", "n": ["CMA", "Hapag", "MSC"], "g": "Equipment"}, {"c": "EQB", "d": "Equipment Balance Charge", "n": ["Maersk"], "g": "Equipment"}, {"c": "EIS", "d": "Equipment Imbalance Surcharge", "n": ["CMA", "Hapag"], "g": "Equipment"}, {"c": "ECR", "d": "Equipment Repositioning Charge", "n": ["CMA", "Hapag", "MSC"], "g": "Equipment"}, {"c": "OWS", "d": "Overweight Surcharge", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Cargo"}, {"c": "HWS", "d": "Heavy Weight Surcharge", "n": ["CMA", "Hapag"], "g": "Cargo"}, {"c": "REEF", "d": "Reefer Service Charge", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Reefer"}, {"c": "RMC", "d": "Reefer Monitoring Charge", "n": ["CMA", "Hapag", "MSC"], "g": "Reefer"}, {"c": "PHR", "d": "Plug-In / Power Charge Reefer", "n": ["CMA", "Hapag", "MSC"], "g": "Reefer"}, {"c": "GENS", "d": "Generator Set Charge", "n": ["CMA", "Hapag", "MSC"], "g": "Reefer"}, {"c": "DOC", "d": "Documentation Fee", "n": ["CMA", "Hapag", "MSC"], "g": "Documentation"}, {"c": "BLF", "d": "Bill of Lading Fee", "n": ["CMA", "Hapag", "MSC"], "g": "Documentation"}, {"c": "BLC", "d": "Bill of Lading Correction Fee", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Documentation"}, {"c": "ODF", "d": "Origin Documentation Fee", "n": ["Maersk"], "g": "Documentation"}, {"c": "DDF", "d": "Destination Documentation Fee", "n": ["Maersk"], "g": "Documentation"}, {"c": "AMS", "d": "Automated Manifest System Filing", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Regulatory"}, {"c": "ENS", "d": "Entry Summary Declaration", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Regulatory"}, {"c": "ACI", "d": "Advance Commercial Information", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Regulatory"}, {"c": "AFR", "d": "Advance Filing Rules", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Regulatory"}, {"c": "VGM", "d": "Verified Gross Mass Fee", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Regulatory"}, {"c": "SEAL", "d": "Seal Fee", "n": ["CMA", "Hapag", "MSC"], "g": "Documentation"}, {"c": "SPLT", "d": "Split Booking Fee", "n": ["CMA", "Hapag"], "g": "Customer Service"}, {"c": "RLS", "d": "Release Fee", "n": ["CMA", "Hapag", "MSC"], "g": "Documentation"}, {"c": "D/O", "d": "Delivery Order Fee", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Documentation"}, {"c": "DEM", "d": "Demurrage", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Equipment"}, {"c": "DET", "d": "Detention", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Equipment"}, {"c": "D&D", "d": "Combined Demurrage & Detention", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Equipment"}, {"c": "STO", "d": "Storage Charge", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Port"}, {"c": "RAIL", "d": "Rail Surcharge", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Inland"}, {"c": "IPI", "d": "Inland Point Intermodal Charge", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Inland"}, {"c": "FAF", "d": "Fuel Adjustment Factor (Inland)", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Inland"}, {"c": "BUC", "d": "Bunker Charge Inland Haulage", "n": ["CMA", "Hapag"], "g": "Inland"}, {"c": "CHA", "d": "Chassis Fee", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Inland"}, {"c": "PTF", "d": "Port Facility Charge", "n": ["CMA", "Hapag", "MSC"], "g": "Port"}, {"c": "WHF", "d": "Wharfage Fee", "n": ["CMA", "Hapag", "MSC"], "g": "Port"}, {"c": "PEF", "d": "Port Enhancement Fee", "n": ["CMA", "MSC"], "g": "Port"}, {"c": "LFD", "d": "Late Free Day Charge", "n": ["CMA", "Hapag"], "g": "Equipment"}, {"c": "NO-SHOW", "d": "No Show Fee", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Customer Service"}, {"c": "ROLL", "d": "Roll-over Fee", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Customer Service"}, {"c": "CAN", "d": "Cancellation Fee", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Customer Service"}, {"c": "AMEND", "d": "Amendment Fee", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Customer Service"}, {"c": "BKG", "d": "Booking Fee", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Customer Service"}, {"c": "COD", "d": "Change of Destination", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Customer Service"}, {"c": "COR", "d": "Change of Route", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Customer Service"}, {"c": "IMO", "d": "Dangerous Goods Surcharge", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Special Cargo"}, {"c": "DG DOC", "d": "Dangerous Goods Documentation Fee", "n": ["CMA", "Hapag", "MSC"], "g": "Special Cargo"}, {"c": "SURCH DG", "d": "Hazardous Cargo Surcharge", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Special Cargo"}, {"c": "FLEX", "d": "Flexibag Handling Charge", "n": ["CMA", "Hapag"], "g": "Special Cargo"}, {"c": "OOG", "d": "Out of Gauge Surcharge", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Special Cargo"}, {"c": "BBK", "d": "Breakbulk Surcharge", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Special Cargo"}, {"c": "SOC", "d": "Shipper Owned Container Administration Fee", "n": ["CMA", "Hapag", "Maersk", "MSC"], "g": "Equipment"}];
@@ -190,64 +191,7 @@ export function matchCommodity(raw){
 
 // ====== Catálogo de PUERTOS marítimos (UN/LOCODE) para POL/POD ======
 // Set base de los puertos más usados; ampliable. {code, name, country}
-export const PUERTOS=[
- // México
- {code:"MXZLO",name:"Manzanillo",country:"MX"},{code:"MXLZC",name:"Lázaro Cárdenas",country:"MX"},
- {code:"MXVER",name:"Veracruz",country:"MX"},{code:"MXATM",name:"Altamira",country:"MX"},
- {code:"MXTAM",name:"Tampico",country:"MX"},{code:"MXTUX",name:"Tuxpan",country:"MX"},
- {code:"MXESE",name:"Ensenada",country:"MX"},{code:"MXMZT",name:"Mazatlán",country:"MX"},
- {code:"MXPGO",name:"Progreso",country:"MX"},{code:"MXCOA",name:"Coatzacoalcos",country:"MX"},
- {code:"MXGYM",name:"Guaymas",country:"MX"},
- // Estados Unidos
- {code:"USHOU",name:"Houston, TX",country:"US"},{code:"USLAX",name:"Los Angeles, CA",country:"US"},
- {code:"USLGB",name:"Long Beach, CA",country:"US"},{code:"USNYC",name:"New York/Newark, NJ",country:"US"},
- {code:"USSAV",name:"Savannah, GA",country:"US"},{code:"USCHS",name:"Charleston, SC",country:"US"},
- {code:"USORF",name:"Norfolk, VA",country:"US"},{code:"USOAK",name:"Oakland, CA",country:"US"},
- {code:"USSEA",name:"Seattle, WA",country:"US"},{code:"USTIW",name:"Tacoma, WA",country:"US"},
- {code:"USBAL",name:"Baltimore, MD",country:"US"},{code:"USMIA",name:"Miami, FL",country:"US"},
- {code:"USMSY",name:"New Orleans, LA",country:"US"},{code:"USMOB",name:"Mobile, AL",country:"US"},
- {code:"USGLS",name:"Galveston, TX",country:"US"},{code:"USPHL",name:"Philadelphia, PA",country:"US"},
- {code:"USJAX",name:"Jacksonville, FL",country:"US"},{code:"USBOS",name:"Boston, MA",country:"US"},
- {code:"USILM",name:"Wilmington, NC",country:"US"},
- // Canadá
- {code:"CAVAN",name:"Vancouver",country:"CA"},{code:"CAMTR",name:"Montreal",country:"CA"},
- {code:"CAPRR",name:"Prince Rupert",country:"CA"},{code:"CAHAL",name:"Halifax",country:"CA"},
- // Asia
- {code:"CNSHA",name:"Shanghai",country:"CN"},{code:"CNNGB",name:"Ningbo",country:"CN"},
- {code:"CNSZX",name:"Shenzhen/Yantian",country:"CN"},{code:"CNTAO",name:"Qingdao",country:"CN"},
- {code:"CNTXG",name:"Tianjin/Xingang",country:"CN"},{code:"CNCAN",name:"Guangzhou/Nansha",country:"CN"},
- {code:"CNXMN",name:"Xiamen",country:"CN"},{code:"HKHKG",name:"Hong Kong",country:"HK"},
- {code:"KRPUS",name:"Busan",country:"KR"},{code:"TWKHH",name:"Kaohsiung",country:"TW"},
- {code:"SGSIN",name:"Singapore",country:"SG"},{code:"MYPKG",name:"Port Klang",country:"MY"},
- {code:"MYTPP",name:"Tanjung Pelepas",country:"MY"},{code:"THLCH",name:"Laem Chabang",country:"TH"},
- {code:"VNSGN",name:"Ho Chi Minh/Cat Lai",country:"VN"},{code:"VNHPH",name:"Hai Phong",country:"VN"},
- {code:"IDJKT",name:"Jakarta/Tanjung Priok",country:"ID"},{code:"INNSA",name:"Nhava Sheva",country:"IN"},
- {code:"INMUN",name:"Mundra",country:"IN"},{code:"INMAA",name:"Chennai",country:"IN"},
- {code:"LKCMB",name:"Colombo",country:"LK"},{code:"JPTYO",name:"Tokyo",country:"JP"},
- {code:"JPYOK",name:"Yokohama",country:"JP"},{code:"JPNGO",name:"Nagoya",country:"JP"},
- {code:"JPUKB",name:"Kobe",country:"JP"},
- // Europa
- {code:"NLRTM",name:"Rotterdam",country:"NL"},{code:"BEANR",name:"Antwerp",country:"BE"},
- {code:"DEHAM",name:"Hamburg",country:"DE"},{code:"DEBRV",name:"Bremerhaven",country:"DE"},
- {code:"FRLEH",name:"Le Havre",country:"FR"},{code:"ESVLC",name:"Valencia",country:"ES"},
- {code:"ESALG",name:"Algeciras",country:"ES"},{code:"ESBCN",name:"Barcelona",country:"ES"},
- {code:"ITGOA",name:"Genoa",country:"IT"},{code:"ITGIT",name:"Gioia Tauro",country:"IT"},
- {code:"GRPIR",name:"Piraeus",country:"GR"},{code:"GBFXT",name:"Felixstowe",country:"GB"},
- {code:"GBLGP",name:"London Gateway",country:"GB"},{code:"PLGDN",name:"Gdansk",country:"PL"},
- {code:"PTSIE",name:"Sines",country:"PT"},
- // Medio Oriente / África
- {code:"AEJEA",name:"Jebel Ali",country:"AE"},{code:"SAJED",name:"Jeddah",country:"SA"},
- {code:"SAKAC",name:"King Abdullah",country:"SA"},{code:"ZADUR",name:"Durban",country:"ZA"},
- {code:"MAPTM",name:"Tangier Med",country:"MA"},
- // Latinoamérica
- {code:"BRSSZ",name:"Santos",country:"BR"},{code:"ARBUE",name:"Buenos Aires",country:"AR"},
- {code:"COCTG",name:"Cartagena",country:"CO"},{code:"PECLL",name:"Callao",country:"PE"},
- {code:"CLSAI",name:"San Antonio",country:"CL"},{code:"ECGYE",name:"Guayaquil",country:"EC"},
- {code:"PABLB",name:"Balboa",country:"PA"},{code:"PAONX",name:"Colón",country:"PA"},
- {code:"JMKIN",name:"Kingston",country:"JM"},{code:"DOCAU",name:"Caucedo",country:"DO"},
- // Oceanía
- {code:"AUSYD",name:"Sydney",country:"AU"},{code:"AUMEL",name:"Melbourne",country:"AU"},
-];
+export { PUERTOS };
 export const PAIS_NOMBRE={MX:"México",US:"Estados Unidos",CA:"Canadá",CN:"China",HK:"Hong Kong",KR:"Corea",TW:"Taiwán",SG:"Singapur",MY:"Malasia",TH:"Tailandia",VN:"Vietnam",ID:"Indonesia",IN:"India",LK:"Sri Lanka",JP:"Japón",NL:"Países Bajos",BE:"Bélgica",DE:"Alemania",FR:"Francia",ES:"España",IT:"Italia",GR:"Grecia",GB:"Reino Unido",PL:"Polonia",PT:"Portugal",AE:"EAU",SA:"Arabia Saudita",ZA:"Sudáfrica",MA:"Marruecos",BR:"Brasil",AR:"Argentina",CO:"Colombia",PE:"Perú",CL:"Chile",EC:"Ecuador",PA:"Panamá",JM:"Jamaica",DO:"Rep. Dominicana",AU:"Australia"};
 
 // ====== Catálogo de CIUDADES (origen/destino puerta) ======
