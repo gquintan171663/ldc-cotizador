@@ -257,11 +257,17 @@ const _REG={CN:0,HK:0,TW:0,JP:0,KR:0,KP:0,MO:0,MN:0,
  AU:10,NZ:10,PG:10,FJ:10,NC:10,PF:10,SB:10,VU:10,WS:10,TO:10};
 export const regionIdx=(cc)=>{ const r=_REG[String(cc||"").toUpperCase()]; return r==null?99:r; };
 export const regionNombre=(cc)=>{ const r=_REG[String(cc||"").toUpperCase()]; return r==null?"Otros":REGIONES[r]; };
-// Orden: por región del destino (exportación) o del origen (importación) → país → puerto → origen ciudad
+// Orden: ciudad origen → país del puerto de origen (POL) → región del puerto de destino (POD) → país del POD → puerto
+// (en importación se refleja: ciudad destino → país POD → región POL → país POL → puerto)
 export const ordenarRutas=(rts,dir="E")=>[...(rts||[])].sort((a,b)=>{
-  const relCC=(r)=> dir==="I" ? (paisDe(r.pol)||paisDe(r.origen)||"") : (paisDe(r.pod)||paisDe(r.destino)||"");
-  const relPort=(r)=> dir==="I" ? String(r.pol||r.origen||"") : String(r.pod||r.destino||"");
-  const k=(r)=>{ const cc=relCC(r); return [regionIdx(cc), cc||"ZZ", relPort(r).toUpperCase(), String(r.origen||"").toUpperCase()]; };
+  const exp=dir!=="I";
+  const k=(r)=>{
+    const oCity=exp?String(r.origen||""):String(r.destino||"");
+    const nearCC=exp?(paisDe(r.pol)||paisDe(r.origen)||""):(paisDe(r.pod)||paisDe(r.destino)||"");
+    const farCC=exp?(paisDe(r.pod)||paisDe(r.destino)||""):(paisDe(r.pol)||paisDe(r.origen)||"");
+    const farPort=exp?String(r.pod||r.destino||""):String(r.pol||r.origen||"");
+    return [oCity.toUpperCase().trim(), nearCC||"ZZ", regionIdx(farCC), farCC||"ZZ", farPort.toUpperCase()];
+  };
   const ka=k(a),kb=k(b);
   for(let i=0;i<ka.length;i++){ if(ka[i]<kb[i]) return -1; if(ka[i]>kb[i]) return 1; }
   return 0;
