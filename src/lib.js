@@ -242,6 +242,13 @@ export const paisDe=(v)=>{
 };
 export const paisOrigen=(r)=>paisDe(r.pol)||paisDe(r.origen);
 export const paisDestino=(r)=>paisDe(r.pod)||paisDe(r.destino);
+// Orden de rutas: 1) origen (ciudad), 2) país del POL, 3) país del POD, luego POD
+export const ordenarRutas=(rts)=>[...(rts||[])].sort((a,b)=>{
+  const k=(r)=>[String(r.origen||"").toUpperCase().trim(),(paisDe(r.pol)||paisDe(r.origen)||"zz"),(paisDe(r.pod)||paisDe(r.destino)||"zz"),String(r.pod||r.destino||"").toUpperCase()];
+  const ka=k(a),kb=k(b);
+  for(let i=0;i<ka.length;i++){ if(ka[i]<kb[i]) return -1; if(ka[i]>kb[i]) return 1; }
+  return 0;
+});
 export const rutaPaisLabel=(o,d)=>((PAIS_NOMBRE[o]||o||"?")+" → "+(PAIS_NOMBRE[d]||d||"?"));
 // Tradelane = país(POL) → país(POD). Clave "MX>CN" y etiqueta legible.
 export const tlDe=(r)=>{ const o=paisDe(r.pol)||paisDe(r.origen); const d=paisDe(r.pod)||paisDe(r.destino); return (o&&d)?(o+">"+d):""; };
