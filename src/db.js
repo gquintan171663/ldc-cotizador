@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient.js";
-import { matchCommodity, paisDe, tlDe, n, adicPorCont, tx, eqMeta, prefijoCliente, numeroAcuerdo, hayCambioCosto, ventaEq, mkSurOf } from "./lib.js";
+import { matchCommodity, paisDe, tlDe, n, adicPorCont, tx, eqMeta, prefijoCliente, numeroAcuerdo, hayCambioCosto, ventaEq, mkSurOf, round10 } from "./lib.js";
 
 // Mapa commodity(lower) -> id desde el catálogo
 async function commodityMap(){
@@ -272,7 +272,7 @@ export async function anclarVenta(versionId){
   const rutaByKey={}; (st.rutas||[]).forEach(r=>{ rutaByKey[rk(r)]=r; });
   const { data: lins } = await supabase.from("lineas").select("id,pol,pod,origen,destino,equipo").eq("version_id",versionId);
   let cnt=0;
-  for(const l of (lins||[])){ const r=rutaByKey[rk(l)]; if(!r) continue; const v=ventaEq(r,eqMeta(l.equipo),dir,so); await supabase.from("lineas").update({venta_anclada:v}).eq("id",l.id); cnt++; }
+  for(const l of (lins||[])){ const r=rutaByKey[rk(l)]; if(!r) continue; const v=round10(ventaEq(r,eqMeta(l.equipo),dir,so)); await supabase.from("lineas").update({venta_anclada:v}).eq("id",l.id); cnt++; }
   return {ok:true,anclados:cnt};
 }
 

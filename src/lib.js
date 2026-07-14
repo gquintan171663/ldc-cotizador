@@ -49,6 +49,7 @@ export const serviceMode=(l)=>((tx(l.origen)!==""?"DR":"CY")+"-"+(tx(l.destino)!
 // Transport Mode: por lado, CY si es puerto o el modo si es ciudad (ej. "Rail+Truck/CY", "CY/All Truck"). Vacío en CY-CY.
 export const transportMode=(l)=>{const oCity=tx(l.origen)!=="",dCity=tx(l.destino)!=="";if(!oCity&&!dCity)return "";const leftT=oCity?(tx(l.precarriage_mode)||"—"):"CY";const rightT=dCity?(tx(l.oncarriage_mode)||"—"):"CY";return leftT+"/"+rightT;};
 export const n=(v)=>{const x=parseFloat(v);return isFinite(x)?x:0;};
+export const round10=(x)=>Math.round((Number(x)||0)/10)*10;
 // Dirección-aware: el pago que SUMA al costo es Prepaid en export ("E") y Collect en import ("I")
 export const paySum=(dir)=>(dir==="I"?"collect":"prepaid");
 // Monto del recargo para un equipo e={k,teu}: usa el monto por tamaño si existe, si no el general
