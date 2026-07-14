@@ -90,7 +90,7 @@ export function buildQuoteHtml(st){
   let bodyRows=""; const panelByTl={}; const tlOrder=[];
   const cel=(v)=> v&&String(v).trim()!=="" ? esc(v) : '<span style="color:#C0C7CE">—</span>';
   const dir=st.direccion||"E";
-  ordenarRutas(st.rutas||[]).forEach(r=>{
+  ordenarRutas(st.rutas||[], st.direccion||"E").forEach(r=>{
     const tl=tlDe(r);
     if(!panelByTl[tl]){ panelByTl[tl]={tl,inc:{},exc:{}}; tlOrder.push(tl); }
     const P=panelByTl[tl];

@@ -242,9 +242,26 @@ export const paisDe=(v)=>{
 };
 export const paisOrigen=(r)=>paisDe(r.pol)||paisDe(r.origen);
 export const paisDestino=(r)=>paisDe(r.pod)||paisDe(r.destino);
-// Orden de rutas: 1) origen (ciudad), 2) país del POL, 3) país del POD, luego POD
-export const ordenarRutas=(rts)=>[...(rts||[])].sort((a,b)=>{
-  const k=(r)=>[String(r.origen||"").toUpperCase().trim(),(paisDe(r.pol)||paisDe(r.origen)||"zz"),(paisDe(r.pod)||paisDe(r.destino)||"zz"),String(r.pod||r.destino||"").toUpperCase()];
+// Regiones de comercio marítimo (orden estándar; destino relevante en exportación)
+export const REGIONES=["Asia Norte","Sureste Asiático","Subcontinente Índico","Medio Oriente","Mediterráneo","Norte de Europa","Norteamérica","Centroamérica y Caribe","Sudamérica","África","Oceanía"];
+const _REG={CN:0,HK:0,TW:0,JP:0,KR:0,KP:0,MO:0,MN:0,
+ VN:1,TH:1,MY:1,SG:1,ID:1,PH:1,KH:1,MM:1,BN:1,LA:1,TL:1,
+ IN:2,PK:2,BD:2,LK:2,NP:2,MV:2,BT:2,
+ AE:3,SA:3,OM:3,QA:3,KW:3,BH:3,IQ:3,IR:3,JO:3,YE:3,
+ ES:4,IT:4,GR:4,TR:4,EG:4,IL:4,MT:4,CY:4,SI:4,HR:4,AL:4,ME:4,LB:4,SY:4,LY:4,TN:4,DZ:4,MA:4,
+ NL:5,DE:5,BE:5,GB:5,IE:5,FR:5,PL:5,DK:5,SE:5,NO:5,FI:5,RU:5,LT:5,LV:5,EE:5,PT:5,IS:5,
+ US:6,CA:6,MX:6,
+ GT:7,HN:7,SV:7,NI:7,CR:7,PA:7,BZ:7,DO:7,CU:7,JM:7,HT:7,TT:7,BS:7,BB:7,PR:7,
+ BR:8,AR:8,CL:8,PE:8,CO:8,EC:8,UY:8,VE:8,PY:8,BO:8,GY:8,SR:8,GF:8,
+ ZA:9,NG:9,GH:9,KE:9,TZ:9,CI:9,SN:9,AO:9,MZ:9,CM:9,TG:9,BJ:9,CD:9,CG:9,GA:9,LR:9,SL:9,GN:9,GM:9,MR:9,NA:9,DJ:9,SD:9,MG:9,MU:9,RE:9,
+ AU:10,NZ:10,PG:10,FJ:10,NC:10,PF:10,SB:10,VU:10,WS:10,TO:10};
+export const regionIdx=(cc)=>{ const r=_REG[String(cc||"").toUpperCase()]; return r==null?99:r; };
+export const regionNombre=(cc)=>{ const r=_REG[String(cc||"").toUpperCase()]; return r==null?"Otros":REGIONES[r]; };
+// Orden: por región del destino (exportación) o del origen (importación) → país → puerto → origen ciudad
+export const ordenarRutas=(rts,dir="E")=>[...(rts||[])].sort((a,b)=>{
+  const relCC=(r)=> dir==="I" ? (paisDe(r.pol)||paisDe(r.origen)||"") : (paisDe(r.pod)||paisDe(r.destino)||"");
+  const relPort=(r)=> dir==="I" ? String(r.pol||r.origen||"") : String(r.pod||r.destino||"");
+  const k=(r)=>{ const cc=relCC(r); return [regionIdx(cc), cc||"ZZ", relPort(r).toUpperCase(), String(r.origen||"").toUpperCase()]; };
   const ka=k(a),kb=k(b);
   for(let i=0;i<ka.length;i++){ if(ka[i]<kb[i]) return -1; if(ka[i]>kb[i]) return 1; }
   return 0;
