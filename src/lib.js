@@ -374,6 +374,7 @@ export function parseTarifario(rows){
     // opciones por naviera (mismo en ambos formatos)
     const opciones=[]; let viaVal="";
     blocks.forEach(b=>{ const base20=num(row[b.b20]),pft20=num(row[b.p20]),base40=num(row[b.b40]),pft40=num(row[b.p40]); if(!viaVal && row[b.via]) viaVal=String(row[b.via]).trim(); const precios={}; if(base20!=null&&pft20!=null) precios["20DV"]={base:String(base20),profit:String(pft20)}; if(base40!=null&&pft40!=null) precios["40HC"]={base:String(base40),profit:String(pft40)}; if(Object.keys(precios).length) opciones.push({navScac:scacTarifario(b.name),transito:"",precios}); });
+    if(!blocks.length){ ["HLCU","CMDU","MAEU","MSCU"].forEach(s=>opciones.push({navScac:s,transito:"",precios:{}})); }
     let origen="",pre="",pol="",pod="",on="",destino="";
     if(full){ pol=String(row[cPol]==null?"":row[cPol]).trim(); pod=String(row[cPod]==null?"":row[cPod]).trim(); if(!pol&&!pod) continue;
       const srvc=String((cSrvc>=0?row[cSrvc]:"")||"").trim().toUpperCase(); const transp=String((cTr>=0?row[cTr]:"")||"").trim();
