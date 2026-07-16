@@ -69,7 +69,10 @@ function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,
   (rutas||[]).forEach(r=>{ const tl=tlDe(r); (r.opciones||[]).forEach(o=>{ if(!o.navScac) return; const k=o.navScac+"|"+tl; if(seen.has(k)) return; seen.add(k); blocks.push({scac:o.navScac,tl}); }); });
   blocks.sort((a,b)=> a.scac===b.scac ? ((a.tl||"")<(b.tl||"")?-1:1) : (a.scac<b.scac?-1:1));
   const surOf=(scac,tl)=>(quoteNav.find(q=>q.scac===scac&&(q.tl||"")===(tl||""))||{}).surcharges||[];
-  const setSurs=(scac,tl,s)=>{ const idx=quoteNav.findIndex(q=>q.scac===scac&&(q.tl||"")===(tl||"")); if(idx>=0) setQuoteNav(quoteNav.map((q,j)=>j===idx?{...q,surcharges:s}:q)); else setQuoteNav([...quoteNav,{scac,tl,surcharges:s}]); };
+  // updater funcional: evita perder cambios si se encadenan dos ediciones seguidas
+  const setSurs=(scac,tl,s)=>setQuoteNav(prev=>{ const arr=prev||[]; const idx=arr.findIndex(q=>q.scac===scac&&(q.tl||"")===(tl||"")); return idx>=0 ? arr.map((q,j)=>j===idx?{...q,surcharges:s}:q) : [...arr,{scac,tl,surcharges:s}]; });
+  // Regresar del detalle de recargos a la primera tarifa de ese lane
+  const irATarifa=(tl)=>{ const el=document.getElementById(eidTarifa(tl)); if(!el) return; el.scrollIntoView({behavior:"smooth",block:"center"}); const prev=el.style.boxShadow; el.style.transition="box-shadow .25s"; el.style.boxShadow="inset 0 0 0 2px "+C.red; setTimeout(()=>{ el.style.boxShadow=prev||""; },1400); };
   const copyFrom=(scac,tl,fromTl)=>{ if(!fromTl) return; const src=surOf(scac,fromTl); if(!src.length) return; if(surOf(scac,tl).length && !confirm("¿Reemplazar los recargos actuales con los de "+tlLabel(fromTl)+"?")) return; setSurs(scac,tl,src.map(x=>({...x}))); };
   const [colap,setColap]=useState({});
   const bkey=(b)=>b.scac+"|"+(b.tl||"");
@@ -102,7 +105,7 @@ function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,
           <span onClick={()=>toggle(b)} title={col?"Expandir":"Colapsar"} style={{cursor:"pointer",fontSize:13,color:C.label,fontWeight:"bold",width:14,display:"inline-block"}}>{col?"▸":"▾"}</span>
           <span onClick={()=>toggle(b)} style={{cursor:"pointer",fontSize:11,fontWeight:"bold",color:"#fff",background:C.slate,borderRadius:4,padding:"2px 8px",letterSpacing:1}}>{b.scac}</span>
           <span onClick={()=>toggle(b)} style={{cursor:"pointer",fontSize:13,fontWeight:"bold",color:C.slate}}>{navName(b.scac)}</span>
-          <span style={{fontSize:11,fontWeight:"bold",color:"#fff",background:C.red,borderRadius:4,padding:"2px 8px"}}>{tlLabel(b.tl)}</span>
+          <span onClick={()=>irATarifa(b.tl)} title="Regresar a la tarifa de este lane" style={{cursor:"pointer",fontSize:11,fontWeight:"bold",color:"#fff",background:C.red,borderRadius:4,padding:"2px 8px"}}>↩ {tlLabel(b.tl)}</span>
           {col&&<span style={{fontSize:11,color:C.label}}>· {surs.length?(surs.length+" recargo(s)"):"sin recargos"}</span>}
           {onGenerar&&<span onClick={()=>onGenerar(b.scac,b.tl)} title="Buscar coincidencias o generar recargos para esta naviera × lane" style={{cursor:"pointer",fontSize:11,fontWeight:"bold",color:surs.length?C.slate:"#fff",background:surs.length?C.soft:C.red,border:surs.length?("1px solid "+C.sep2):"none",borderRadius:6,padding:"3px 9px",marginLeft:col?8:4}}>⚡ {surs.length?"Regenerar":"Generar recargos"}</span>}
           {!col&&others.length>0&&<select value="" onChange={e=>copyFrom(b.scac,b.tl,e.target.value)} style={{...inS,padding:"4px 6px",fontSize:11.5,marginLeft:"auto",maxWidth:240}}>
@@ -116,7 +119,11 @@ function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,
   </div>);
 }
 
+// id del ancla de tarifas por lane (para regresar desde el bloque de recargos)
+export const eidTarifa=(tl)=>"trf_"+String(tl||"nl").replace(/[^A-Za-z0-9]/g,"_");
 function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir,onFoco,editarProp}){
+  // primera ruta de cada lane: ahí ponemos el ancla
+  const tlAnchor={}; (rutas||[]).forEach((r,ri)=>{ const t=tlDe(r); if(tlAnchor[t]==null) tlAnchor[t]=ri; });
   const navOpts=[{v:"",t:"— naviera —"},...NAVIERAS.map(x=>({v:x.scac,t:x.scac+" · "+x.nombre}))];
   const surOf=(scac,tl)=>(quoteNav.find(q=>q.scac===scac&&(q.tl||"")===(tl||""))||{}).surcharges||[];
   const eqs=EQUIPOS.filter(e=>equipos.includes(e.k));
@@ -141,9 +148,9 @@ function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir,onFoco,editarProp}){
         <tr style={{background:C.ink}}>{eqs.map(e=>[<th key={e.k+"b"} style={{...th,textAlign:"right",borderLeft:"1px solid #333"}}>Base</th>,<th key={e.k+"r"} style={{...th,textAlign:"right"}}>Recargos</th>,<th key={e.k+"p"} style={{...th,textAlign:"right"}}>Profit</th>,<th key={e.k+"v"} style={{...th,textAlign:"right"}}>Venta</th>])}</tr>
       </thead>
       <tbody>
-        {rutas.map((r,ri)=>{const sug=sugerida(r);
+        {rutas.map((r,ri)=>{const sug=sugerida(r);const _tl=tlDe(r);const _anc=tlAnchor[_tl]===ri;
           return r.opciones.map((o,oi)=>{const surs=surOf(o.navScac,tlDe(r)),st=surs.filter(s=>esSubjectTo(s,dir)&&s.desplegar!==false).map(s=>s.c),bl=cargosBL(surs,dir),first=oi===0;
-            return (<tr key={ri+"-"+oi} style={{background:first?"#fff":C.soft}}>
+            return (<tr key={ri+"-"+oi} id={(first&&_anc)?eidTarifa(_tl):undefined} style={{background:first?"#fff":C.soft}}>
               <td style={{...td,borderTop:first?"2px solid "+C.sep2:"none"}}>{first?<div style={{fontSize:12.5}}><b style={{color:C.slate}}>{r.pol}</b><span style={{color:"#C0C7CE",margin:"0 4px"}}>›</span><b style={{color:C.slate}}>{r.pod}</b><div style={{fontSize:10.5,color:C.label,marginTop:1,lineHeight:1.25}}>{r.origen?r.origen+" › ":""}{puertoNombre(r.pol)} › {puertoNombre(r.pod)}{r.destino?" › "+r.destino:""}</div></div>:<span style={{fontSize:11,color:C.label}}>↳ alt.</span>}</td>
               <td style={{...td,textAlign:"center",borderTop:first?"2px solid "+C.sep2:"none"}}>{first&&<span><Chip>{serviceMode(r)}</Chip>{transportMode(r)&&<div style={{fontSize:9,color:C.label,marginTop:2,fontWeight:"bold"}}>{transportMode(r)}</div>}</span>}</td>
               <td style={td}><select value={o.navScac} onChange={e=>setOpt(ri,oi,{navScac:e.target.value})} style={{...inS,padding:"5px 4px",fontSize:11.5,fontWeight:"bold",width:126,maxWidth:140}}>{navOpts.map(x=><option key={x.v} value={x.v}>{x.t}</option>)}</select></td>
@@ -337,7 +344,7 @@ export function Cotizador({ loadId, onDirty }){
     setSaving(false); setSaved(res);
     if(res.versionId){ setVersionId(res.versionId); setCodigo(res.codigo); setEstatus("borrador"); if(res.cambios) setCambios(res.cambios); }
     onDirtyRef.current&&onDirtyRef.current(false);
-    if(res.errores.length) alert("Guardado con avisos: "+res.errores.slice(0,3).join(" · "));
+    if(res.errores.length) alert("⚠ Guardado con avisos ("+res.errores.length+"):\n\n• "+res.errores.slice(0,5).join("\n• ")+(res.errores.length>5?"\n\n…y "+(res.errores.length-5)+" más.":""));
   };
   const surOfMain=(scac,tl)=>(quoteNav.find(q=>q.scac===scac&&(q.tl||"")===(tl||""))||{}).surcharges||[];
   const derivarAnclaje=(rts,ep=editarPropuesta)=>(rts||[]).map(r=>({...r,opciones:(r.opciones||[]).map(o=>{ const precios={...(o.precios||{})}; Object.keys(precios).forEach(ek=>{ const eqObj=EQUIPOS.find(x=>x.k===ek); const pr=precios[ek]; if(!eqObj||!pr||pr.base==null||pr.base==="") return; const base=n(pr.base); const adic=adicPorCont(surOfMain(o.navScac,tlDe(r)),eqObj,direccion); const anchored=r.ventaAncla&&r.ventaAncla[ek]!=null; const target=(anchored&&!ep)?Number(r.ventaAncla[ek]):(base+adic+n(pr.profit)); const vround=round10(target); precios[ek]={...pr,profit:String(vround-base-adic)}; }); return {...o,precios}; })}));

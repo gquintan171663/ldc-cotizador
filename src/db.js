@@ -219,14 +219,47 @@ export async function listCotizaciones(){
   }) };
 }
 
+// Trae TODAS las filas de un .in(col, ids): trocea los ids (evita URLs enormes)
+// y pagina con .range() porque el API de Supabase corta en 1000 filas por consulta.
+// Sin esto, en cotizaciones grandes se perdían los recargos con 'orden' más alto
+// (los últimos que agregas), dando la impresión de que "no se guardan".
+async function selectAllIn(table, sel, col, ids, orderBy){
+  const out=[]; const CH=100, PAGE=1000;
+  for(let i=0;i<ids.length;i+=CH){
+    const chunk=ids.slice(i,i+CH);
+    for(let from=0;;from+=PAGE){
+      let q=supabase.from(table).select(sel).in(col,chunk);
+      if(orderBy) q=q.order(orderBy);
+      const { data, error } = await q.range(from, from+PAGE-1);
+      if(error) throw error;
+      out.push(...(data||[]));
+      if(!data || data.length<PAGE) break;
+    }
+  }
+  return out;
+}
+// Igual que arriba pero para un filtro .eq() simple
+async function selectAllEq(table, sel, col, val, orderBy){
+  const out=[]; const PAGE=1000;
+  for(let from=0;;from+=PAGE){
+    let q=supabase.from(table).select(sel).eq(col,val);
+    if(orderBy) q=q.order(orderBy);
+    const { data, error } = await q.range(from, from+PAGE-1);
+    if(error) throw error;
+    out.push(...(data||[]));
+    if(!data || data.length<PAGE) break;
+  }
+  return out;
+}
+
 // ===== Reconstruir el estado del cotizador desde una versión =====
 export async function loadVersion(versionId){
   const { data: ver } = await supabase.from("versiones").select("*, acuerdos(id,no_acuerdo,modo,cliente_id,clientes(nombre))").eq("id",versionId).single();
-  const { data: lineas } = await supabase.from("lineas").select("*").eq("version_id",versionId).order("created_at");
+  const lineas = await selectAllEq("lineas","*","version_id",versionId,"created_at");
   const lids=(lineas||[]).map(l=>l.id);
-  const { data: opciones } = lids.length ? await supabase.from("opciones_costo").select("*").in("linea_id",lids) : { data:[] };
+  const opciones = lids.length ? await selectAllIn("opciones_costo","*","linea_id",lids) : [];
   const oids=(opciones||[]).map(o=>o.id);
-  const { data: surs } = oids.length ? await supabase.from("opcion_surcharges").select("*").in("opcion_id",oids).order("orden") : { data:[] };
+  const surs = oids.length ? await selectAllIn("opcion_surcharges","*","opcion_id",oids,"orden") : [];
 
   const sig=(l)=>[l.origen,l.precarriage_mode,l.pol,l.pod,l.oncarriage_mode,l.destino].join("|");
   const opByLinea={}; (opciones||[]).forEach(o=>{ (opByLinea[o.linea_id]=opByLinea[o.linea_id]||[]).push(o); });
@@ -437,10 +470,10 @@ export async function checkConflictoTarifa(state){
     .eq("validez_desde", vigDesde||null).eq("validez_hasta", vigHasta||null).limit(500);
   if(!data || !data.length) return [];
   const lids=data.filter(l=>l.opcion_elegida_id).map(l=>l.opcion_elegida_id);
-  const { data: ops } = lids.length ? await supabase.from("opciones_costo").select("id,costo_base,profit").in("id",lids) : { data:[] };
+  const ops = lids.length ? await selectAllIn("opciones_costo","id,costo_base,profit","id",lids) : [];
   const opMap={}; (ops||[]).forEach(o=>{ opMap[o.id]={base:n(o.costo_base),profit:n(o.profit)}; });
   // surcharges de esas opciones para sumar adicional
-  const { data: surExist } = lids.length ? await supabase.from("opcion_surcharges").select("opcion_id,monto,incluido,pago,basis,montos").in("opcion_id",lids) : { data:[] };
+  const surExist = lids.length ? await selectAllIn("opcion_surcharges","opcion_id,monto,incluido,pago,basis,montos","opcion_id",lids) : [];
   const surByOp={}; (surExist||[]).forEach(s=>{ (surByOp[s.opcion_id]=surByOp[s.opcion_id]||[]).push({monto:s.monto,incluido:s.incluido,pago:s.pago,basis:s.basis,montos:s.montos,c:""}); });
   const conflictos=[];
   for(const l of data){
