@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { supabase } from "./supabaseClient.js";
-import { C, F, EQUIPOS, EQUIPO_CATS, NAVIERAS, navName, CATALOG, COMMODITY_INDUSTRIAS, tx, scopeFull, serviceMode, transportMode, n, round10, adicPorCont, cargosBL, inclPorCont, inclBL, subjectTo, enPrecio, esSubjectTo, money, MONEDAS, optPuertos, optCiudades, puertoNombre, paisOrigen, paisDestino, rutaPaisLabel, tlDe, tlLabel, TRADELANES, tradeLabel, rutaEnTradelane, opcionActivaEq, mejorOpcionEq, ovRazon, PLANTILLA_RECARGOS, parseTarifario, ordenarRutas } from "./lib.js";
+import { C, F, EQUIPOS, EQUIPO_CATS, NAVIERAS, navName, CATALOG, COMMODITY_INDUSTRIAS, tx, scopeFull, serviceMode, transportMode, n, round10, adicPorCont, cargosBL, inclPorCont, inclBL, subjectTo, enPrecio, esSubjectTo, money, MONEDAS, optPuertos, optCiudades, puertoNombre, paisOrigen, paisDestino, rutaPaisLabel, tlDe, tlLabel, TRADELANES, tradeLabel, rutaEnTradelane, opcionActivaEq, mejorOpcionEq, ordenOpciones, ordenRecargos, ovRazon, PLANTILLA_RECARGOS, parseTarifario, ordenarRutas } from "./lib.js";
 import { inS, Lbl, Field, TI, Sel, Chip, Btn, ClaveAutocomplete, ComboBox } from "./ui.jsx";
 import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges, recargosDeRutaSimilar, recargosDeRutaSimilarPorNaviera, recargosDeNaviera, anclarVenta, checkConflictoTarifa } from "./db.js";
 import { abrirCotizacion } from "./quote.js";
@@ -27,7 +27,7 @@ function SurchargeGrid({surs,onChange,catalog,dir,equipos}){
         <th style={{...th,width:"12%"}}>Base cobro</th><th style={{...th,width:"8%",textAlign:"center"}}>No Incl.</th><th style={{...th,width:"7%",textAlign:"center"}}>INCL.</th><th style={{...th,width:"8%",textAlign:"center"}}>Mostrar</th><th style={{...th,width:"10%"}}>Pago</th><th style={{...th,width:"3%"}}></th></tr></thead>
       <tbody>
         {rows.length===0&&<tr><td colSpan={10} style={{padding:10,textAlign:"center",color:C.label,fontSize:12}}>Sin recargos — agrega filas</td></tr>}
-        {rows.map((r,i)=>{const hasSizes=r.montos&&Object.values(r.montos).some(v=>v!==""&&v!=null);return (<React.Fragment key={i}>
+        {ordenRecargos(rows).map((i)=>{const r=rows[i];const hasSizes=r.montos&&Object.values(r.montos).some(v=>v!==""&&v!=null);return (<React.Fragment key={i}>
         <tr style={{borderBottom:openSize[i]?"none":"1px solid "+C.sep}}>
           <td style={td}><ClaveAutocomplete value={r.c} catalog={cat} cellStyle={cell} onChange={(v)=>onClave(i,v)} onPick={(x)=>set(i,{c:x.c,d:tx(rows[i].d)?rows[i].d:x.d})}/></td>
           <td style={td}><input value={r.d} onChange={e=>set(i,{d:e.target.value})} placeholder="Descripción" style={cell}/></td>
@@ -149,7 +149,7 @@ function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir,onFoco,editarProp}){
       </thead>
       <tbody>
         {rutas.map((r,ri)=>{const sug=sugerida(r);const _tl=tlDe(r);const _anc=tlAnchor[_tl]===ri;
-          return r.opciones.map((o,oi)=>{const surs=surOf(o.navScac,tlDe(r)),st=surs.filter(s=>esSubjectTo(s,dir)&&s.desplegar!==false).map(s=>s.c),bl=cargosBL(surs,dir),first=oi===0;
+          return ordenOpciones(r,eqs,dir,surOf).map((oi,pos)=>{const o=r.opciones[oi];const surs=surOf(o.navScac,tlDe(r)),st=surs.filter(s=>esSubjectTo(s,dir)&&s.desplegar!==false).map(s=>s.c),bl=cargosBL(surs,dir),first=pos===0;
             return (<tr key={ri+"-"+oi} id={(first&&_anc)?eidTarifa(_tl):undefined} style={{background:first?"#fff":C.soft}}>
               <td style={{...td,borderTop:first?"2px solid "+C.sep2:"none"}}>{first?<div style={{fontSize:12.5}}><b style={{color:C.slate}}>{r.pol}</b><span style={{color:"#C0C7CE",margin:"0 4px"}}>›</span><b style={{color:C.slate}}>{r.pod}</b><div style={{fontSize:10.5,color:C.label,marginTop:1,lineHeight:1.25}}>{r.origen?r.origen+" › ":""}{puertoNombre(r.pol)} › {puertoNombre(r.pod)}{r.destino?" › "+r.destino:""}</div></div>:<span style={{fontSize:11,color:C.label}}>↳ alt.</span>}</td>
               <td style={{...td,textAlign:"center",borderTop:first?"2px solid "+C.sep2:"none"}}>{first&&<span><Chip>{serviceMode(r)}</Chip>{transportMode(r)&&<div style={{fontSize:9,color:C.label,marginTop:2,fontWeight:"bold"}}>{transportMode(r)}</div>}</span>}</td>

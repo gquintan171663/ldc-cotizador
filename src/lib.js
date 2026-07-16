@@ -309,7 +309,28 @@ export const ovRazon=(v)=> (v&&typeof v==="object")?(v.razon||""):"";
 export const mejorOpcionEq=(r,ek,eqObj,dir,surOf)=>{ let bi=-1,bc=Infinity; (r.opciones||[]).forEach((o,i)=>{ const pr=(o.precios||{})[ek]; if(!pr||pr.base==null||pr.base===""||n(pr.base)<=0) return; const c=n(pr.base)+adicPorCont(surOf(o.navScac,tlDe(r)),eqObj,dir); if(c<bc){bc=c;bi=i;} }); return bi; };
 // Opción activa para un equipo: override guardado (por naviera) o la mejor por costo
 export const opcionActivaEq=(r,ek,eqObj,dir,surOf)=>{ const ov=ovNav(r.elegidaEq&&r.elegidaEq[ek]); if(ov){ const i=(r.opciones||[]).findIndex(o=>o.navScac===ov); if(i>=0) return i; } const b=mejorOpcionEq(r,ek,eqObj,dir,surOf); return b>=0?b:(r.elegida??0); };
-// Venta del equipo usando su opción activa
+// Orden de las navieras dentro de una ruta (sólo para mostrar; no altera índices):
+// 1) las que tienen costo, de menor a mayor (mismo criterio que 'mejor naviera':
+//    costo = base + recargos que suman, promediado entre los equipos cotizados)
+// 2) las que no tienen costo ($0 / no cotizan), al final en orden alfabético
+// Empate -> alfabético, para que el orden sea estable.
+export const ordenOpciones=(r,eqObjs,dir,surOf)=>{
+  const costoProm=(o)=>{ let sum=0,cnt=0; (eqObjs||[]).forEach(e=>{ const pr=(o.precios||{})[e.k]; if(!pr||pr.base==null||pr.base===""||n(pr.base)<=0) return; sum+=n(pr.base)+adicPorCont(surOf(o.navScac,tlDe(r)),e,dir); cnt++; }); return cnt?sum/cnt:0; };
+  const nav=(o)=>String(o.navScac||"").toUpperCase();
+  return (r.opciones||[]).map((o,i)=>i).sort((a,b)=>{
+    const oa=r.opciones[a], ob=r.opciones[b];
+    const ca=costoProm(oa), cb=costoProm(ob);
+    const ha=ca>0, hb=cb>0;
+    if(ha!==hb) return ha?-1:1;          // con costo antes que sin costo
+    if(ha&&hb&&ca!==cb) return ca-cb;    // ambos con costo: el más barato arriba
+    return nav(oa)<nav(ob)?-1:(nav(oa)>nav(ob)?1:0); // alfabético
+  });
+};
+// Orden de recargos para captura: primero Prepaid, luego Collect (estable dentro de cada grupo)
+export const ordenRecargos=(rows)=>{
+  const col=(s)=>String((s&&s.pago)||"prepaid").toLowerCase()==="collect"?1:0;
+  return (rows||[]).map((s,i)=>i).sort((a,b)=>col(rows[a])-col(rows[b]));
+};
 export const ventaEq=(r,eqObj,dir,surOf)=>{ const oi=opcionActivaEq(r,eqObj.k,eqObj,dir,surOf); const o=(r.opciones||[])[oi]||{}; const pr=(o.precios||{})[eqObj.k]||{}; return n(pr.base)+adicPorCont(surOf(o.navScac,tlDe(r)),eqObj,dir)+n(pr.profit); };
 // T.T. (rango) de las opciones activas de una ruta para sus equipos
 export const transitoRango=(r,eqObjs,dir,surOf)=>{ const set=new Set(); eqObjs.forEach(e=>{ const oi=opcionActivaEq(r,e.k,e,dir,surOf); const o=(r.opciones||[])[oi]; const t=o&&o.transito; if(t!=null&&String(t).trim()!=="") set.add(String(t).trim()); }); const arr=[...set]; if(!arr.length) return ""; if(arr.length===1) return arr[0]; const nums=arr.map(Number).filter(x=>!isNaN(x)); if(nums.length===arr.length){ return Math.min(...nums)+"–"+Math.max(...nums); } return arr.join(" / "); };
