@@ -29,12 +29,30 @@ export async function exportarExcel(st, opts={}){
     let excShown=0;
     actIdxs.forEach(oi=>{ const o=(r.opciones||[])[oi]||{navScac:""}; surOf(o.navScac,tl).forEach(s=>{ if(s.desplegar===false) return; const cell={d:s.d||s.c,monto:s.monto,moneda:s.moneda,basis:s.basis,pago:s.pago}; if(enPrecio(s,dir)){ if(!P.inc[s.c]) P.inc[s.c]=cell; } else { if(!P.exc[s.c]){ P.exc[s.c]=cell; excShown++; } } }); });
     const ttv=transitoRango(r,eqs,dir,surOf);
-    // Profit real = venta redondeada − base − recargos que suman (el redondeo lo absorbe el profit,
-    // igual que en el grid del cotizador; así el número cuadra con lo que ves en pantalla).
-    const cel=eqs.map(e=>{ const o=(r.opciones||[])[actByEq[e.k]]||{navScac:"",precios:{}}; const surs=surOf(o.navScac,tl); const p=(o.precios&&o.precios[e.k])||{}; const base=n(p.base); if(!base) return {v:null,pf:null}; const adic=adicPorCont(surs,e,dir); const v=round10(base+adic+n(p.profit)); return {v, pf:v-base-adic}; });
-    const ventas=cel.map(x=>x.v), profits=cel.map(x=>x.pf);
+    // Por equipo: venta y profit de la naviera nominada, y qué profit daría la 2ª opción
+    // más barata AL MISMO PRECIO DE VENTA (el cliente ve un solo precio; la 2ª naviera
+    // es el respaldo, así que lo útil es saber cuánto margen queda si te cambias a ella).
+    const cel=eqs.map(e=>{
+      const ai=actByEq[e.k];
+      const o=(r.opciones||[])[ai]||{navScac:"",precios:{}};
+      const p=(o.precios&&o.precios[e.k])||{};
+      const base=n(p.base);
+      if(!base) return {v:null,pf:null,nav:"",pf2:null,nav2:""};
+      const adic=adicPorCont(surOf(o.navScac,tl),e,dir);
+      const v=round10(base+adic+n(p.profit));
+      let b2=null;
+      (r.opciones||[]).forEach((o2,j)=>{
+        if(j===ai) return;
+        const p2=(o2.precios&&o2.precios[e.k])||{}; const bb=n(p2.base);
+        if(!bb) return;                                   // $0 = no cotizó, no cuenta
+        const c2=bb+adicPorCont(surOf(o2.navScac,tl),e,dir);
+        if(!b2||c2<b2.c) b2={c:c2,nav:o2.navScac||""};
+      });
+      return {v, pf:v-base-adic, nav:o.navScac||"", pf2:b2?(v-b2.c):null, nav2:b2?b2.nav:""};
+    });
+    const ventas=cel.map(x=>x.v), profits=cel.map(x=>x.pf), navs=cel.map(x=>x.nav), profits2=cel.map(x=>x.pf2), navs2=cel.map(x=>x.nav2);
     const tm=transportMode(r);
-    dataRows.push({ origen:r.origen||"", pol:tx(r.pol)?puertoLabel(r.pol):(r.pol||""), pod:tx(r.pod)?puertoLabel(r.pod):(r.pod||""), destino:r.destino||"", srvc:serviceMode(r)+(tm?(" / "+tm):""), tt:ttv?(ttv+" d"):"", ventas, profits, allin:excShown===0 });
+    dataRows.push({ origen:r.origen||"", pol:tx(r.pol)?puertoLabel(r.pol):(r.pol||""), pod:tx(r.pod)?puertoLabel(r.pod):(r.pod||""), destino:r.destino||"", srvc:serviceMode(r)+(tm?(" / "+tm):""), tt:ttv?(ttv+" d"):"", ventas, profits, navs, profits2, navs2, allin:excShown===0 });
   });
 
   // ===== Workbook =====
@@ -51,7 +69,7 @@ export async function exportarExcel(st, opts={}){
   if(showDest) cols.push({key:"destino",h:"Destination"});
   cols.push({key:"srvc",h:"Srvc./Transp."});
   cols.push({key:"tt",h:"T.T.",ctr:true});
-  eqs.forEach(e=>{ cols.push({key:"eq_"+e.k,h:e.t,num:true}); if(interno) cols.push({key:"pf_"+e.k,h:"Profit "+e.t,num:true,pf:true}); });
+  eqs.forEach(e=>{ cols.push({key:"eq_"+e.k,h:e.t,num:true}); if(interno){ cols.push({key:"pf_"+e.k,h:"Profit "+e.t,num:true,pf:true}); cols.push({key:"p2_"+e.k,h:"2ª opción "+e.t,num:true,p2:true}); } });
   cols.push({key:"term",h:"Términos",ctr:true});
   const NC=cols.length;
 
@@ -83,9 +101,15 @@ export async function exportarExcel(st, opts={}){
   dataRows.forEach(d=>{
     cols.forEach((c,i)=>{
       const cc=ws.getCell(R,i+1); cc.border=bd();
-      if(c.pf){ const idx=eqs.findIndex(e=>("pf_"+e.k)===c.key); const v=d.profits[idx];
-        if(v!=null){ cc.value=v; cc.numFmt="$#,##0"; const col = v<=0?RED : (v<250?YEL:GREEN); cc.font=font({bold:true,color:{argb:"FF"+col}}); cc.fill=fill(v<=0?REDBG:(v<250?YELBG:GREENBG)); setmax(c.key,"$"+v.toLocaleString()); }
-        else { cc.value="—"; cc.font=font({color:{argb:"FFC0C7CE"}}); }
+      if(c.pf||c.p2){ const pre=c.pf?"pf_":"p2_"; const idx=eqs.findIndex(e=>(pre+e.k)===c.key);
+        const v=c.pf?d.profits[idx]:d.profits2[idx]; const nav=(c.pf?d.navs[idx]:d.navs2[idx])||"";
+        if(v!=null){ const col=v<=0?RED:(v<250?YEL:GREEN);
+          cc.value=v;                                   // se queda numérico: puedes ordenar y filtrar
+          cc.numFmt='$#,##0'+(nav?'" ('+nav+')"':'');   // pero muestra el SCAC de la naviera
+          cc.font=font({bold:c.pf,color:{argb:"FF"+col}});
+          if(c.pf) cc.fill=fill(v<=0?REDBG:(v<250?YELBG:GREENBG));
+          setmax(c.key,"$"+v.toLocaleString()+(nav?" ("+nav+")":"")); }
+        else { cc.value="NA"; cc.font=font({color:{argb:"FFC0C7CE"}}); setmax(c.key,"NA"); }
         cc.alignment={horizontal:"right",vertical:"middle"}; }
       else if(c.key.indexOf("eq_")===0){ const idx=eqs.findIndex(e=>("eq_"+e.k)===c.key); const v=d.ventas[idx]; if(v!=null){ cc.value=v; cc.numFmt="$#,##0"; cc.font=font({bold:true,color:{argb:"FF"+RED}}); setmax(c.key,"$"+v.toLocaleString()); } else { cc.value="—"; cc.font=font({color:{argb:"FFC0C7CE"}}); } cc.alignment={horizontal:"right",vertical:"middle"}; }
       else if(c.key==="term"){ if(d.allin){ cc.value="ALL-IN"; cc.font=font({bold:true,size:8.5,color:{argb:"FF"+GREEN}}); cc.fill=fill(GREENBG); } cc.alignment={horizontal:"center",vertical:"middle"}; setmax(c.key,"ALL-IN"); }
