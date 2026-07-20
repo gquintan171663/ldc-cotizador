@@ -134,18 +134,19 @@ function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir,onFoco,editarProp}){
   const delOpt=(ri,oi)=>setRutas(rutas.map((r,i)=>i!==ri?r:{...r,opciones:r.opciones.filter((_,j)=>j!==oi)}));
   const totCosto=(o,r)=>eqs.reduce((a,e)=>a+n(getP(o,e.k).base)+adicPorCont(surOf(o.navScac,tlDe(r)),e,dir),0);
   const sugerida=(r)=>{if(!r.opciones.length)return -1;let bi=0,bc=Infinity;r.opciones.forEach((o,i)=>{const c=totCosto(o,r);if(c<bc){bc=c;bi=i;}});return bi;};
-  const th={fontSize:9.5,letterSpacing:.3,textTransform:"uppercase",color:"#fff",fontWeight:"bold",padding:"6px 5px",whiteSpace:"nowrap"};
+  const HDR=25; // alto aprox. de la 1ª fila del header (para anclar la 2ª debajo)
+  const th={fontSize:9.5,letterSpacing:.3,textTransform:"uppercase",color:"#fff",fontWeight:"bold",padding:"6px 5px",whiteSpace:"nowrap",position:"sticky",top:0,background:C.ink,zIndex:2};
   const td={padding:"5px 5px",verticalAlign:"middle",borderBottom:"1px solid "+C.sep};
   const cell={...inS,padding:"5px 5px",fontSize:12,width:54,textAlign:"right"};
-  return (<div style={{border:"1px solid "+C.sep2,borderRadius:10,overflow:"auto",background:"#fff"}}>
+  return (<div style={{border:"1px solid "+C.sep2,borderRadius:10,overflow:"auto",background:"#fff",maxHeight:"72vh"}}>
     <table style={{borderCollapse:"collapse",width:"100%",minWidth:620+eqs.length*178}}>
       <thead>
         <tr style={{background:C.ink}}>
-          <th rowSpan={2} style={{...th,textAlign:"left"}}>Ruta</th><th rowSpan={2} style={{...th,textAlign:"center"}}>Scope</th><th rowSpan={2} style={{...th,textAlign:"left"}}>Naviera</th><th rowSpan={2} style={{...th,textAlign:"center"}}>T.T.</th>
+          <th rowSpan={2} style={{...th,textAlign:"left",zIndex:3}}>Ruta</th><th rowSpan={2} style={{...th,textAlign:"center",zIndex:3}}>Scope</th><th rowSpan={2} style={{...th,textAlign:"left",zIndex:3}}>Naviera</th><th rowSpan={2} style={{...th,textAlign:"center",zIndex:3}}>T.T.</th>
           {eqs.map(e=><th key={e.k} colSpan={4} style={{...th,textAlign:"center",borderLeft:"1px solid #333"}}>{e.t} <span style={{color:"#9aa4ae",fontWeight:"normal"}}>· {e.teu} TEU</span></th>)}
-          <th rowSpan={2} style={{...th,textAlign:"left",borderLeft:"1px solid #333"}}>Subject to</th><th rowSpan={2} style={{...th,textAlign:"center"}}></th>
+          <th rowSpan={2} style={{...th,textAlign:"left",borderLeft:"1px solid #333",zIndex:3}}>Subject to</th><th rowSpan={2} style={{...th,textAlign:"center",zIndex:3}}></th>
         </tr>
-        <tr style={{background:C.ink}}>{eqs.map(e=>[<th key={e.k+"b"} style={{...th,textAlign:"right",borderLeft:"1px solid #333"}}>Base</th>,<th key={e.k+"r"} style={{...th,textAlign:"right"}}>Recargos</th>,<th key={e.k+"p"} style={{...th,textAlign:"right"}}>Profit</th>,<th key={e.k+"v"} style={{...th,textAlign:"right"}}>Venta</th>])}</tr>
+        <tr style={{background:C.ink}}>{eqs.map(e=>[<th key={e.k+"b"} style={{...th,top:HDR,textAlign:"right",borderLeft:"1px solid #333"}}>Base</th>,<th key={e.k+"r"} style={{...th,top:HDR,textAlign:"right"}}>Recargos</th>,<th key={e.k+"p"} style={{...th,top:HDR,textAlign:"right"}}>Profit</th>,<th key={e.k+"v"} style={{...th,top:HDR,textAlign:"right"}}>Venta</th>])}</tr>
       </thead>
       <tbody>
         {rutas.map((r,ri)=>{const sug=sugerida(r);const _tl=tlDe(r);const _anc=tlAnchor[_tl]===ri;
@@ -161,14 +162,15 @@ function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir,onFoco,editarProp}){
                 const _tip=o.navScac?(o.navScac+" · "+tlLabel(tlDe(r))+"\nRecargos que suman ("+e.t+"):\n"+(_summ.length?_summ.map(s=>"• "+(s.c||"")+"  "+money(_contrib(s),s.moneda||"USD")).join("\n"):"(ninguno)")+"\n= "+money(adic)):"";
                 const _ancla=(r.ventaAncla&&r.ventaAncla[e.k]!=null)?Number(r.ventaAncla[e.k]):null;
                 const _anchored=_ancla!=null;
-                const _profitR=_anchored?(_ancla-base-adic):prof;
-                const _pcol=_profitR<=0?"#C8202E":(_profitR<250?"#8A6D1F":"#0B7A3B");
+                const _hasBase=base>0;
+                const _profitR=_anchored?(_hasBase?(_ancla-base-adic):null):prof;
+                const _pcol=(_profitR==null)?C.label:(_profitR<=0?"#C8202E":(_profitR<250?"#8A6D1F":"#0B7A3B"));
                 const _locked=_anchored&&!editarProp;
                 const _modif=_anchored&&editarProp&&round10(venta)!==_ancla;
                 return [<td key={e.k+"b"} style={{...td,borderLeft:"1px solid "+C.sep2}}><input value={p.base||""} onFocus={ev=>ev.target.select()} onChange={ev=>setP(ri,oi,e.k,{base:ev.target.value})} inputMode="decimal" placeholder="0" style={cell}/></td>,
                   <td key={e.k+"r"} onClick={()=>{ if(o.navScac&&onFoco) onFoco(o.navScac,tlDe(r)); }} style={{...td,textAlign:"right",fontVariantNumeric:"tabular-nums",color:adic>0?C.slate:C.label,cursor:o.navScac?"pointer":"default",textDecoration:o.navScac?"underline dotted":"none"}} title={o.navScac?(_tip+"\n\n(clic: ir a editar estos recargos)"):""}>{o.navScac?money(adic):""}</td>,
                   ((_anchored && !editarProp)
-                    ? <td key={e.k+"p"} style={{...td,textAlign:"right"}} title={"Profit resultante = venta anclada − costo. Propuesta bloqueada en "+money(_ancla)+"."}><b style={{color:_pcol,fontSize:12.5}}>{money(_profitR)}</b><div style={{fontSize:8,color:C.label,whiteSpace:"nowrap"}}>🔒 propuesta</div></td>
+                    ? <td key={e.k+"p"} style={{...td,textAlign:"right"}} title={_hasBase?("Profit resultante = venta anclada − costo. Propuesta bloqueada en "+money(_ancla)+"."):"Sin tarifa base: no hay profit que calcular."}>{_profitR==null?<span style={{color:C.label,fontSize:12.5}}>—</span>:<><b style={{color:_pcol,fontSize:12.5}}>{money(_profitR)}</b><div style={{fontSize:8,color:C.label,whiteSpace:"nowrap"}}>🔒 propuesta</div></>}</td>
                     : <td key={e.k+"p"} style={td}><input value={p.profit||""} onFocus={ev=>ev.target.select()} onChange={ev=>setP(ri,oi,e.k,{profit:ev.target.value})} inputMode="decimal" placeholder="0" style={cell}/></td>),
                   <td key={e.k+"v"} onClick={()=>{ if(!base||base<=0) return; setRutas(rutas.map((x,i)=>{ if(i!==ri) return x; const ne={...(x.elegidaEq||{})}; if(oi===_best){ delete ne[e.k]; return {...x,elegidaEq:ne}; } const razon=prompt("Eliges una naviera que NO es la de menor costo para "+e.t+".\nEscribe la razón (tránsito, servicio, etc.):", ovRazon(ne[e.k])||""); if(razon===null) return x; ne[e.k]={nav:o.navScac,razon:(razon||"").trim()}; return {...x,elegidaEq:ne}; })); }} title={base?(_act?(_isBest?"Mejor costo para "+e.t:"Selección manual (no es el menor costo)"+(_razon?" — Razón: "+_razon:"")):("Clic para elegir "+(o.navScac||"esta naviera")+" en "+e.t)):""} style={{...td,textAlign:"right",fontVariantNumeric:"tabular-nums",cursor:base>0?"pointer":"default",background:_act?(_isBest?"#E8F5EC":"#FBF4E0"):"transparent"}}>{base?<span style={{display:"inline-flex",alignItems:"center",gap:5,justifyContent:"flex-end"}}><span style={{fontSize:12,color:_act?(_isBest?"#0B7A3B":"#8A6D1F"):"#C0C7CE"}}>{_act?"●":"○"}</span><span><b style={{color:_locked?C.ink:(_modif?"#C77800":(_act?(_isBest?"#0B7A3B":"#8A6D1F"):C.slate)),fontWeight:(_act||_anchored)?"bold":"normal"}}>{money(_locked?_ancla:round10(venta))}{_locked?<span style={{fontSize:8,marginLeft:2}}>🔒</span>:(_modif?<span style={{fontSize:8,marginLeft:2,color:"#C77800"}}>▲</span>:null)}</b><div style={{fontSize:9,color:C.label,whiteSpace:"nowrap"}}>{money(base+adic)}{_locked?<span> · <b style={{color:_pcol}}>{money(_profitR)}</b></span>:(_modif?<span> · antes {money(_ancla)}</span>:((prof>0&&(base+adic)>0)?" · "+Math.round(prof/(base+adic)*100)+"%":""))}</div></span></span>:""}</td>];})}
               <td style={{...td,borderLeft:"1px solid "+C.sep2}}>{o.navScac?(st.length?<span style={{fontSize:11}}><b style={{color:C.slate}}>{st.join(" · ")}</b>{bl>0&&<div style={{color:C.label,marginTop:1}}>+ BL {money(bl)}</div>}</span>:<Chip kind="green">ALL-IN</Chip>):""}</td>
