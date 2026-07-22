@@ -350,7 +350,46 @@ export const PLANTILLA_RECARGOS=()=>[
 // ====== Importador de tarifario del cliente (Excel Omnisource-style) ======
 const _NAVALIAS={"hapag":"HLCU","hapag-lloyd":"HLCU","hpl":"HLCU","cma":"CMDU","cma cgm":"CMDU","cmacgm":"CMDU","maersk":"MAEU","msk":"MAEU","msc":"MSCU","one":"ONEY","cosco":"COSU","evergreen":"EGLV","hmm":"HDMU","yang ming":"YMLU","zim":"ZIMU","oocl":"OOLU","wan hai":"WHLC","hamburg sud":"SUDU","matson":"MATS"};
 export const scacTarifario=(name)=>{ const k=String(name||"").trim().toLowerCase(); return _NAVALIAS[k]||String(name||"").trim().toUpperCase().slice(0,4); };
-export const codigoPuerto=(name)=>{ let s=String(name||"").trim(); if(!s) return ""; s=s.replace(/,\s*[A-Za-z]{2}\s*$/,"").trim(); const nu=_pnorm(s); const p=PUERTOS.find(x=>x.code===s.toUpperCase()||_pnorm(x.name)===nu); return p?p.code:String(name||"").trim(); };
+// Nombres que difieren del catálogo UN/LOCODE (inglés vs local, o sin código propio).
+// Todos verificados contra el catálogo.
+const _PALIAS={"genoa":"ITGOA","genova":"ITGOA","antwerp":"BEANR","naples":"ITNAP","leghorn":"ITLIV",
+ "lisbon":"PTLIS","copenhagen":"DKCPH","gothenburg":"SEGOT","ho chi minh":"VNSGN","saigon":"VNSGN",
+ "nhava sheva":"INNSA","jawaharlal nehru":"INNSA","jebel ali":"AEJEA",
+ "port klang":"MYPKG","west port klang":"MYPKG","westport":"MYPKG","westport klang":"MYPKG",
+ "north port klang":"MYLPK","northport":"MYLPK","northport klang":"MYLPK"};
+// Resuelve "nombre de puerto" -> código UN/LOCODE.
+// El sufijo de país (", MX") NO se descarta: se usa para desambiguar, porque hay
+// nombres repetidos en varios países (Manzanillo existe en MX, CU, DO y PA).
+export const codigoPuerto=(name)=>{
+  const raw=String(name||"").trim(); if(!raw) return "";
+  if(/^[A-Za-z]{5}$/.test(raw)){ const c=raw.toUpperCase(); if(PUERTOS.some(x=>x.code===c)) return c; }
+  let s=raw, cc="";
+  const m=s.match(/,\s*([A-Za-z]{2})\s*$/);
+  if(m){ cc=m[1].toUpperCase(); s=s.slice(0,m.index).trim(); }
+  const ali=_PALIAS[s.toLowerCase()]; if(ali) return ali;
+  const nu=_pnorm(s);
+  // si viene el país, sólo se busca ahí (evita traer el puerto homónimo de otro país)
+  const pool=cc?PUERTOS.filter(x=>x.country===cc):PUERTOS;
+  const nn=(x)=>_pnorm(x.name);
+  let p=pool.find(x=>nn(x)===nu);                                              // exacto
+  if(!p) p=pool.find(x=>nn(x)===nu+" PT"||nn(x)===nu+" PORT");                 // "Sanshan pt", "Gaoming Pt"
+  if(!p) p=pool.find(x=>nn(x).split("/")[0].trim()===nu);                      // "Hakata/Fukuoka", "Moji/Kitakyushu"
+  if(!p) p=pool.find(x=>nn(x).split(" (")[0].trim()===nu);                     // "Penang (Georgetown)"
+  if(!p) p=pool.find(x=>nn(x).startsWith(nu+","));                             // "Pasir Gudang, Johor"
+  if(!p&&cc) p=pool.find(x=>nn(x).startsWith(nu+" ")&&nn(x).length<=nu.length+6);
+  return p?p.code:raw;
+};
+// Normaliza la ciudad de origen/destino al formato del catálogo ("Ciudad, CC"),
+// para que coincida con el selector. Acepta nombres en inglés y sin acentos.
+const _CIUDALIAS={"mexico city":"Ciudad de México","mexico df":"Ciudad de México","cdmx":"Ciudad de México","ciudad de mexico":"Ciudad de México","monterrey nl":"Monterrey","guadalajara jal":"Guadalajara"};
+export const ciudadNorm=(name)=>{
+  const raw=String(name||"").trim(); if(!raw) return "";
+  if(/,\s*[A-Za-z]{2}$/.test(raw)) return raw;                 // ya viene "Ciudad, CC"
+  const ali=_CIUDALIAS[raw.toLowerCase()]||raw;
+  const nu=_pnorm(ali);
+  const c=CIUDADES.find(x=>_pnorm(x.city)===nu);
+  return c?(c.city+", "+c.country):raw;
+};
 // Abreviaturas del tarifario para POL y modo (columna "Via" tipo "Mzo Truck", "Lazaro R+T")
 const _POLABBR={"mzo":"MXZLO","manzanillo":"MXZLO","lazaro":"MXLZC","lzc":"MXLZC","ler":"MXLZC","ver":"MXVER","veracruz":"MXVER","altamira":"MXATM","atm":"MXATM","tam":"MXTAM","tampico":"MXTAM"};
 const _MODEABBR={"r+t":"Rail+Truck","rail+truck":"Rail+Truck","rt":"Rail+Truck","truck":"All Truck","alltruck":"All Truck","rail":"Rail Ramp","ramp":"Rail Ramp","barge":"Barge"};
@@ -365,6 +404,46 @@ export function parseTarifario(rows){
   const blocks=[];
   for(let i=0;i<H.length;i++){ const h=H[i].toLowerCase(); const m=h.match(/^(.+?)\s*20\s*$/); if(m && !h.includes("cliente") && !h.startsWith("pft")){ blocks.push({name:H[i].replace(/\s*20\s*$/i,"").trim(), b20:i, p20:i+1, b40:i+2, p40:i+3, via:i+4}); } }
   const num=(v)=>{ if(v==null) return null; const s=String(v).trim(); if(s===""||s.toUpperCase()==="X") return null; const x=parseFloat(s.replace(/[,$\s]/g,"")); return isNaN(x)?null:x; };
+
+  // ---- Formato LARGO: una fila por (ruta × naviera), con columna "Carrier" y tarifas base ----
+  // Customer | Origen | POL | POD | Destination | T.T. | Tarifa Base 20' | Tarifa Base 40'/40HC | Carrier | Tradelane | Srvc. Mode | Transp Mode
+  const cCarr=idx(["carrier","naviera"]);
+  if(cCarr>=0 && !blocks.length && cPol>=0 && cPod>=0){
+    let c20=-1,c40=-1,cHC=-1;
+    H.forEach((h,i)=>{ const t=h.toLowerCase(); if(!/tarifa|base|rate/.test(t)) return;
+      if(/40\s*hc/.test(t)){ if(cHC<0) cHC=i; } else if(/40/.test(t)){ if(c40<0) c40=i; }
+      if(/20/.test(t)&&c20<0) c20=i; });
+    const cTT=idx(["t.t","tt","transit","tiempo"]);
+    const modo=(t)=>{ const s=String(t||"").trim(); return _MODEABBR[s.toLowerCase()]||_MODEABBR[s.toLowerCase().replace(/\s/g,"")]||s; };
+    const map=new Map();
+    for(let r=1;r<rows.length;r++){ const row=rows[r]||[];
+      const polR=String(row[cPol]==null?"":row[cPol]).trim(), podR=String(row[cPod]==null?"":row[cPod]).trim();
+      if(!polR&&!podR) continue;
+      const srvc=String((cSrvc>=0?row[cSrvc]:"")||"").trim().toUpperCase();
+      const transp=String((cTr>=0?row[cTr]:"")||"").trim();
+      let pre="",on="";
+      if(srvc.startsWith("DR")) pre=modo(transp.includes("/")?transp.split("/")[0]:transp);
+      if(srvc.endsWith("DR"))  on=modo(transp.includes("/")?(transp.split("/")[1]||""):transp);
+      const pol=codigoPuerto(polR), pod=codigoPuerto(podR);
+      const origen=(cOri>=0&&srvc.startsWith("DR"))?ciudadNorm(String(row[cOri]||"").trim()):"";
+      const destino=(cDest>=0&&srvc.endsWith("DR"))?ciudadNorm(String(row[cDest]||"").trim()):"";
+      const key=origen+"|"+pol+"|"+pod;
+      if(!map.has(key)) map.set(key,{origen,precarriage_mode:pre,pol,pod,oncarriage_mode:on,destino,opciones:[],elegida:0});
+      const R=map.get(key);
+      const scac=scacTarifario(String(row[cCarr]||"").trim()); if(!scac) continue;
+      const b20=num(row[c20]), bhc=num(cHC>=0?row[cHC]:null), b40=num(c40>=0?row[c40]:null);
+      const bfin=(bhc!=null)?bhc:b40;                 // 40HC manda; si viene vacía, se usa la de 40'
+      const precios={};
+      if(b20!=null)  precios["20DV"]={base:String(b20),profit:""};
+      if(bfin!=null) precios["40HC"]={base:String(bfin),profit:""};
+      const tt=cTT>=0?String(row[cTT]==null?"":row[cTT]).trim():"";
+      const ex=R.opciones.find(o=>o.navScac===scac);
+      if(ex){ Object.assign(ex.precios,precios); if(tt&&!ex.transito) ex.transito=tt; }
+      else R.opciones.push({navScac:scac,transito:tt,precios});
+    }
+    return [...map.values()];
+  }
+
   const out=[];
   for(let r=1;r<rows.length;r++){ const row=rows[r]||[];
     // opciones por naviera (mismo en ambos formatos)
