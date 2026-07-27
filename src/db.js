@@ -526,3 +526,71 @@ export async function deleteImportadas({ onlyBorradores=true }={}){
   for(const v of (data||[])){ const r=await deleteVersion(v.id); if(r.error) errs.push(r.error); else n++; }
   return { borradas:n, errores:errs };
 }
+
+// ===========================================================================
+// FLETES BASE — catálogo consultable (repositorio independiente)
+// ===========================================================================
+const _fbClean=(r)=>({
+  cliente_nombre:r.cliente_nombre||"", origen:r.origen||"", pol:r.pol||"", pod:r.pod||"", destino:r.destino||"",
+  equipo:r.equipo||"", naviera:r.naviera||"", producto:r.producto||"", flete_base:Number(r.flete_base)||0,
+  moneda:r.moneda||"USD", tradelane:r.tradelane||"", precarriage_mode:r.precarriage_mode||"",
+  oncarriage_mode:r.oncarriage_mode||"", tt:r.tt||"", vig_desde:r.vig_desde||null, vig_hasta:r.vig_hasta||null, notas:r.notas||""
+});
+
+// Alta/actualización masiva desde el Excel del catálogo.
+// Resuelve cliente_id por nombre (si existe en clientes) y hace upsert por la llave natural.
+export async function upsertFletesBase(registros){
+  const regs=(registros||[]).map(_fbClean);
+  if(!regs.length) return { guardados:0, errores:["No hay registros para guardar."] };
+  // resolver cliente_id por nombre (una sola consulta)
+  const nombres=[...new Set(regs.map(r=>r.cliente_nombre).filter(Boolean))];
+  const idPorNombre={};
+  if(nombres.length){
+    const { data } = await supabase.from("clientes").select("id,nombre");
+    (data||[]).forEach(c=>{ idPorNombre[String(c.nombre||"").trim().toLowerCase()]=c.id; });
+  }
+  const filas=regs.map(r=>({ ...r, cliente_id: idPorNombre[r.cliente_nombre.trim().toLowerCase()]||null }));
+  // upsert por la llave natural (misma combinación => actualiza)
+  const CH=200; let ok=0; const errs=[];
+  for(let i=0;i<filas.length;i+=CH){
+    const chunk=filas.slice(i,i+CH);
+    const { error } = await supabase.from("fletes_base")
+      .upsert(chunk, { onConflict:"cliente_id,origen,pol,pod,destino,equipo,naviera,producto,vig_desde", ignoreDuplicates:false });
+    if(error) errs.push(error.message); else ok+=chunk.length;
+  }
+  return { guardados:ok, errores:errs };
+}
+
+export async function listFletesBase(){
+  const out=[]; const PAGE=1000;
+  for(let from=0;;from+=PAGE){
+    const { data, error } = await supabase.from("fletes_base")
+      .select("*").order("cliente_nombre").order("pol").order("pod").order("equipo").range(from, from+PAGE-1);
+    if(error) return { rows:[], error:error.message };
+    out.push(...(data||[])); if(!data||data.length<PAGE) break;
+  }
+  return { rows:out };
+}
+
+export async function deleteFleteBase(id){
+  const { error } = await supabase.from("fletes_base").delete().eq("id",id);
+  return { error: error?error.message:null };
+}
+export async function deleteFletesBaseTodos(){
+  const { error } = await supabase.from("fletes_base").delete().neq("id","00000000-0000-0000-0000-000000000000");
+  return { error: error?error.message:null };
+}
+
+// Coincidencias para el enganche en el cotizador (general, sin importar cliente):
+// devuelve, por (origen|pol|pod|destino|equipo), los fletes base que aplican.
+export async function matchFletesBase(claves){
+  if(!claves||!claves.length) return {};
+  const pols=[...new Set(claves.map(k=>k.pol).filter(Boolean))];
+  if(!pols.length) return {};
+  const { data } = await supabase.from("fletes_base").select("*").in("pol",pols);
+  const norm=(s)=>String(s||"").trim().toUpperCase();
+  const key=(o)=>[norm(o.origen),norm(o.pol),norm(o.pod),norm(o.destino),norm(o.equipo)].join("|");
+  const map={};
+  (data||[]).forEach(f=>{ const k=key(f); (map[k]=map[k]||[]).push(f); });
+  return map;
+}

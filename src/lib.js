@@ -395,6 +395,54 @@ const _POLABBR={"mzo":"MXZLO","manzanillo":"MXZLO","lazaro":"MXLZC","lzc":"MXLZC
 const _MODEABBR={"r+t":"Rail+Truck","rail+truck":"Rail+Truck","rt":"Rail+Truck","truck":"All Truck","alltruck":"All Truck","rail":"Rail Ramp","ramp":"Rail Ramp","barge":"Barge"};
 const _parseVia=(v)=>{ const t=String(v||"").trim().split(/\s+/).filter(Boolean); if(!t.length) return {pol:"",mode:""}; const pol=_POLABBR[t[0].toLowerCase()]||t[0]; const rest=t.slice(1).join(" ").toLowerCase(); const mode=_MODEABBR[rest]||_MODEABBR[rest.replace(/\s/g,"")]||(rest?t.slice(1).join(" "):""); return {pol,mode}; };
 // rows = arreglo de arreglos (fila 0 = encabezados). Devuelve rutas con opciones por naviera.
+// ====== Importador del CATÁLOGO de fletes base (formato plano + Producto + Vigencia) ======
+// Columnas: Customer, Origen, POL, POD, Destination, T.T., Tarifa Base 20', Tarifa Base 40'/40HC,
+//           Carrier, Tradelane, Srvc. Mode, Transp Mode, Producto, Vig desde, Vig hasta
+// Devuelve registros PLANOS: uno por (ruta × naviera × equipo con base).
+export function parseFletesBase(rows){
+  if(!rows||!rows.length) return [];
+  const H=(rows[0]||[]).map(x=>String(x==null?"":x).trim());
+  const idx=(names)=>{ for(let i=0;i<H.length;i++){ const h=H[i].toLowerCase(); if(names.some(nn=>h===nn||h.startsWith(nn))) return i; } return -1; };
+  const cCust=idx(["customer","cliente"]), cOri=idx(["origen","origin"]), cPol=idx(["pol"]), cPod=idx(["pod"]),
+        cDest=idx(["destination","destino"]), cTT=idx(["t.t","tt","transit"]), cCarr=idx(["carrier","naviera"]),
+        cTL=idx(["tradelane"]), cSrvc=idx(["srvc","service","scope"]), cTr=idx(["transp","transport"]),
+        cProd=idx(["producto","product","commodity"]), cVd=idx(["vig desde","vigencia desde","desde","valid from"]),
+        cVh=idx(["vig hasta","vigencia hasta","hasta","valid to"]);
+  let c20=-1,c40=-1,cHC=-1;
+  H.forEach((h,i)=>{ const t=h.toLowerCase(); if(!/tarifa|base|rate/.test(t)) return; if(/40\s*hc/.test(t)){ if(cHC<0)cHC=i; } else if(/40/.test(t)){ if(c40<0)c40=i; } if(/20/.test(t)&&c20<0)c20=i; });
+  const num=(v)=>{ if(v==null) return null; const s=String(v).trim(); if(s===""||s.toUpperCase()==="X") return null; const x=parseFloat(s.replace(/[,$\s]/g,"")); return isNaN(x)?null:x; };
+  const fecha=(v)=>{ if(v==null||v==="") return null; if(v instanceof Date) return v.toISOString().slice(0,10); const s=String(v).trim();
+    let m=s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/); if(m) return m[1]+"-"+m[2].padStart(2,"0")+"-"+m[3].padStart(2,"0");
+    m=s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/); if(m) return m[3]+"-"+m[2].padStart(2,"0")+"-"+m[1].padStart(2,"0"); return null; };
+  const modo=(t)=>{ const s=String(t||"").trim(); return _MODEABBR[s.toLowerCase()]||_MODEABBR[s.toLowerCase().replace(/\s/g,"")]||s; };
+  const out=[];
+  for(let r=1;r<rows.length;r++){ const row=rows[r]||[];
+    const polR=String(row[cPol]==null?"":row[cPol]).trim(), podR=String(row[cPod]==null?"":row[cPod]).trim();
+    if(!polR&&!podR) continue;
+    const naviera=scacTarifario(String((cCarr>=0?row[cCarr]:"")||"").trim()); if(!naviera) continue;
+    const srvc=String((cSrvc>=0?row[cSrvc]:"")||"").trim().toUpperCase();
+    const transp=String((cTr>=0?row[cTr]:"")||"").trim();
+    const pre=srvc.startsWith("DR")?modo(transp.includes("/")?transp.split("/")[0]:transp):"";
+    const on=srvc.endsWith("DR")?modo(transp.includes("/")?(transp.split("/")[1]||""):transp):"";
+    const base={
+      cliente_nombre:String((cCust>=0?row[cCust]:"")||"").trim(),
+      origen:(cOri>=0&&srvc.startsWith("DR"))?ciudadNorm(String(row[cOri]||"").trim()):"",
+      pol:codigoPuerto(polR), pod:codigoPuerto(podR),
+      destino:(cDest>=0&&srvc.endsWith("DR"))?ciudadNorm(String(row[cDest]||"").trim()):"",
+      naviera, producto:String((cProd>=0?row[cProd]:"")||"").trim(),
+      tradelane:String((cTL>=0?row[cTL]:"")||"").trim(),
+      precarriage_mode:pre, oncarriage_mode:on,
+      tt:cTT>=0?String(row[cTT]==null?"":row[cTT]).trim():"",
+      vig_desde:cVd>=0?fecha(row[cVd]):null, vig_hasta:cVh>=0?fecha(row[cVh]):null, moneda:"USD"
+    };
+    const b20=num(c20>=0?row[c20]:null), bhc=num(cHC>=0?row[cHC]:null), b40=num(c40>=0?row[c40]:null);
+    const bfin=(bhc!=null)?bhc:b40;
+    if(b20!=null)  out.push({...base,equipo:"20DV",flete_base:b20});
+    if(bfin!=null) out.push({...base,equipo:"40HC",flete_base:bfin});
+  }
+  return out;
+}
+
 export function parseTarifario(rows){
   if(!rows||!rows.length) return [];
   const H=(rows[0]||[]).map(x=>String(x==null?"":x).trim());

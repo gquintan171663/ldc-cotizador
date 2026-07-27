@@ -1,0 +1,103 @@
+import React, { useState, useEffect, useRef, useMemo } from "react";
+import * as XLSX from "xlsx";
+import { C, puertoNombre, parseFletesBase } from "./lib.js";
+import { Btn } from "./ui.jsx";
+import { listFletesBase, upsertFletesBase, deleteFleteBase, deleteFletesBaseTodos } from "./db.js";
+
+const hoyISO=()=>new Date().toISOString().slice(0,10);
+const fFecha=(s)=>{ if(!s) return ""; try{return new Date(s+"T12:00:00").toLocaleDateString("es-MX",{day:"2-digit",month:"short",year:"2-digit"});}catch{return String(s);} };
+const vigHoy=(a,b)=>{ const h=hoyISO(); if(a&&a>h) return false; if(b&&b<h) return false; return (a||b)?true:false; };
+
+export function FletesBase({ role }){
+  const [rows,setRows]=useState(null);
+  const [q,setQ]=useState("");
+  const [busy,setBusy]=useState(false);
+  const [msg,setMsg]=useState("");
+  const fileRef=useRef(null);
+  const isAdmin = role==="admin";
+
+  const reload=()=>{ setRows(null); listFletesBase().then(({rows,error})=>{ if(error){ setMsg("Error al cargar: "+error); setRows([]); } else setRows(rows||[]); }); };
+  useEffect(()=>{ reload(); },[]);
+
+  const onFile=async(e)=>{
+    const f=e.target.files&&e.target.files[0]; if(e.target) e.target.value=""; if(!f) return;
+    setBusy(true); setMsg("");
+    try{
+      const wb=XLSX.read(await f.arrayBuffer(),{type:"array",cellDates:true});
+      const sheet=wb.SheetNames[0];
+      const aoa=XLSX.utils.sheet_to_json(wb.Sheets[sheet],{header:1,defval:null});
+      const regs=parseFletesBase(aoa);
+      if(!regs.length){ setMsg("No encontré fletes base en el archivo. Revisa que tenga las columnas POL, POD, Carrier y las tarifas."); setBusy(false); return; }
+      const { guardados, errores }=await upsertFletesBase(regs);
+      setMsg((errores.length?"⚠ ":"✓ ")+"Guardados "+guardados+" flete(s) base"+(errores.length?(" · avisos: "+errores.slice(0,2).join(" · ")):"")+".");
+      reload();
+    }catch(ex){ setMsg("No se pudo procesar: "+ex.message); }
+    setBusy(false);
+  };
+
+  const bajar=()=>{
+    const data=(rows||[]);
+    const head=["Customer","Origen","POL","POL nombre","POD","POD nombre","Destino","Equipo","Naviera","Producto","Flete Base","Moneda","Tradelane","Pre-carriage","On-carriage","T.T.","Vig desde","Vig hasta","Vigente hoy"];
+    const aoa=[head,...data.map(r=>[r.cliente_nombre,r.origen,r.pol,puertoNombre(r.pol),r.pod,puertoNombre(r.pod),r.destino,r.equipo,r.naviera,r.producto,r.flete_base,r.moneda,r.tradelane,r.precarriage_mode,r.oncarriage_mode,r.tt,r.vig_desde||"",r.vig_hasta||"",vigHoy(r.vig_desde,r.vig_hasta)?"Sí":"No"])];
+    const ws=XLSX.utils.aoa_to_sheet(aoa); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Fletes base");
+    XLSX.writeFile(wb,"Catalogo_fletes_base_"+hoyISO()+".xlsx");
+  };
+
+  const borrar=async(id)=>{ if(!confirm("¿Eliminar este flete base del catálogo?")) return; const {error}=await deleteFleteBase(id); if(error) alert(error); else reload(); };
+  const vaciar=async()=>{ if(!confirm("¿Vaciar TODO el catálogo de fletes base? Esta acción no se puede deshacer.")) return; const {error}=await deleteFletesBaseTodos(); if(error) alert(error); else reload(); };
+
+  const filtered=useMemo(()=>{ const s=q.trim().toLowerCase(); if(!s) return rows||[]; return (rows||[]).filter(r=>(r.cliente_nombre+" "+r.pol+" "+r.pod+" "+puertoNombre(r.pol)+" "+puertoNombre(r.pod)+" "+r.naviera+" "+r.producto+" "+r.origen+" "+r.destino+" "+r.tradelane).toLowerCase().includes(s)); },[rows,q]);
+
+  const th={fontSize:9,letterSpacing:.4,textTransform:"uppercase",color:"#fff",fontWeight:"bold",padding:"7px 8px",textAlign:"left",whiteSpace:"nowrap",background:C.slate,position:"sticky",top:0};
+  const td={padding:"6px 8px",borderBottom:"1px solid "+C.sep,fontSize:12,whiteSpace:"nowrap"};
+
+  return (<div style={{maxWidth:1240,margin:"0 auto"}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:14,gap:12,flexWrap:"wrap"}}>
+      <div>
+        <div style={{fontSize:16,fontWeight:"bold",color:C.ink}}>Catálogo de fletes base</div>
+        <div style={{fontSize:12,color:C.label,maxWidth:620}}>Repositorio de referencia. Sube tu Excel de fletes base; sirve para consultar y, dentro de una cotización, se te avisa si hay coincidencias — pero nunca se aplica solo.</div>
+      </div>
+      <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
+        <input type="file" ref={fileRef} accept=".xlsx,.xls" style={{display:"none"}} onChange={onFile}/>
+        <Btn kind="primary" small onClick={()=>fileRef.current&&fileRef.current.click()} disabled={busy}>{busy?"Procesando…":"⇪ Subir catálogo (Excel)"}</Btn>
+        <Btn kind="ghost" small onClick={bajar} disabled={!(rows&&rows.length)}>⬇ Bajar catálogo</Btn>
+        <Btn kind="ghost" small onClick={reload}>↻</Btn>
+        {isAdmin&&rows&&rows.length>0&&<Btn kind="ghost" small onClick={vaciar}>Vaciar</Btn>}
+      </div>
+    </div>
+
+    {msg&&<div style={{background:msg[0]==="⚠"||msg.startsWith("No")||msg.startsWith("Error")?"#FCEEF0":"#E8F5EC",border:"1px solid "+C.sep2,borderRadius:8,padding:"8px 12px",fontSize:12.5,color:C.slate,marginBottom:12}}>{msg}</div>}
+
+    <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:10}}>
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar cliente, puerto, naviera, producto…" style={{padding:"8px 11px",border:"1px solid "+C.sep2,borderRadius:6,fontSize:13,width:340}}/>
+      {rows&&<span style={{fontSize:12,color:C.label}}>{filtered.length} de {rows.length} registro(s)</span>}
+    </div>
+
+    {rows===null?<div style={{color:C.label,fontSize:13,padding:20}}>Cargando…</div>:
+     rows.length===0?<div style={{border:"1px solid "+C.sep2,borderRadius:10,background:"#fff",padding:28,textAlign:"center",color:C.label,fontSize:13}}>Catálogo vacío. Sube un Excel de fletes base para empezar.</div>:(
+      <div style={{border:"1px solid "+C.sep2,borderRadius:10,overflow:"auto",background:"#fff",maxHeight:"70vh"}}>
+        <table style={{width:"100%",borderCollapse:"collapse"}}>
+          <thead><tr>{["Cliente","Origen","POL","POD","Destino","Eq.","Naviera","Producto","Flete base","Tradelane","Vigencia",""].map((h,i)=><th key={i} style={th}>{h}</th>)}</tr></thead>
+          <tbody>
+            {filtered.map(r=>{const viv=vigHoy(r.vig_desde,r.vig_hasta);const venc=r.vig_hasta&&r.vig_hasta<hoyISO();
+              return (<tr key={r.id}>
+                <td style={{...td,fontWeight:"bold",color:C.slate}}>{r.cliente_nombre||"—"}</td>
+                <td style={td}>{r.origen||"—"}</td>
+                <td style={td} title={puertoNombre(r.pol)}>{r.pol}</td>
+                <td style={td} title={puertoNombre(r.pod)}>{r.pod}</td>
+                <td style={td}>{r.destino||"—"}</td>
+                <td style={td}>{r.equipo}</td>
+                <td style={{...td,fontWeight:"bold"}}>{r.naviera}</td>
+                <td style={td}>{r.producto||"—"}</td>
+                <td style={{...td,textAlign:"right",fontWeight:"bold",color:C.red,fontVariantNumeric:"tabular-nums"}}>${Number(r.flete_base).toLocaleString()}</td>
+                <td style={{...td,fontSize:11,color:C.label}}>{r.tradelane||"—"}</td>
+                <td style={{...td,fontSize:11,color:venc?C.label:C.slate}}>{(r.vig_desde||r.vig_hasta)?(fFecha(r.vig_desde)+" – "+(r.vig_hasta?fFecha(r.vig_hasta):"…")):"—"}{viv&&<span style={{marginLeft:6,fontSize:9.5,fontWeight:"bold",color:C.green,background:C.greenBg,border:"1px solid "+C.sep2,borderRadius:4,padding:"1px 5px"}}>vigente</span>}</td>
+                <td style={{...td,textAlign:"right"}}><span onClick={()=>borrar(r.id)} title="Eliminar" style={{cursor:"pointer",color:C.label,fontWeight:"bold"}}>🗑</span></td>
+              </tr>);
+            })}
+          </tbody>
+        </table>
+      </div>
+    )}
+  </div>);
+}
