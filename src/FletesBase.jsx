@@ -2,34 +2,46 @@ import React, { useState, useEffect, useRef, useMemo } from "react";
 import * as XLSX from "xlsx";
 import { C, puertoNombre, parseFletesBase } from "./lib.js";
 import { Btn } from "./ui.jsx";
-import { listFletesBase, upsertFletesBase, deleteFleteBase, deleteFletesBaseTodos } from "./db.js";
+import { listFletesBase, upsertFletesBase, deleteFleteBase, deleteFletesBaseTodos, saveFletesArchivo, listFletesArchivos, getFletesArchivo } from "./db.js";
+
+// Encabezados del template del catálogo (deben coincidir con lo que lee parseFletesBase)
+const HDR_TEMPLATE=["Origen","POL","POD","Destination","T.T.","Tarifa Base 20'","Tarifa Base 40'/40HC","Carrier","Tradelane","Srvc. Mode","Transp Mode","Producto","Vig desde","Vig hasta"];
+const _b64FromBuffer=(buf)=>{ let bin=""; const bytes=new Uint8Array(buf); const CH=0x8000; for(let i=0;i<bytes.length;i+=CH){ bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+CH)); } return btoa(bin); };
+const _descargarB64=(b64,nombre)=>{ const bin=atob(b64); const arr=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i); const blob=new Blob([arr],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=nombre||"fletes_base.xlsx"; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); };
 
 const hoyISO=()=>new Date().toISOString().slice(0,10);
-const fFecha=(s)=>{ if(!s) return ""; try{return new Date(s+"T12:00:00").toLocaleDateString("es-MX",{day:"2-digit",month:"short",year:"2-digit"});}catch{return String(s);} };
+const fFecha=(s)=>{ if(!s) return ""; try{ const d=String(s).includes("T")?new Date(s):new Date(s+"T12:00:00"); return d.toLocaleDateString("es-MX",{day:"2-digit",month:"short",year:"2-digit"});}catch{return String(s);} };
 const vigHoy=(a,b)=>{ const h=hoyISO(); if(a&&a>h) return false; if(b&&b<h) return false; return (a||b)?true:false; };
 
 export function FletesBase({ role }){
   const [rows,setRows]=useState(null);
+  const [versiones,setVersiones]=useState([]);
   const [q,setQ]=useState("");
   const [busy,setBusy]=useState(false);
   const [msg,setMsg]=useState("");
   const fileRef=useRef(null);
   const isAdmin = role==="admin";
 
-  const reload=()=>{ setRows(null); listFletesBase().then(({rows,error})=>{ if(error){ setMsg("Error al cargar: "+error); setRows([]); } else setRows(rows||[]); }); };
+  const reload=()=>{ setRows(null); listFletesBase().then(({rows,error})=>{ if(error){ setMsg("Error al cargar: "+error); setRows([]); } else setRows(rows||[]); }); listFletesArchivos().then(({rows})=>setVersiones(rows||[])); };
   useEffect(()=>{ reload(); },[]);
+
+  const bajarPlantilla=()=>{ const ws=XLSX.utils.aoa_to_sheet([HDR_TEMPLATE]); ws["!cols"]=HDR_TEMPLATE.map(()=>({wch:15})); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Fletes base"); XLSX.writeFile(wb,"Plantilla_fletes_base.xlsx"); };
+  const bajarVersion=async(v)=>{ const { b64, nombre, error }=await getFletesArchivo(v.id); if(error||!b64){ alert("No se pudo descargar: "+(error||"vacío")); return; } _descargarB64(b64, nombre||v.nombre); };
 
   const onFile=async(e)=>{
     const f=e.target.files&&e.target.files[0]; if(e.target) e.target.value=""; if(!f) return;
     setBusy(true); setMsg("");
     try{
-      const wb=XLSX.read(await f.arrayBuffer(),{type:"array",cellDates:true});
+      const buf=await f.arrayBuffer();
+      const wb=XLSX.read(buf,{type:"array",cellDates:true});
       const sheet=wb.SheetNames[0];
       const aoa=XLSX.utils.sheet_to_json(wb.Sheets[sheet],{header:1,defval:null});
       const regs=parseFletesBase(aoa);
       if(!regs.length){ setMsg("No encontré fletes base en el archivo. Revisa que tenga las columnas POL, POD, Carrier y las tarifas."); setBusy(false); return; }
       const { guardados, errores }=await upsertFletesBase(regs);
-      setMsg((errores.length?"⚠ ":"✓ ")+"Guardados "+guardados+" flete(s) base"+(errores.length?(" · avisos: "+errores.slice(0,2).join(" · ")):"")+".");
+      // archivar el archivo tal cual (para consulta) — no bloquea si falla
+      try{ await saveFletesArchivo({ nombre:f.name, b64:_b64FromBuffer(buf), filas:guardados }); }catch(_){}
+      setMsg((errores.length?"⚠ ":"✓ ")+"Catálogo reemplazado · "+guardados+" flete(s) base"+(errores.length?(" · avisos: "+errores.slice(0,2).join(" · ")):"")+".");
       reload();
     }catch(ex){ setMsg("No se pudo procesar: "+ex.message); }
     setBusy(false);
@@ -59,6 +71,7 @@ export function FletesBase({ role }){
       </div>
       <div style={{display:"flex",gap:8,flexWrap:"wrap"}}>
         <input type="file" ref={fileRef} accept=".xlsx,.xls" style={{display:"none"}} onChange={onFile}/>
+        <Btn kind="ghost" small onClick={bajarPlantilla}>⬇ Plantilla vacía</Btn>
         <Btn kind="primary" small onClick={()=>fileRef.current&&fileRef.current.click()} disabled={busy}>{busy?"Procesando…":"⇪ Subir catálogo (Excel)"}</Btn>
         <Btn kind="ghost" small onClick={bajar} disabled={!(rows&&rows.length)}>⬇ Bajar catálogo</Btn>
         <Btn kind="ghost" small onClick={reload}>↻</Btn>
@@ -67,6 +80,17 @@ export function FletesBase({ role }){
     </div>
 
     {msg&&<div style={{background:msg[0]==="⚠"||msg.startsWith("No")||msg.startsWith("Error")?"#FCEEF0":"#E8F5EC",border:"1px solid "+C.sep2,borderRadius:8,padding:"8px 12px",fontSize:12.5,color:C.slate,marginBottom:12}}>{msg}</div>}
+
+    {versiones.length>0&&<div style={{background:"#F7F9FB",border:"1px solid "+C.sep2,borderRadius:8,padding:"8px 12px",marginBottom:12,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
+      <span style={{fontSize:11,fontWeight:"bold",color:C.slate,textTransform:"uppercase",letterSpacing:.4}}>Versiones subidas</span>
+      {versiones.map((v,i)=>(<span key={v.id} style={{fontSize:12,color:C.slate,display:"inline-flex",alignItems:"center",gap:6,background:"#fff",border:"1px solid "+C.sep2,borderRadius:6,padding:"3px 8px"}}>
+        {i===0&&<span style={{fontSize:9,fontWeight:"bold",color:"#fff",background:C.green,borderRadius:3,padding:"1px 5px"}}>ACTUAL</span>}
+        <span>{v.nombre}</span>
+        <span style={{color:C.label,fontSize:11}}>· {v.filas} filas · {fFecha(v.created_at)}</span>
+        <span onClick={()=>bajarVersion(v)} title="Descargar esta versión" style={{cursor:"pointer",color:C.red,fontWeight:"bold"}}>⬇</span>
+      </span>))}
+      <span style={{fontSize:10.5,color:C.label}}>Se conservan las 2 últimas, sólo para consulta.</span>
+    </div>}
 
     <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:10}}>
       <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar cliente, puerto, naviera, producto…" style={{padding:"8px 11px",border:"1px solid "+C.sep2,borderRadius:6,fontSize:13,width:340}}/>

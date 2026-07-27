@@ -537,24 +537,49 @@ const _fbClean=(r)=>({
   oncarriage_mode:r.oncarriage_mode||"", tt:r.tt||"", vig_desde:r.vig_desde||null, vig_hasta:r.vig_hasta||null, notas:r.notas||""
 });
 
-// Alta/actualización masiva desde el Excel del catálogo (costos de naviera, sin cliente).
-// Upsert por la llave natural: una sola línea por ruta+producto+equipo+naviera.
+// Alta masiva desde el Excel del catálogo (costos de naviera, sin cliente).
+// REEMPLAZA todo el catálogo: la nueva carga sustituye a la anterior para las búsquedas.
 export async function upsertFletesBase(registros){
   const regs=(registros||[]).map(_fbClean);
   if(!regs.length) return { guardados:0, errores:["No hay registros para guardar."] };
-  // El Excel puede traer la misma llave dos veces (dedupe local: gana la última)
+  // dedupe local por la llave natural (gana la última)
   const dedup=new Map();
   const K=(r)=>[r.origen,r.pol,r.pod,r.destino,r.equipo,r.naviera,r.producto].map(x=>String(x||"").trim().toUpperCase()).join("|");
   regs.forEach(r=>dedup.set(K(r),r));
   const filas=[...dedup.values()];
+  // 1) vaciar el catálogo vigente
+  const { error: eDel } = await supabase.from("fletes_base").delete().neq("id","00000000-0000-0000-0000-000000000000");
+  if(eDel) return { guardados:0, errores:["No se pudo reemplazar el catálogo: "+eDel.message] };
+  // 2) insertar la nueva versión
   const CH=200; let ok=0; const errs=[];
   for(let i=0;i<filas.length;i+=CH){
     const chunk=filas.slice(i,i+CH);
-    const { error } = await supabase.from("fletes_base")
-      .upsert(chunk, { onConflict:"origen,pol,pod,destino,equipo,naviera,producto", ignoreDuplicates:false });
+    const { error } = await supabase.from("fletes_base").insert(chunk);
     if(error) errs.push(error.message); else ok+=chunk.length;
   }
   return { guardados:ok, errores:errs };
+}
+
+// ---- Historial de archivos subidos (sólo consulta): se conservan las últimas 2 ----
+export async function saveFletesArchivo({ nombre, b64, filas }){
+  const { error } = await supabase.from("fletes_base_archivos").insert([{ nombre:nombre||"fletes_base.xlsx", filas:filas||0, contenido_b64:b64 }]);
+  if(error) return { error:error.message };
+  // podar: dejar sólo las 2 más recientes
+  const { data } = await supabase.from("fletes_base_archivos").select("id").order("created_at",{ascending:false});
+  const sobra=(data||[]).slice(2).map(x=>x.id);
+  if(sobra.length) await supabase.from("fletes_base_archivos").delete().in("id",sobra);
+  return { error:null };
+}
+export async function listFletesArchivos(){
+  const { data, error } = await supabase.from("fletes_base_archivos")
+    .select("id,nombre,filas,subido_por,created_at").order("created_at",{ascending:false}).limit(2);
+  if(error) return { rows:[], error:error.message };
+  return { rows:data||[] };
+}
+export async function getFletesArchivo(id){
+  const { data, error } = await supabase.from("fletes_base_archivos").select("nombre,contenido_b64").eq("id",id).maybeSingle();
+  if(error) return { error:error.message };
+  return { nombre:data?.nombre, b64:data?.contenido_b64 };
 }
 
 export async function listFletesBase(){
