@@ -531,31 +531,27 @@ export async function deleteImportadas({ onlyBorradores=true }={}){
 // FLETES BASE — catálogo consultable (repositorio independiente)
 // ===========================================================================
 const _fbClean=(r)=>({
-  cliente_nombre:r.cliente_nombre||"", origen:r.origen||"", pol:r.pol||"", pod:r.pod||"", destino:r.destino||"",
+  origen:r.origen||"", pol:r.pol||"", pod:r.pod||"", destino:r.destino||"",
   equipo:r.equipo||"", naviera:r.naviera||"", producto:r.producto||"", flete_base:Number(r.flete_base)||0,
   moneda:r.moneda||"USD", tradelane:r.tradelane||"", precarriage_mode:r.precarriage_mode||"",
   oncarriage_mode:r.oncarriage_mode||"", tt:r.tt||"", vig_desde:r.vig_desde||null, vig_hasta:r.vig_hasta||null, notas:r.notas||""
 });
 
-// Alta/actualización masiva desde el Excel del catálogo.
-// Resuelve cliente_id por nombre (si existe en clientes) y hace upsert por la llave natural.
+// Alta/actualización masiva desde el Excel del catálogo (costos de naviera, sin cliente).
+// Upsert por la llave natural: una sola línea por ruta+producto+equipo+naviera.
 export async function upsertFletesBase(registros){
   const regs=(registros||[]).map(_fbClean);
   if(!regs.length) return { guardados:0, errores:["No hay registros para guardar."] };
-  // resolver cliente_id por nombre (una sola consulta)
-  const nombres=[...new Set(regs.map(r=>r.cliente_nombre).filter(Boolean))];
-  const idPorNombre={};
-  if(nombres.length){
-    const { data } = await supabase.from("clientes").select("id,nombre");
-    (data||[]).forEach(c=>{ idPorNombre[String(c.nombre||"").trim().toLowerCase()]=c.id; });
-  }
-  const filas=regs.map(r=>({ ...r, cliente_id: idPorNombre[r.cliente_nombre.trim().toLowerCase()]||null }));
-  // upsert por la llave natural (misma combinación => actualiza)
+  // El Excel puede traer la misma llave dos veces (dedupe local: gana la última)
+  const dedup=new Map();
+  const K=(r)=>[r.origen,r.pol,r.pod,r.destino,r.equipo,r.naviera,r.producto].map(x=>String(x||"").trim().toUpperCase()).join("|");
+  regs.forEach(r=>dedup.set(K(r),r));
+  const filas=[...dedup.values()];
   const CH=200; let ok=0; const errs=[];
   for(let i=0;i<filas.length;i+=CH){
     const chunk=filas.slice(i,i+CH);
     const { error } = await supabase.from("fletes_base")
-      .upsert(chunk, { onConflict:"cliente_id,origen,pol,pod,destino,equipo,naviera,producto,vig_desde", ignoreDuplicates:false });
+      .upsert(chunk, { onConflict:"origen,pol,pod,destino,equipo,naviera,producto", ignoreDuplicates:false });
     if(error) errs.push(error.message); else ok+=chunk.length;
   }
   return { guardados:ok, errores:errs };
@@ -565,7 +561,7 @@ export async function listFletesBase(){
   const out=[]; const PAGE=1000;
   for(let from=0;;from+=PAGE){
     const { data, error } = await supabase.from("fletes_base")
-      .select("*").order("cliente_nombre").order("pol").order("pod").order("equipo").range(from, from+PAGE-1);
+      .select("*").order("pol").order("pod").order("producto").order("equipo").order("naviera").range(from, from+PAGE-1);
     if(error) return { rows:[], error:error.message };
     out.push(...(data||[])); if(!data||data.length<PAGE) break;
   }

@@ -37,8 +37,8 @@ export function FletesBase({ role }){
 
   const bajar=()=>{
     const data=(rows||[]);
-    const head=["Customer","Origen","POL","POL nombre","POD","POD nombre","Destino","Equipo","Naviera","Producto","Flete Base","Moneda","Tradelane","Pre-carriage","On-carriage","T.T.","Vig desde","Vig hasta","Vigente hoy"];
-    const aoa=[head,...data.map(r=>[r.cliente_nombre,r.origen,r.pol,puertoNombre(r.pol),r.pod,puertoNombre(r.pod),r.destino,r.equipo,r.naviera,r.producto,r.flete_base,r.moneda,r.tradelane,r.precarriage_mode,r.oncarriage_mode,r.tt,r.vig_desde||"",r.vig_hasta||"",vigHoy(r.vig_desde,r.vig_hasta)?"Sí":"No"])];
+    const head=["Origen","POL","POL nombre","POD","POD nombre","Destino","Equipo","Naviera","Producto","Flete Base","Moneda","Tradelane","Pre-carriage","On-carriage","T.T.","Vig desde","Vig hasta","Vigente hoy"];
+    const aoa=[head,...data.map(r=>[r.origen,r.pol,puertoNombre(r.pol),r.pod,puertoNombre(r.pod),r.destino,r.equipo,r.naviera,r.producto,r.flete_base,r.moneda,r.tradelane,r.precarriage_mode,r.oncarriage_mode,r.tt,r.vig_desde||"",r.vig_hasta||"",vigHoy(r.vig_desde,r.vig_hasta)?"Sí":"No"])];
     const ws=XLSX.utils.aoa_to_sheet(aoa); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Fletes base");
     XLSX.writeFile(wb,"Catalogo_fletes_base_"+hoyISO()+".xlsx");
   };
@@ -46,7 +46,7 @@ export function FletesBase({ role }){
   const borrar=async(id)=>{ if(!confirm("¿Eliminar este flete base del catálogo?")) return; const {error}=await deleteFleteBase(id); if(error) alert(error); else reload(); };
   const vaciar=async()=>{ if(!confirm("¿Vaciar TODO el catálogo de fletes base? Esta acción no se puede deshacer.")) return; const {error}=await deleteFletesBaseTodos(); if(error) alert(error); else reload(); };
 
-  const filtered=useMemo(()=>{ const s=q.trim().toLowerCase(); if(!s) return rows||[]; return (rows||[]).filter(r=>(r.cliente_nombre+" "+r.pol+" "+r.pod+" "+puertoNombre(r.pol)+" "+puertoNombre(r.pod)+" "+r.naviera+" "+r.producto+" "+r.origen+" "+r.destino+" "+r.tradelane).toLowerCase().includes(s)); },[rows,q]);
+  const filtered=useMemo(()=>{ const s=q.trim().toLowerCase(); if(!s) return rows||[]; return (rows||[]).filter(r=>(r.pol+" "+r.pod+" "+puertoNombre(r.pol)+" "+puertoNombre(r.pod)+" "+r.naviera+" "+r.producto+" "+r.origen+" "+r.destino+" "+r.tradelane).toLowerCase().includes(s)); },[rows,q]);
 
   const th={fontSize:9,letterSpacing:.4,textTransform:"uppercase",color:"#fff",fontWeight:"bold",padding:"7px 8px",textAlign:"left",whiteSpace:"nowrap",background:C.slate,position:"sticky",top:0};
   const td={padding:"6px 8px",borderBottom:"1px solid "+C.sep,fontSize:12,whiteSpace:"nowrap"};
@@ -77,11 +77,10 @@ export function FletesBase({ role }){
      rows.length===0?<div style={{border:"1px solid "+C.sep2,borderRadius:10,background:"#fff",padding:28,textAlign:"center",color:C.label,fontSize:13}}>Catálogo vacío. Sube un Excel de fletes base para empezar.</div>:(
       <div style={{border:"1px solid "+C.sep2,borderRadius:10,overflow:"auto",background:"#fff",maxHeight:"70vh"}}>
         <table style={{width:"100%",borderCollapse:"collapse"}}>
-          <thead><tr>{["Cliente","Origen","POL","POD","Destino","Eq.","Naviera","Producto","Flete base","Tradelane","Vigencia",""].map((h,i)=><th key={i} style={th}>{h}</th>)}</tr></thead>
+          <thead><tr>{["Origen","POL","POD","Destino","Eq.","Naviera","Producto","Flete base","Tradelane","Vigencia",""].map((h,i)=><th key={i} style={th}>{h}</th>)}</tr></thead>
           <tbody>
             {filtered.map(r=>{const viv=vigHoy(r.vig_desde,r.vig_hasta);const venc=r.vig_hasta&&r.vig_hasta<hoyISO();
               return (<tr key={r.id}>
-                <td style={{...td,fontWeight:"bold",color:C.slate}}>{r.cliente_nombre||"—"}</td>
                 <td style={td}>{r.origen||"—"}</td>
                 <td style={td} title={puertoNombre(r.pol)}>{r.pol}</td>
                 <td style={td} title={puertoNombre(r.pod)}>{r.pod}</td>

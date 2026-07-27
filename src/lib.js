@@ -403,7 +403,7 @@ export function parseFletesBase(rows){
   if(!rows||!rows.length) return [];
   const H=(rows[0]||[]).map(x=>String(x==null?"":x).trim());
   const idx=(names)=>{ for(let i=0;i<H.length;i++){ const h=H[i].toLowerCase(); if(names.some(nn=>h===nn||h.startsWith(nn))) return i; } return -1; };
-  const cCust=idx(["customer","cliente"]), cOri=idx(["origen","origin"]), cPol=idx(["pol"]), cPod=idx(["pod"]),
+  const cOri=idx(["origen","origin"]), cPol=idx(["pol"]), cPod=idx(["pod"]),
         cDest=idx(["destination","destino"]), cTT=idx(["t.t","tt","transit"]), cCarr=idx(["carrier","naviera"]),
         cTL=idx(["tradelane"]), cSrvc=idx(["srvc","service","scope"]), cTr=idx(["transp","transport"]),
         cProd=idx(["producto","product","commodity"]), cVd=idx(["vig desde","vigencia desde","desde","valid from"]),
@@ -425,7 +425,6 @@ export function parseFletesBase(rows){
     const pre=srvc.startsWith("DR")?modo(transp.includes("/")?transp.split("/")[0]:transp):"";
     const on=srvc.endsWith("DR")?modo(transp.includes("/")?(transp.split("/")[1]||""):transp):"";
     const base={
-      cliente_nombre:String((cCust>=0?row[cCust]:"")||"").trim(),
       origen:(cOri>=0&&srvc.startsWith("DR"))?ciudadNorm(String(row[cOri]||"").trim()):"",
       pol:codigoPuerto(polR), pod:codigoPuerto(podR),
       destino:(cDest>=0&&srvc.endsWith("DR"))?ciudadNorm(String(row[cDest]||"").trim()):"",
