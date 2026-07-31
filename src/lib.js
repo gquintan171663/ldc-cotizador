@@ -399,6 +399,71 @@ const _parseVia=(v)=>{ const t=String(v||"").trim().split(/\s+/).filter(Boolean)
 // Columnas: Customer, Origen, POL, POD, Destination, T.T., Tarifa Base 20', Tarifa Base 40'/40HC,
 //           Carrier, Tradelane, Srvc. Mode, Transp Mode, Producto, Vig desde, Vig hasta
 // Devuelve registros PLANOS: uno por (ruta × naviera × equipo con base).
+// Valida el Excel del catálogo fila por fila. Bloquea la subida si hay datos sucios.
+// Devuelve { ok, registros, bloqueos:[{fila,motivo}], avisos:[{fila,motivo}], resumen }.
+export function validarFletesBase(rows){
+  if(!rows||rows.length<2) return { ok:false, registros:[], bloqueos:[{fila:0,motivo:"El archivo está vacío o no tiene filas de datos."}], avisos:[], resumen:{} };
+  const H=(rows[0]||[]).map(x=>String(x==null?"":x).trim());
+  const idx=(names)=>{ for(let i=0;i<H.length;i++){ const h=H[i].toLowerCase(); if(names.some(nn=>h===nn||h.startsWith(nn))) return i; } return -1; };
+  const cOri=idx(["origen","origin"]), cPol=idx(["pol"]), cPod=idx(["pod"]), cDest=idx(["destination","destino"]),
+        cTT=idx(["t.t","tt","transit"]), cCarr=idx(["carrier","naviera"]), cTL=idx(["tradelane"]),
+        cSrvc=idx(["srvc","service","scope"]), cTr=idx(["transp","transport"]), cProd=idx(["producto","product","commodity"]),
+        cVd=idx(["vig desde","vigencia desde","desde","valid from"]), cVh=idx(["vig hasta","vigencia hasta","hasta","valid to"]);
+  const faltan=[]; if(cPol<0) faltan.push("POL"); if(cPod<0) faltan.push("POD"); if(cCarr<0) faltan.push("Carrier"); if(cTL<0) faltan.push("Tradelane"); if(cProd<0) faltan.push("Producto");
+  if(faltan.length) return { ok:false, registros:[], bloqueos:[{fila:1,motivo:"Faltan columnas obligatorias en el encabezado: "+faltan.join(", ")+". Usa la plantilla vacía."}], avisos:[], resumen:{} };
+  let c20=-1,c40=-1,cHC=-1;
+  H.forEach((h,i)=>{ const t=h.toLowerCase(); if(!/tarifa|base|rate/.test(t)) return; if(/40\s*hc/.test(t)){ if(cHC<0)cHC=i; } else if(/40/.test(t)){ if(c40<0)c40=i; } if(/20/.test(t)&&c20<0)c20=i; });
+  if(c20<0&&c40<0&&cHC<0) return { ok:false, registros:[], bloqueos:[{fila:1,motivo:"No encontré columnas de tarifa (Tarifa Base 20' / 40'/40HC)."}], avisos:[], resumen:{} };
+  const num=(v)=>{ if(v==null) return null; const s=String(v).trim(); if(s===""||s.toUpperCase()==="X") return null; const x=parseFloat(s.replace(/[,$\s]/g,"")); return isNaN(x)?null:x; };
+  const _mkfecha=(y,mo,d)=>{ y=+y;mo=+mo;d=+d; if(mo<1||mo>12||d<1||d>31) return null; const dt=new Date(Date.UTC(y,mo-1,d)); if(dt.getUTCFullYear()!==y||dt.getUTCMonth()!==mo-1||dt.getUTCDate()!==d) return null; return y+"-"+String(mo).padStart(2,"0")+"-"+String(d).padStart(2,"0"); };
+  const fecha=(v)=>{ if(v==null||v==="") return {ok:true,val:null}; if(v instanceof Date) return {ok:true,val:v.toISOString().slice(0,10)}; const s=String(v).trim();
+    let m=s.match(/^(\d{4})[-/](\d{1,2})[-/](\d{1,2})$/); if(m){ const f=_mkfecha(m[1],m[2],m[3]); return f?{ok:true,val:f}:{ok:false,val:null}; }
+    m=s.match(/^(\d{1,2})[-/](\d{1,2})[-/](\d{4})$/); if(m){ const f=_mkfecha(m[3],m[2],m[1]); return f?{ok:true,val:f}:{ok:false,val:null}; } return {ok:false,val:null}; };
+  const modo=(t)=>{ const s=String(t||"").trim(); return _MODEABBR[s.toLowerCase()]||_MODEABBR[s.toLowerCase().replace(/\s/g,"")]||s; };
+  const es5=(s)=>/^[A-Z]{5}$/.test(String(s||""));
+  const SCAC_OK=new Set(["CMDU","HLCU","MAEU","MSCU","ONEY","COSU","EGLV","HDMU","YMLU","ZIMU","OOLU","WHLC","SUDU","MATS"]);
+  const bloqueos=[], avisos=[], registros=[]; let filasDatos=0, omitidas=0;
+  for(let r=1;r<rows.length;r++){ const row=rows[r]||[]; const XL=r+1;
+    const polRaw=String(row[cPol]==null?"":row[cPol]).trim();
+    const podRaw=String(row[cPod]==null?"":row[cPod]).trim();
+    const carrRaw=String((cCarr>=0?row[cCarr]:"")||"").trim();
+    const anyRate = num(c20>=0?row[c20]:null)!=null || num(cHC>=0?row[cHC]:null)!=null || num(c40>=0?row[c40]:null)!=null;
+    if(!polRaw&&!podRaw&&!carrRaw&&!anyRate) continue;
+    filasDatos++;
+    let mala=false;
+    const pol=codigoPuerto(polRaw), pod=codigoPuerto(podRaw);
+    if(!polRaw){ bloqueos.push({fila:XL,motivo:"POL vacío"}); mala=true; }
+    else if(!es5(pol)){ bloqueos.push({fila:XL,motivo:'POL no reconocido: "'+polRaw+'"'}); mala=true; }
+    if(!podRaw){ bloqueos.push({fila:XL,motivo:"POD vacío"}); mala=true; }
+    else if(!es5(pod)){ bloqueos.push({fila:XL,motivo:'POD no reconocido: "'+podRaw+'"'}); mala=true; }
+    const naviera=scacTarifario(carrRaw);
+    if(!carrRaw){ bloqueos.push({fila:XL,motivo:"Sin naviera (Carrier vacío)"}); mala=true; }
+    else if(!SCAC_OK.has(naviera)){ avisos.push({fila:XL,motivo:'Naviera poco usual: "'+carrRaw+'" → '+naviera}); }
+    const fvd=fecha(cVd>=0?row[cVd]:null), fvh=fecha(cVh>=0?row[cVh]:null);
+    if(!fvd.ok){ bloqueos.push({fila:XL,motivo:'"Vig desde" con formato inválido: "'+String(row[cVd]).trim()+'" (usa AAAA-MM-DD o DD/MM/AAAA)'}); mala=true; }
+    if(!fvh.ok){ bloqueos.push({fila:XL,motivo:'"Vig hasta" con formato inválido: "'+String(row[cVh]).trim()+'"'}); mala=true; }
+    if(fvd.ok&&fvh.ok&&fvd.val&&fvh.val&&fvd.val>fvh.val){ bloqueos.push({fila:XL,motivo:"Vigencia invertida (desde > hasta)"}); mala=true; }
+    if(!anyRate){ avisos.push({fila:XL,motivo:"Sin tarifa (fila omitida)"}); omitidas++; continue; }
+    if(!String((cProd>=0?row[cProd]:"")||"").trim()){ bloqueos.push({fila:XL,motivo:"Sin producto (obligatorio)"}); mala=true; }
+    if(!String((cTL>=0?row[cTL]:"")||"").trim()){ bloqueos.push({fila:XL,motivo:"Sin tradelane (obligatorio)"}); mala=true; }
+    if(mala) continue;
+    const srvc=String((cSrvc>=0?row[cSrvc]:"")||"").trim().toUpperCase();
+    const transp=String((cTr>=0?row[cTr]:"")||"").trim();
+    const base={ origen:(cOri>=0&&srvc.startsWith("DR"))?ciudadNorm(String(row[cOri]||"").trim()):"",
+      pol, pod, destino:(cDest>=0&&srvc.endsWith("DR"))?ciudadNorm(String(row[cDest]||"").trim()):"",
+      naviera, producto:String((cProd>=0?row[cProd]:"")||"").trim(), tradelane:String((cTL>=0?row[cTL]:"")||"").trim(),
+      precarriage_mode:srvc.startsWith("DR")?modo(transp.includes("/")?transp.split("/")[0]:transp):"",
+      oncarriage_mode:srvc.endsWith("DR")?modo(transp.includes("/")?(transp.split("/")[1]||""):transp):"",
+      tt:cTT>=0?String(row[cTT]==null?"":row[cTT]).trim():"", vig_desde:fvd.val, vig_hasta:fvh.val, moneda:"USD" };
+    const b20=num(c20>=0?row[c20]:null), bhc=num(cHC>=0?row[cHC]:null), b40=num(c40>=0?row[c40]:null);
+    const bfin=(bhc!=null)?bhc:b40;
+    if(b20!=null)  registros.push({...base,equipo:"20DV",flete_base:b20});
+    if(bfin!=null) registros.push({...base,equipo:"40HC",flete_base:bfin});
+  }
+  const ok=bloqueos.length===0;
+  return { ok, registros: ok?registros:[], bloqueos, avisos, resumen:{ filasDatos, registros:registros.length, omitidas } };
+}
+
 export function parseFletesBase(rows){
   if(!rows||!rows.length) return [];
   const H=(rows[0]||[]).map(x=>String(x==null?"":x).trim());

@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import * as XLSX from "xlsx";
-import { C, puertoNombre, parseFletesBase } from "./lib.js";
+import { C, puertoNombre, parseFletesBase, validarFletesBase } from "./lib.js";
 import { Btn } from "./ui.jsx";
 import { listFletesBase, upsertFletesBase, deleteFleteBase, deleteFletesBaseTodos, saveFletesArchivo, listFletesArchivos, getFletesArchivo } from "./db.js";
 
@@ -19,6 +19,7 @@ export function FletesBase({ role }){
   const [q,setQ]=useState("");
   const [busy,setBusy]=useState(false);
   const [msg,setMsg]=useState("");
+  const [reporte,setReporte]=useState(null);
   const fileRef=useRef(null);
   const isAdmin = role==="admin";
 
@@ -30,18 +31,22 @@ export function FletesBase({ role }){
 
   const onFile=async(e)=>{
     const f=e.target.files&&e.target.files[0]; if(e.target) e.target.value=""; if(!f) return;
-    setBusy(true); setMsg("");
+    setBusy(true); setMsg(""); setReporte(null);
     try{
       const buf=await f.arrayBuffer();
       const wb=XLSX.read(buf,{type:"array",cellDates:true});
       const sheet=wb.SheetNames[0];
       const aoa=XLSX.utils.sheet_to_json(wb.Sheets[sheet],{header:1,defval:null});
-      const regs=parseFletesBase(aoa);
-      if(!regs.length){ setMsg("No encontré fletes base en el archivo. Revisa que tenga las columnas POL, POD, Carrier y las tarifas."); setBusy(false); return; }
-      const { guardados, errores }=await upsertFletesBase(regs);
-      // archivar el archivo tal cual (para consulta) — no bloquea si falla
+      const v=validarFletesBase(aoa);
+      if(!v.ok){
+        setReporte({ nombre:f.name, bloqueos:v.bloqueos, avisos:v.avisos, resumen:v.resumen });
+        setMsg("\u26D4 No se subió: el archivo tiene "+v.bloqueos.length+" problema(s) que debes corregir primero.");
+        setBusy(false); return;
+      }
+      const { guardados, errores }=await upsertFletesBase(v.registros);
       try{ await saveFletesArchivo({ nombre:f.name, b64:_b64FromBuffer(buf), filas:guardados }); }catch(_){}
-      setMsg((errores.length?"⚠ ":"✓ ")+"Catálogo reemplazado · "+guardados+" flete(s) base"+(errores.length?(" · avisos: "+errores.slice(0,2).join(" · ")):"")+".");
+      setReporte(v.avisos.length?{ nombre:f.name, bloqueos:[], avisos:v.avisos, resumen:v.resumen }:null);
+      setMsg((errores.length?"\u26A0 ":"\u2713 ")+"Catálogo reemplazado · "+guardados+" flete(s) base"+(v.avisos.length?(" · "+v.avisos.length+" aviso(s)"):"")+(errores.length?(" · errores: "+errores.slice(0,2).join(" · ")):"")+".");
       reload();
     }catch(ex){ setMsg("No se pudo procesar: "+ex.message); }
     setBusy(false);
@@ -79,7 +84,28 @@ export function FletesBase({ role }){
       </div>
     </div>
 
-    {msg&&<div style={{background:msg[0]==="⚠"||msg.startsWith("No")||msg.startsWith("Error")?"#FCEEF0":"#E8F5EC",border:"1px solid "+C.sep2,borderRadius:8,padding:"8px 12px",fontSize:12.5,color:C.slate,marginBottom:12}}>{msg}</div>}
+    {msg&&<div style={{background:(msg[0]==="\u26D4"||msg[0]==="\u26A0"||msg.startsWith("No")||msg.startsWith("Error"))?"#FCEEF0":"#E8F5EC",border:"1px solid "+C.sep2,borderRadius:8,padding:"8px 12px",fontSize:12.5,color:C.slate,marginBottom:12}}>{msg}</div>}
+
+    {reporte&&<div style={{border:"1px solid "+C.sep2,borderRadius:10,background:"#fff",padding:14,marginBottom:14}}>
+      <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
+        <div style={{fontSize:13,fontWeight:"bold",color:C.ink}}>{reporte.bloqueos.length?"Corrige estos problemas para poder subir":"Se subió con avisos"} <span style={{fontWeight:"normal",color:C.label,fontSize:12}}>· {reporte.nombre}</span></div>
+        <span onClick={()=>setReporte(null)} style={{cursor:"pointer",fontSize:12,color:C.label}}>cerrar \u2715</span>
+      </div>
+      <div style={{fontSize:11.5,color:C.label,marginBottom:10}}>Filas de datos: {reporte.resumen.filasDatos||0} · Registros válidos: {reporte.resumen.registros||0}{reporte.resumen.omitidas?(" · Omitidas sin tarifa: "+reporte.resumen.omitidas):""}</div>
+      {reporte.bloqueos.length>0&&<div style={{marginBottom:reporte.avisos.length?10:0}}>
+        <div style={{fontSize:11,fontWeight:"bold",color:C.red,textTransform:"uppercase",letterSpacing:.4,marginBottom:4}}>\u26D4 Bloqueantes ({reporte.bloqueos.length})</div>
+        <div style={{maxHeight:180,overflow:"auto",border:"1px solid "+C.sep2,borderRadius:6}}>
+          {reporte.bloqueos.map((b,i)=>(<div key={i} style={{fontSize:12,padding:"4px 10px",borderBottom:i<reporte.bloqueos.length-1?"1px solid "+C.sep:"none",color:C.slate}}><b style={{color:C.red}}>Fila {b.fila}:</b> {b.motivo}</div>))}
+        </div>
+      </div>}
+      {reporte.avisos.length>0&&<div>
+        <div style={{fontSize:11,fontWeight:"bold",color:"#8A6D1F",textTransform:"uppercase",letterSpacing:.4,marginBottom:4}}>\u26A0 Avisos ({reporte.avisos.length})</div>
+        <div style={{maxHeight:140,overflow:"auto",border:"1px solid "+C.sep2,borderRadius:6}}>
+          {reporte.avisos.slice(0,40).map((a,i)=>(<div key={i} style={{fontSize:12,padding:"4px 10px",borderBottom:i<Math.min(reporte.avisos.length,40)-1?"1px solid "+C.sep:"none",color:C.slate}}><b style={{color:"#8A6D1F"}}>Fila {a.fila}:</b> {a.motivo}</div>))}
+          {reporte.avisos.length>40&&<div style={{fontSize:11,padding:"4px 10px",color:C.label}}>…y {reporte.avisos.length-40} aviso(s) más.</div>}
+        </div>
+      </div>}
+    </div>}
 
     {versiones.length>0&&<div style={{background:"#F7F9FB",border:"1px solid "+C.sep2,borderRadius:8,padding:"8px 12px",marginBottom:12,display:"flex",alignItems:"center",gap:10,flexWrap:"wrap"}}>
       <span style={{fontSize:11,fontWeight:"bold",color:C.slate,textTransform:"uppercase",letterSpacing:.4}}>Versiones subidas</span>
