@@ -1,4 +1,4 @@
-import { supabase } from "./supabaseClient.js"; // rebuild
+import { supabase } from "./supabaseClient.js";
 import { matchCommodity, paisDe, tlDe, n, adicPorCont, tx, eqMeta, prefijoCliente, numeroAcuerdo, hayCambioCosto, ventaEq, mkSurOf, round10 } from "./lib.js";
 
 // Mapa commodity(lower) -> id desde el catálogo
