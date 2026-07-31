@@ -154,7 +154,7 @@ export function FletesBase({ role }){
     </div>}
 
     <div style={{display:"flex",gap:10,alignItems:"center",marginBottom:10}}>
-      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar cliente, puerto, naviera, producto…" style={{padding:"8px 11px",border:"1px solid "+C.sep2,borderRadius:6,fontSize:13,width:340}}/>
+      <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar puerto, naviera, producto, tradelane…" style={{padding:"8px 11px",border:"1px solid "+C.sep2,borderRadius:6,fontSize:13,width:340}}/>
       {rows&&<span style={{fontSize:12,color:C.label}}>{filtered.length} de {rows.length} registro(s)</span>}
     </div>
 
