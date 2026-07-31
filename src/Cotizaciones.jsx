@@ -52,7 +52,7 @@ export function Cotizaciones({ onOpen, onNew, role }){
 
   return (<div style={{maxWidth:1160,margin:"0 auto"}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
-      <div><div style={{fontSize:16,fontWeight:"bold",color:C.ink}}>Cotizaciones del equipo v2</div><div style={{fontSize:12,color:C.label}}>Agrupadas por cliente y contrato macro</div></div>
+      <div><div style={{fontSize:16,fontWeight:"bold",color:C.ink}}>Cotizaciones del equipo</div><div style={{fontSize:12,color:C.label}}>Agrupadas por cliente y contrato macro</div></div>
       <div style={{display:"flex",gap:8}}>
         <input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar cliente, acuerdo, folio, commodity…" style={{padding:"8px 11px",border:"1px solid "+C.sep2,borderRadius:6,fontSize:13,width:300}}/>
         <Btn kind="ghost" small onClick={reload}>↻</Btn>
