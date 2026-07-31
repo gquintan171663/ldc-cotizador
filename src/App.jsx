@@ -23,7 +23,7 @@ export default function App(){
   return (<div style={{fontFamily:F,background:"#F0F2F5",minHeight:"100vh",color:C.slate}}>
     <div style={{background:"#fff",borderBottom:"1px solid "+C.sep2,padding:"12px 20px",display:"flex",alignItems:"center",gap:16}}>
       <div style={{height:18,width:4,background:C.red,borderRadius:2}}/>
-      <div style={{fontSize:16,fontWeight:"bold",color:C.ink}}>Cotizador · Pricing</div>
+      <div style={{fontSize:16,fontWeight:"bold",color:C.ink}}>Cotizador · Pricing v2</div>
       {canQuote&&(<div style={{display:"flex",gap:6,marginLeft:12}}>
         <Btn kind={tab==="lista"?"dark":"ghost"} small onClick={()=>setTab("lista")}>Mis cotizaciones</Btn>
         <Btn kind={tab==="cotizador"?"dark":"ghost"} small onClick={()=>setTab("cotizador")}>Cotizador</Btn>
