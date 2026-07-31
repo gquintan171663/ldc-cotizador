@@ -409,6 +409,10 @@ export function validarFletesBase(rows){
         cTT=idx(["t.t","tt","transit"]), cCarr=idx(["carrier","naviera"]), cTL=idx(["tradelane"]),
         cSrvc=idx(["srvc","service","scope"]), cTr=idx(["transp","transport"]), cProd=idx(["producto","product","commodity"]),
         cVd=idx(["vig desde","vigencia desde","desde","valid from"]), cVh=idx(["vig hasta","vigencia hasta","hasta","valid to"]);
+  const idxf=(fn)=>{ for(let i=0;i<H.length;i++){ if(fn(H[i].toLowerCase())) return i; } return -1; };
+  const cTrOri=idxf(h=>/transp/.test(h)&&/orig/.test(h)), cTrDest=idxf(h=>/transp/.test(h)&&/dest/.test(h));
+  const trOriDe=(row)=> cTrOri>=0?String(row[cTrOri]||"").trim() : (cTr>=0?(String(row[cTr]||"").includes("/")?String(row[cTr]).split("/")[0]:String(row[cTr]||"")).trim():"");
+  const trDestDe=(row)=> cTrDest>=0?String(row[cTrDest]||"").trim() : (cTr>=0?(String(row[cTr]||"").includes("/")?(String(row[cTr]).split("/")[1]||""):String(row[cTr]||"")).trim():"");
   const faltan=[]; if(cPol<0) faltan.push("POL"); if(cPod<0) faltan.push("POD"); if(cCarr<0) faltan.push("Carrier"); if(cTL<0) faltan.push("Tradelane"); if(cProd<0) faltan.push("Producto");
   if(faltan.length) return { ok:false, registros:[], bloqueos:[{fila:1,motivo:"Faltan columnas obligatorias en el encabezado: "+faltan.join(", ")+". Usa la plantilla vacía."}], avisos:[], resumen:{} };
   let c20=-1,c40=-1,cHC=-1;
@@ -450,12 +454,11 @@ export function validarFletesBase(rows){
     if(!String((cTL>=0?row[cTL]:"")||"").trim()){ bloqueos.push({fila:XL,motivo:"Sin tradelane (obligatorio)"}); mala=true; }
     if(mala) continue;
     const srvc=String((cSrvc>=0?row[cSrvc]:"")||"").trim().toUpperCase();
-    const transp=String((cTr>=0?row[cTr]:"")||"").trim();
     const base={ origen:(cOri>=0&&srvc.startsWith("DR"))?ciudadNorm(String(row[cOri]||"").trim()):"",
       pol, pod, destino:(cDest>=0&&srvc.endsWith("DR"))?ciudadNorm(String(row[cDest]||"").trim()):"",
       naviera, producto:String((cProd>=0?row[cProd]:"")||"").trim(), tradelane:String((cTL>=0?row[cTL]:"")||"").trim(),
-      precarriage_mode:srvc.startsWith("DR")?modo(transp.includes("/")?transp.split("/")[0]:transp):"",
-      oncarriage_mode:srvc.endsWith("DR")?modo(transp.includes("/")?(transp.split("/")[1]||""):transp):"",
+      precarriage_mode:srvc.startsWith("DR")?modo(trOriDe(row)):"",
+      oncarriage_mode:srvc.endsWith("DR")?modo(trDestDe(row)):"",
       tt:cTT>=0?String(row[cTT]==null?"":row[cTT]).trim():"", vig_desde:fvd.val, vig_hasta:fvh.val, moneda:"USD" };
     const b20=num(c20>=0?row[c20]:null), bhc=num(cHC>=0?row[cHC]:null), b40=num(c40>=0?row[c40]:null);
     const bfin=(bhc!=null)?bhc:b40;
@@ -473,8 +476,11 @@ export function parseFletesBase(rows){
   const cOri=idx(["origen","origin"]), cPol=idx(["pol"]), cPod=idx(["pod"]),
         cDest=idx(["destination","destino"]), cTT=idx(["t.t","tt","transit"]), cCarr=idx(["carrier","naviera"]),
         cTL=idx(["tradelane"]), cSrvc=idx(["srvc","service","scope"]), cTr=idx(["transp","transport"]),
-        cProd=idx(["producto","product","commodity"]), cVd=idx(["vig desde","vigencia desde","desde","valid from"]),
-        cVh=idx(["vig hasta","vigencia hasta","hasta","valid to"]);
+        cProd=idx(["producto","product","commodity"]), cVd=idx(["vig desde","vigencia desde","desde","valid from"]), cVh=idx(["vig hasta","vigencia hasta","hasta","valid to"]);
+  const idxf2=(fn)=>{ for(let i=0;i<H.length;i++){ if(fn(H[i].toLowerCase())) return i; } return -1; };
+  const cTrOri=idxf2(h=>/transp/.test(h)&&/orig/.test(h)), cTrDest=idxf2(h=>/transp/.test(h)&&/dest/.test(h));
+  const trOriDe=(row)=> cTrOri>=0?String(row[cTrOri]||"").trim() : (cTr>=0?(String(row[cTr]||"").includes("/")?String(row[cTr]).split("/")[0]:String(row[cTr]||"")).trim():"");
+  const trDestDe=(row)=> cTrDest>=0?String(row[cTrDest]||"").trim() : (cTr>=0?(String(row[cTr]||"").includes("/")?(String(row[cTr]).split("/")[1]||""):String(row[cTr]||"")).trim():"");
   let c20=-1,c40=-1,cHC=-1;
   H.forEach((h,i)=>{ const t=h.toLowerCase(); if(!/tarifa|base|rate/.test(t)) return; if(/40\s*hc/.test(t)){ if(cHC<0)cHC=i; } else if(/40/.test(t)){ if(c40<0)c40=i; } if(/20/.test(t)&&c20<0)c20=i; });
   const num=(v)=>{ if(v==null) return null; const s=String(v).trim(); if(s===""||s.toUpperCase()==="X") return null; const x=parseFloat(s.replace(/[,$\s]/g,"")); return isNaN(x)?null:x; };
@@ -489,9 +495,8 @@ export function parseFletesBase(rows){
     if(!polR&&!podR) continue;
     const naviera=scacTarifario(String((cCarr>=0?row[cCarr]:"")||"").trim()); if(!naviera) continue;
     const srvc=String((cSrvc>=0?row[cSrvc]:"")||"").trim().toUpperCase();
-    const transp=String((cTr>=0?row[cTr]:"")||"").trim();
-    const pre=srvc.startsWith("DR")?modo(transp.includes("/")?transp.split("/")[0]:transp):"";
-    const on=srvc.endsWith("DR")?modo(transp.includes("/")?(transp.split("/")[1]||""):transp):"";
+    const pre=srvc.startsWith("DR")?modo(trOriDe(row)):"";
+    const on=srvc.endsWith("DR")?modo(trDestDe(row)):"";
     const base={
       origen:(cOri>=0&&srvc.startsWith("DR"))?ciudadNorm(String(row[cOri]||"").trim()):"",
       pol:codigoPuerto(polR), pod:codigoPuerto(podR),

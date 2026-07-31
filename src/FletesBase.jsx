@@ -6,7 +6,7 @@ import { Btn } from "./ui.jsx";
 import { listFletesBase, upsertFletesBase, deleteFleteBase, deleteFletesBaseTodos, saveFletesArchivo, listFletesArchivos, getFletesArchivo } from "./db.js";
 
 // Encabezados del template del catálogo (deben coincidir con lo que lee parseFletesBase)
-const HDR_TEMPLATE=["Origen","POL","POD","Destination","T.T.","Tarifa Base 20'","Tarifa Base 40'/40HC","Carrier","Tradelane","Srvc. Mode","Transp Mode","Producto","Vig desde","Vig hasta"];
+const HDR_TEMPLATE=["Origen","Transp Mode Origen","POL","POD","Destination","Transp Mode Destino","T.T.","Tarifa Base 20'","Tarifa Base 40'/40HC","Carrier","Tradelane","Srvc. Mode","Producto","Vig desde","Vig hasta"];
 const _b64FromBuffer=(buf)=>{ let bin=""; const bytes=new Uint8Array(buf); const CH=0x8000; for(let i=0;i<bytes.length;i+=CH){ bin+=String.fromCharCode.apply(null,bytes.subarray(i,i+CH)); } return btoa(bin); };
 const _descargarB64=(b64,nombre)=>{ const bin=atob(b64); const arr=new Uint8Array(bin.length); for(let i=0;i<bin.length;i++) arr[i]=bin.charCodeAt(i); const blob=new Blob([arr],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"}); const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download=nombre||"fletes_base.xlsx"; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url); };
 
@@ -30,32 +30,32 @@ export function FletesBase({ role }){
   const bajarPlantilla=async()=>{
     const OPC_CARRIER=["CMA","Hapag","Maersk","MSC"];
     const OPC_SRVC=["CY-CY","DR-CY","CY-DR","DR-DR"];
+    const OPC_MODO=["All Truck","Rail+Truck","Rail Ramp","Truck Ramp","Barge"];
     const OPC_TL=TRADELANES.map(t=>t.code);
     const OPC_PROD=COMMODITIES.map(c=>c.com);
     const wb=new ExcelJS.Workbook();
     const ws=wb.addWorksheet("Fletes base",{views:[{state:"frozen",ySplit:1}]});
-    // hoja oculta con las listas (para dropdowns largos como Producto)
     const L=wb.addWorksheet("Listas"); L.state="veryHidden";
     const col=(arr,c)=>{ arr.forEach((v,i)=>{ L.getCell(i+1,c).value=v; }); return L.getColumn(c).letter; };
-    const colTL=col(OPC_TL,1), colProd=col(OPC_PROD,2), colCarr=col(OPC_CARRIER,3), colSrvc=col(OPC_SRVC,4);
+    const colTL=col(OPC_TL,1), colProd=col(OPC_PROD,2), colCarr=col(OPC_CARRIER,3), colSrvc=col(OPC_SRVC,4), colModo=col(OPC_MODO,5);
     const rng=(letter,n)=>"Listas!$"+letter+"$1:$"+letter+"$"+n;
 
-    ws.columns=HDR_TEMPLATE.map((h,i)=>({ header:h, width:[13,14,16,14,7,14,16,10,10,10,11,20,12,12][i]||14 }));
-    // encabezado: fondo negro, letra blanca
+    ws.columns=HDR_TEMPLATE.map((h,i)=>({ header:h, width:[13,17,14,16,14,17,7,14,16,10,10,10,20,12,12][i]||14 }));
     const hr=ws.getRow(1); hr.height=20;
     hr.eachCell((c)=>{ c.font={name:"Arial",bold:true,size:9,color:{argb:"FFFFFFFF"}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF1A1A1A"}}; c.alignment={horizontal:"center",vertical:"middle"}; c.border={bottom:{style:"thin",color:{argb:"FF000000"}}}; });
 
-    // fila 2: EJEMPLO/guía (el app la ignora porque Origen empieza con "EJEMPLO")
-    const ej=["EJEMPLO Guadalajara","Manzanillo, MX","Ningbo","","28","","1650","Maersk","TPWB","DR-CY","Truck","Steel Products","2026-07-01","2026-07-31"];
+    // fila 2: EJEMPLO/guía (el app la ignora: Origen empieza con "EJEMPLO")
+    const ej=["EJEMPLO Guadalajara","All Truck","Manzanillo, MX","Ningbo","","","28","","1650","Maersk","TPWB","DR-CY","Steel Products","2026-07-01","2026-07-31"];
     const er=ws.getRow(2); ej.forEach((v,i)=>{ er.getCell(i+1).value=v; });
     er.eachCell((c)=>{ c.font={name:"Arial",italic:true,size:9,color:{argb:"FF8A939C"}}; });
 
-    // dropdowns (aplican a filas 2..400)
     const dv=(colIdx,ref)=>{ for(let r=2;r<=400;r++){ ws.getCell(r,colIdx).dataValidation={ type:"list", allowBlank:true, formulae:["="+ref] }; } };
-    dv(8,  rng(colCarr,OPC_CARRIER.length));  // Carrier
-    dv(9,  rng(colTL,  OPC_TL.length));       // Tradelane
-    dv(10, rng(colSrvc,OPC_SRVC.length));     // Srvc. Mode
-    dv(12, rng(colProd,OPC_PROD.length));     // Producto
+    dv(2,  rng(colModo,OPC_MODO.length));     // Transp Mode Origen
+    dv(6,  rng(colModo,OPC_MODO.length));     // Transp Mode Destino
+    dv(10, rng(colCarr,OPC_CARRIER.length));  // Carrier
+    dv(11, rng(colTL,  OPC_TL.length));       // Tradelane
+    dv(12, rng(colSrvc,OPC_SRVC.length));     // Srvc. Mode
+    dv(13, rng(colProd,OPC_PROD.length));     // Producto
 
     ws.autoFilter="A1:"+ws.getColumn(HDR_TEMPLATE.length).letter+"1";
     const buf=await wb.xlsx.writeBuffer();
