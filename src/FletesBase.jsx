@@ -3,7 +3,7 @@ import * as XLSX from "xlsx";
 import ExcelJS from "exceljs";
 import { C, puertoNombre, parseFletesBase, validarFletesBase, TRADELANES, COMMODITIES } from "./lib.js";
 import { Btn } from "./ui.jsx";
-import { listFletesBase, upsertFletesBase, deleteFleteBase, deleteFletesBaseTodos, saveFletesArchivo, listFletesArchivos, getFletesArchivo } from "./db.js";
+import { listFletesBase, upsertFletesBase, deleteFleteBase, deleteFletesBaseTodos, saveFletesArchivo, listFletesArchivos, getFletesArchivo, reporteFletesEnCotizaciones } from "./db.js";
 
 // Encabezados del template del catálogo (deben coincidir con lo que lee parseFletesBase)
 const HDR_TEMPLATE=["Origen","Transp Mode Origen","POL","POD","Destination","Transp Mode Destino","T.T.","Tarifa Base 20'","Tarifa Base 40'/40HC","Carrier","Tradelane","Srvc. Mode","Producto","Vig desde","Vig hasta"];
@@ -95,6 +95,18 @@ export function FletesBase({ role }){
     XLSX.writeFile(wb,"Catalogo_fletes_base_"+hoyISO()+".xlsx");
   };
 
+  const bajarReporte=async()=>{
+    setBusy(true);
+    let res; try{ res=await reporteFletesEnCotizaciones(); }catch(ex){ res={rows:[],error:ex.message}; }
+    setBusy(false);
+    if(res.error){ alert("Error al generar el reporte: "+res.error); return; }
+    if(!res.rows.length){ alert("No hay fletes base en cotizaciones todavía."); return; }
+    const head=["Cliente","No. Acuerdo","Modo","Folio","Dir","Tradelane","Producto","Origen","POL","POL nombre","POD","POD nombre","Destino","Equipo","Naviera","Flete Base","Profit","T.T.","Vig desde","Vig hasta","Estatus","Actualizado"];
+    const aoa=[head,...res.rows.map(r=>[r.cliente,r.no_acuerdo,r.modo,r.codigo,r.direccion==="I"?"Imp":"Exp",r.tradelane,r.producto,r.origen,r.pol,puertoNombre(r.pol),r.pod,puertoNombre(r.pod),r.destino,r.equipo,r.naviera,r.flete_base,r.profit,r.transito||"",r.vig_desde||"",r.vig_hasta||"",r.estatus,r.updated_at?String(r.updated_at).slice(0,10):""])];
+    const ws=XLSX.utils.aoa_to_sheet(aoa); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Fletes en cotizaciones");
+    XLSX.writeFile(wb,"Reporte_fletes_en_cotizaciones_"+hoyISO()+".xlsx");
+  };
+
   const borrar=async(id)=>{ if(!confirm("¿Eliminar este flete base del catálogo?")) return; const {error}=await deleteFleteBase(id); if(error) alert(error); else reload(); };
   const vaciar=async()=>{ if(!confirm("¿Vaciar TODO el catálogo de fletes base? Esta acción no se puede deshacer.")) return; const {error}=await deleteFletesBaseTodos(); if(error) alert(error); else reload(); };
 
@@ -116,6 +128,8 @@ export function FletesBase({ role }){
         <Btn kind="ghost" small onClick={bajar} disabled={!(rows&&rows.length)}>⬇ Bajar catálogo</Btn>
         <Btn kind="ghost" small onClick={reload}>↻</Btn>
         {isAdmin&&rows&&rows.length>0&&<Btn kind="ghost" small onClick={vaciar}>Vaciar</Btn>}
+        <span style={{width:1,alignSelf:"stretch",background:C.sep2,margin:"0 2px"}}/>
+        <Btn kind="ghost" small onClick={bajarReporte} disabled={busy} title="Excel con los fletes base usados dentro de las cotizaciones (independiente del catálogo)">⬇ Reporte de cotizaciones</Btn>
       </div>
     </div>
 

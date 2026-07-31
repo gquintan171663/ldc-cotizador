@@ -615,3 +615,40 @@ export async function matchFletesBase(claves){
   (data||[]).forEach(f=>{ const k=key(f); (map[k]=map[k]||[]).push(f); });
   return map;
 }
+
+// ===========================================================================
+// REPORTE: fletes base que están DENTRO de las cotizaciones (independiente del catálogo)
+// Barre todas las versiones, sus líneas y opciones de costo, y devuelve una fila
+// por (cotización × ruta × naviera × equipo) con su costo_base.
+// ===========================================================================
+export async function reporteFletesEnCotizaciones(){
+  const { data: vers, error } = await supabase.from("versiones")
+    .select("id,codigo,direccion,commodity,tradelane,estatus,updated_at,vig_desde,vig_hasta,acuerdos(no_acuerdo,modo,clientes(nombre))")
+    .order("updated_at",{ascending:false}).limit(3000);
+  if(error) return { rows:[], error:error.message };
+  const vById={}; (vers||[]).forEach(v=>{ vById[v.id]=v; });
+  const vIds=(vers||[]).map(v=>v.id);
+  if(!vIds.length) return { rows:[] };
+  let lineas, ops;
+  try{
+    lineas = await selectAllIn("lineas","id,version_id,origen,pol,pod,destino,equipo,validez_desde,validez_hasta","version_id",vIds);
+    const lIds=(lineas||[]).map(l=>l.id);
+    ops = lIds.length ? await selectAllIn("opciones_costo","linea_id,naviera,costo_base,profit,transito_dias","linea_id",lIds) : [];
+  }catch(ex){ return { rows:[], error:ex.message }; }
+  const lById={}; (lineas||[]).forEach(l=>{ lById[l.id]=l; });
+  const rows=[];
+  (ops||[]).forEach(o=>{
+    const base=Number(o.costo_base)||0; if(base<=0) return;   // $0 = no cotizó, se omite
+    const l=lById[o.linea_id]; if(!l) return;
+    const v=vById[l.version_id]; if(!v) return;
+    rows.push({
+      cliente:v.acuerdos?.clientes?.nombre||"", no_acuerdo:v.acuerdos?.no_acuerdo||"", modo:v.acuerdos?.modo||"",
+      codigo:v.codigo||"", direccion:v.direccion, tradelane:v.tradelane||"", producto:v.commodity||"",
+      origen:l.origen||"", pol:l.pol||"", pod:l.pod||"", destino:l.destino||"", equipo:l.equipo||"",
+      naviera:o.naviera||"", flete_base:base, profit:Number(o.profit)||0, transito:o.transito_dias,
+      vig_desde:l.validez_desde||v.vig_desde||null, vig_hasta:l.validez_hasta||v.vig_hasta||null,
+      estatus:v.estatus, updated_at:v.updated_at
+    });
+  });
+  return { rows };
+}
