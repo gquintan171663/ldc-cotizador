@@ -37,7 +37,7 @@ export default function App(){
     </div>
     <div style={{padding:20}}>
       {!canQuote&&(<div style={{maxWidth:560,margin:"60px auto",textAlign:"center",color:C.label,fontSize:14}}>Este módulo es de Pricing. Tu rol ({role||"sin rol"}) no tiene acceso a cotizaciones.</div>)}
-      {canQuote&&tab==="lista" && <Cotizaciones onOpen={openVersion} onNew={nuevaCotiz} />}
+      {canQuote&&tab==="lista" && <Cotizaciones onOpen={openVersion} onNew={nuevaCotiz} role={role} />}
       {canQuote&&tab==="cotizador" && <Cotizador key={cotizKey} loadId={openId} />}
       {canQuote&&tab==="fletes" && <FletesBase role={role} />}
       {canQuote&&tab==="importar" && (<div style={{maxWidth:1160,margin:"0 auto",background:"#fff",border:"1px solid "+C.sep2,borderRadius:12,padding:16}}><Importador onBack={()=>setTab("lista")} /></div>)}

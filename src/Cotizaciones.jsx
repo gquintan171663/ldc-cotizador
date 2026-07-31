@@ -1,7 +1,7 @@
 import React, { useState, useEffect, useMemo } from "react";
 import { C } from "./lib.js";
 import { Btn, Chip } from "./ui.jsx";
-import { listCotizaciones } from "./db.js";
+import { listCotizaciones, deleteAcuerdo } from "./db.js";
 
 const ESTATUS={borrador:{t:"Borrador",c:C.label,bg:C.soft},enviada:{t:"Enviada",c:C.green,bg:C.greenBg},aceptada:{t:"Aceptada",c:C.green,bg:C.greenBg},rechazada:{t:"Rechazada",c:C.red,bg:C.redSoft},vencida:{t:"Vencida",c:C.red,bg:C.redSoft},superseded:{t:"Reemplazada",c:"#8A6D1F",bg:"#FBF4E0"}};
 function EstChip({e}){const m=ESTATUS[e]||{t:e,c:C.label,bg:C.soft};return <span style={{fontSize:10,fontWeight:"bold",color:m.c,background:m.bg,border:"1px solid "+C.sep2,borderRadius:4,padding:"2px 7px",whiteSpace:"nowrap"}}>{m.t}</span>;}
@@ -10,10 +10,22 @@ const MODO={ME:"Marítimo Exportación",MI:"Marítimo Importación",AE:"Aéreo E
 const hoyISO=()=>new Date().toISOString().slice(0,10);
 const vigenteHoy=(a,b)=>{ const h=hoyISO(); if(!a&&!b) return false; if(a&&a>h) return false; if(b&&b<h) return false; return true; };
 
-export function Cotizaciones({ onOpen, onNew }){
+export function Cotizaciones({ onOpen, onNew, role }){
+  const isAdmin = role==="admin";
   const [rows,setRows]=useState(null);
   const [q,setQ]=useState("");
   const reload=()=>{ setRows(null); listCotizaciones().then(({rows})=>setRows(rows||[])); };
+
+  const borrarMacro=async(g)=>{
+    if(!isAdmin||!g.acuerdoId) return;
+    const n=g.rows.length;
+    const ok=confirm("⚠ BORRAR CONTRATO MACRO\n\nCliente: "+g.cliente+"\nAcuerdo: "+(g.noAcuerdo||"—")+"\n\nSe eliminarán PERMANENTEMENTE este acuerdo y sus "+n+" amendment(s), con todas sus rutas, costos y recargos. El cliente NO se borra.\n\nEsta acción no se puede deshacer. ¿Continuar?");
+    if(!ok) return;
+    const ok2=confirm("Confirmación final: se borrará el acuerdo "+(g.noAcuerdo||"")+" de "+g.cliente+". ¿Seguro?");
+    if(!ok2) return;
+    const { error }=await deleteAcuerdo(g.acuerdoId);
+    if(error) alert("No se pudo borrar: "+error); else reload();
+  };
   useEffect(()=>{ reload(); },[]);
 
   const filtered=(rows||[]).filter(r=>{ const s=q.trim().toLowerCase(); if(!s) return true; return (r.cliente+" "+r.folio+" "+r.commodity+" "+r.owner+" "+r.noAcuerdo+" "+r.tradelane).toLowerCase().includes(s); });
@@ -69,6 +81,7 @@ export function Cotizaciones({ onOpen, onNew }){
               <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flex:"none"}}>
                 <span style={{fontSize:9,color:C.label,letterSpacing:.5,textTransform:"uppercase"}}>Contrato macro</span>
                 <span style={{fontSize:12.5,fontWeight:"bold",color:"#fff",background:C.red,borderRadius:5,padding:"4px 10px",letterSpacing:.5}}>{g.noAcuerdo||"— sin acuerdo —"}</span>
+                {isAdmin&&g.acuerdoId&&<span onClick={()=>borrarMacro(g)} title="Borrar contrato macro (solo admin)" style={{cursor:"pointer",marginLeft:2,color:C.label,fontSize:15,lineHeight:1}}>🗑</span>}
               </div>
             </div>
 

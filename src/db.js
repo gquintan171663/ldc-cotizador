@@ -509,6 +509,15 @@ export async function deleteVersion(versionId){
   return { error: error ? error.message : null };
 }
 
+// Borra un contrato macro completo (acuerdo + amendments + rutas + costos + recargos).
+// Usa una función en la BD (delete_acuerdo) que EXIGE admin y borra todo en una transacción.
+// El CLIENTE no se borra (puede tener otros acuerdos de distinto modo).
+export async function deleteAcuerdo(acuerdoId){
+  if(!acuerdoId) return { error:"Falta el identificador del acuerdo." };
+  const { error } = await supabase.rpc("delete_acuerdo", { p_acuerdo: acuerdoId });
+  return { error: error ? error.message : null };
+}
+
 // Cuenta de versiones importadas (todas y borradores)
 export async function contarImportadas(){
   const { count: total } = await supabase.from("versiones").select("id",{count:"exact",head:true}).eq("origen","importado");
