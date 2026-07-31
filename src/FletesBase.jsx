@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useRef, useMemo } from "react";
 import * as XLSX from "xlsx";
-import { C, puertoNombre, parseFletesBase, validarFletesBase } from "./lib.js";
+import ExcelJS from "exceljs";
+import { C, puertoNombre, parseFletesBase, validarFletesBase, TRADELANES, COMMODITIES } from "./lib.js";
 import { Btn } from "./ui.jsx";
 import { listFletesBase, upsertFletesBase, deleteFleteBase, deleteFletesBaseTodos, saveFletesArchivo, listFletesArchivos, getFletesArchivo } from "./db.js";
 
@@ -26,7 +27,41 @@ export function FletesBase({ role }){
   const reload=()=>{ setRows(null); listFletesBase().then(({rows,error})=>{ if(error){ setMsg("Error al cargar: "+error); setRows([]); } else setRows(rows||[]); }); listFletesArchivos().then(({rows})=>setVersiones(rows||[])); };
   useEffect(()=>{ reload(); },[]);
 
-  const bajarPlantilla=()=>{ const ws=XLSX.utils.aoa_to_sheet([HDR_TEMPLATE]); ws["!cols"]=HDR_TEMPLATE.map(()=>({wch:15})); const wb=XLSX.utils.book_new(); XLSX.utils.book_append_sheet(wb,ws,"Fletes base"); XLSX.writeFile(wb,"Plantilla_fletes_base.xlsx"); };
+  const bajarPlantilla=async()=>{
+    const OPC_CARRIER=["CMA","Hapag","Maersk","MSC"];
+    const OPC_SRVC=["CY-CY","DR-CY","CY-DR","DR-DR"];
+    const OPC_TL=TRADELANES.map(t=>t.code);
+    const OPC_PROD=COMMODITIES.map(c=>c.com);
+    const wb=new ExcelJS.Workbook();
+    const ws=wb.addWorksheet("Fletes base",{views:[{state:"frozen",ySplit:1}]});
+    // hoja oculta con las listas (para dropdowns largos como Producto)
+    const L=wb.addWorksheet("Listas"); L.state="veryHidden";
+    const col=(arr,c)=>{ arr.forEach((v,i)=>{ L.getCell(i+1,c).value=v; }); return L.getColumn(c).letter; };
+    const colTL=col(OPC_TL,1), colProd=col(OPC_PROD,2), colCarr=col(OPC_CARRIER,3), colSrvc=col(OPC_SRVC,4);
+    const rng=(letter,n)=>"Listas!$"+letter+"$1:$"+letter+"$"+n;
+
+    ws.columns=HDR_TEMPLATE.map((h,i)=>({ header:h, width:[13,14,16,14,7,14,16,10,10,10,11,20,12,12][i]||14 }));
+    // encabezado: fondo negro, letra blanca
+    const hr=ws.getRow(1); hr.height=20;
+    hr.eachCell((c)=>{ c.font={name:"Arial",bold:true,size:9,color:{argb:"FFFFFFFF"}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF1A1A1A"}}; c.alignment={horizontal:"center",vertical:"middle"}; c.border={bottom:{style:"thin",color:{argb:"FF000000"}}}; });
+
+    // fila 2: EJEMPLO/guía (el app la ignora porque Origen empieza con "EJEMPLO")
+    const ej=["EJEMPLO Guadalajara","Manzanillo, MX","Ningbo","","28","","1650","Maersk","TPWB","DR-CY","Truck","Steel Products","2026-07-01","2026-07-31"];
+    const er=ws.getRow(2); ej.forEach((v,i)=>{ er.getCell(i+1).value=v; });
+    er.eachCell((c)=>{ c.font={name:"Arial",italic:true,size:9,color:{argb:"FF8A939C"}}; });
+
+    // dropdowns (aplican a filas 2..400)
+    const dv=(colIdx,ref)=>{ for(let r=2;r<=400;r++){ ws.getCell(r,colIdx).dataValidation={ type:"list", allowBlank:true, formulae:["="+ref] }; } };
+    dv(8,  rng(colCarr,OPC_CARRIER.length));  // Carrier
+    dv(9,  rng(colTL,  OPC_TL.length));       // Tradelane
+    dv(10, rng(colSrvc,OPC_SRVC.length));     // Srvc. Mode
+    dv(12, rng(colProd,OPC_PROD.length));     // Producto
+
+    ws.autoFilter="A1:"+ws.getColumn(HDR_TEMPLATE.length).letter+"1";
+    const buf=await wb.xlsx.writeBuffer();
+    const blob=new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+    const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download="Plantilla_fletes_base.xlsx"; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  };
   const bajarVersion=async(v)=>{ const { b64, nombre, error }=await getFletesArchivo(v.id); if(error||!b64){ alert("No se pudo descargar: "+(error||"vacío")); return; } _descargarB64(b64, nombre||v.nombre); };
 
   const onFile=async(e)=>{

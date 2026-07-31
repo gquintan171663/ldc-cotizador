@@ -428,6 +428,8 @@ export function validarFletesBase(rows){
     const podRaw=String(row[cPod]==null?"":row[cPod]).trim();
     const carrRaw=String((cCarr>=0?row[cCarr]:"")||"").trim();
     const anyRate = num(c20>=0?row[c20]:null)!=null || num(cHC>=0?row[cHC]:null)!=null || num(c40>=0?row[c40]:null)!=null;
+    // fila de ejemplo/guía del template: se ignora en silencio
+    if(/ejemplo/i.test(String((cOri>=0?row[cOri]:"")||""))) continue;
     if(!polRaw&&!podRaw&&!carrRaw&&!anyRate) continue;
     filasDatos++;
     let mala=false;
@@ -483,6 +485,7 @@ export function parseFletesBase(rows){
   const out=[];
   for(let r=1;r<rows.length;r++){ const row=rows[r]||[];
     const polR=String(row[cPol]==null?"":row[cPol]).trim(), podR=String(row[cPod]==null?"":row[cPod]).trim();
+    if(/ejemplo/i.test(String((cOri>=0?row[cOri]:"")||""))) continue;
     if(!polR&&!podR) continue;
     const naviera=scacTarifario(String((cCarr>=0?row[cCarr]:"")||"").trim()); if(!naviera) continue;
     const srvc=String((cSrvc>=0?row[cSrvc]:"")||"").trim().toUpperCase();
