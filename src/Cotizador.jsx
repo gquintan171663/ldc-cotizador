@@ -380,7 +380,7 @@ export function Cotizador({ loadId, onDirty }){
   const exportarXlsx=async(interno)=>{ const falt=faltanPOLPOD(); if(falt.length){ alert("Faltan datos obligatorios en las rutas (POL, POD, naviera y modo si hay ciudad):\n\n• "+falt.join("\n• ")); return; } if(!interno&&!confirmProfit()) return; try{ await exportarExcel(stCotiz(),{interno:!!interno}); }catch(ex){ alert("Error al exportar a Excel: "+ex.message); } };
   const toggleEditProp=()=>{ const next=!editarPropuesta; setRutas(derivarAnclaje(rutas,next)); setEditarPropuesta(next); };
   const lineasPropModificada=()=>{ const out=[]; (rutas||[]).forEach(r=>{ if(!r.ventaAncla) return; Object.keys(r.ventaAncla).forEach(ek=>{ const eqObj=EQUIPOS.find(x=>x.k===ek); if(!eqObj) return; const oi=opcionActivaEq(r,ek,eqObj,direccion,surOfMain); const o=(r.opciones||[])[oi]; if(!o) return; const pr=(o.precios||{})[ek]||{}; if(pr.base==null||pr.base==="") return; const venta=round10(n(pr.base)+adicPorCont(surOfMain(o.navScac,tlDe(r)),eqObj,direccion)+n(pr.profit)); if(venta!==Math.round(Number(r.ventaAncla[ek]))) out.push((r.pol||r.origen||"?")+"→"+(r.pod||r.destino||"?")+" "+eqObj.t+": "+money(Number(r.ventaAncla[ek]))+" → "+money(venta)); }); }); return out; };
-  const anclar=async()=>{ if(!versionId){ alert("Guarda la cotización antes de anclar la venta como propuesta."); return; } if(faltanPOLPOD().length){ alert("Completa POL, POD y naviera antes de anclar."); return; } if(!confirm("¿Anclar la venta actual como propuesta (modo vivo)?\n\nDespués, al mover costos verás el profit resultante contra este precio. Para cambiarle el precio al cliente, usa un nuevo Amendment.")) return; setSaving(true); try{ await guardar(); const res=await anclarVenta(versionId); const st=await loadVersion(versionId); if(st&&st.rutas) setRutas(st.rutas); alert("Venta anclada en "+((res&&res.anclados)||0)+" línea(s). Modo vivo activo."); }catch(ex){ alert("Error al anclar: "+ex.message); } setSaving(false); };
+  const anclar=async()=>{ if(!versionId){ alert("Guarda la cotización antes de fijar el precio al cliente."); return; } if(faltanPOLPOD().length){ alert("Completa POL, POD y naviera antes de fijar el precio."); return; } if(!confirm("¿Fijar el precio actual al cliente?\n\nEl precio queda congelado: al ajustar costos cambia tu profit, no el precio. Para cambiarlo después usa \"Editar precio\" o crea un nuevo Amendment.")) return; setSaving(true); try{ await guardar(); const res=await anclarVenta(versionId); const st=await loadVersion(versionId); if(st&&st.rutas) setRutas(st.rutas); alert("Precio fijado en "+((res&&res.anclados)||0)+" línea(s)."); }catch(ex){ alert("Error al fijar el precio: "+ex.message); } setSaving(false); };
   const hayAncla=(rutas||[]).some(r=>r.ventaAncla&&Object.keys(r.ventaAncla).length>0);
 
   return (<div style={{maxWidth:1160,margin:"0 auto"}}>
@@ -395,9 +395,9 @@ export function Cotizador({ loadId, onDirty }){
       <ul style={{margin:0,paddingLeft:18,fontSize:11.5,color:C.slate,lineHeight:1.5}}>{cambios.slice(0,40).map((c,i)=><li key={i}>{c}</li>)}</ul>
     </div>)}
     {editarPropuesta&&(()=>{ const pm=lineasPropModificada(); return (<div style={{marginBottom:12,padding:"10px 14px",background:"#FFF3E0",border:"1px solid #F0C79A",borderRadius:10}}>
-      <div style={{fontSize:12,fontWeight:"bold",color:"#C77800",marginBottom:pm.length?6:0}}>✎ Editar propuesta activo — el profit está desbloqueado y la venta puede cambiar.{pm.length?" Cambios de precio ("+pm.length+"):":" (aún sin cambios de precio)"}</div>
+      <div style={{fontSize:12,fontWeight:"bold",color:"#C77800",marginBottom:pm.length?6:0}}>✎ Editando el precio al cliente — el precio ya no está congelado y puede cambiar al ajustar costos.{pm.length?" Cambios de precio ("+pm.length+"):":" (aún sin cambios de precio)"}</div>
       {pm.length>0&&<ul style={{margin:0,paddingLeft:18,fontSize:11.5,color:C.slate,lineHeight:1.5}}>{pm.slice(0,20).map((c,i)=><li key={i}>{c}</li>)}</ul>}
-      {pm.length>0&&<div style={{fontSize:11,color:C.label,marginTop:6}}>Para formalizar el nuevo precio con el cliente: crea un <b>Nuevo Amendment</b> (al enviarlo se re-ancla), o dale <b>Re-anclar venta</b> para fijar este precio como la nueva base viva.</div>}
+      {pm.length>0&&<div style={{fontSize:11,color:C.label,marginTop:6}}>Dale <b>🔒 Fijar este nuevo precio</b> para congelar este precio, o <b>Cancelar</b> para volver al anterior. Para formalizarlo con el cliente, crea un <b>Nuevo Amendment</b>.</div>}
     </div>); })()}
     <div style={{background:"#fff",border:"1px solid "+C.sep2,borderRadius:12,padding:16,marginBottom:16,opacity:editable?1:.7,pointerEvents:editable?"auto":"none"}}>
       <div style={{display:"flex",gap:16,alignItems:"flex-end",flexWrap:"wrap"}}>
@@ -491,9 +491,12 @@ export function Cotizador({ loadId, onDirty }){
           <Btn kind="ghost" onClick={()=>exportarXlsx(true)} title="Mismo formato + profit por equipo. No enviar al cliente.">Excel interno (profits)</Btn>
           {editable&&<Btn kind="green" onClick={guardar} disabled={saving}>{saving?"Guardando…":(versionId?"Guardar cambios":"Guardar cotización")}</Btn>}
           {editable&&versionId&&<Btn kind="dark" onClick={enviar} disabled={saving}>Marcar enviada</Btn>}
-          {editable&&versionId&&<Btn kind="ghost" onClick={anclar} disabled={saving}>{hayAncla?"Re-anclar venta":"Anclar venta (modo vivo)"}</Btn>}
-          {editable&&hayAncla&&<Btn kind={editarPropuesta?"primary":"ghost"} onClick={toggleEditProp}>{editarPropuesta?"🔒 Bloquear propuesta":"✎ Editar propuesta"}</Btn>}
-          {hayAncla&&<span style={{fontSize:11,fontWeight:"bold",color:"#0B7A3B",background:"#E8F5EC",border:"1px solid #BFE3CB",borderRadius:6,padding:"4px 9px",alignSelf:"center"}}>🔒 Modo vivo · venta anclada</span>}
+          {editable&&versionId&&!hayAncla&&<Btn kind="ghost" onClick={anclar} disabled={saving} title="Congela el precio al cliente. Al ajustar costos cambia tu profit, no el precio.">🔒 Fijar precio al cliente</Btn>}
+          {editable&&hayAncla&&!editarPropuesta&&<Btn kind="ghost" onClick={toggleEditProp} disabled={saving}>✎ Editar precio</Btn>}
+          {editable&&hayAncla&&editarPropuesta&&<Btn kind="primary" onClick={async()=>{ await anclar(); setEditarPropuesta(false); }} disabled={saving}>🔒 Fijar este nuevo precio</Btn>}
+          {editable&&hayAncla&&editarPropuesta&&<Btn kind="ghost" onClick={toggleEditProp} disabled={saving}>Cancelar</Btn>}
+          {hayAncla&&!editarPropuesta&&<span style={{fontSize:11,fontWeight:"bold",color:"#0B7A3B",background:"#E8F5EC",border:"1px solid #BFE3CB",borderRadius:6,padding:"4px 9px",alignSelf:"center"}}>🔒 Precio fijo al cliente</span>}
+          {hayAncla&&!editarPropuesta&&<span style={{fontSize:10.5,color:C.label,alignSelf:"center",maxWidth:280,lineHeight:1.3}}>El cliente ve un precio congelado; al ajustar costos cambia tu profit, no el precio.</span>}
           {!editable&&versionId&&<Btn kind="primary" onClick={nueva} disabled={saving}>{saving?"Creando…":"＋ Nuevo Amendment"}</Btn>}
         </div>
       </div>
