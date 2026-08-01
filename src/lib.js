@@ -535,15 +535,20 @@ export function parseTarifario(rows){
       if(/20/.test(t)&&c20<0) c20=i; });
     const cTT=idx(["t.t","tt","transit","tiempo"]);
     const modo=(t)=>{ const s=String(t||"").trim(); return _MODEABBR[s.toLowerCase()]||_MODEABBR[s.toLowerCase().replace(/\s/g,"")]||s; };
+    // Dos columnas de transp mode (origen/destino) con respaldo a una sola columna "Transp Mode"
+    const idxTp=(fn)=>{ for(let i=0;i<H.length;i++){ if(fn(H[i].toLowerCase())) return i; } return -1; };
+    const cTrOri=idxTp(h=>/transp/.test(h)&&/orig/.test(h)), cTrDest=idxTp(h=>/transp/.test(h)&&/dest/.test(h));
+    const trOriDe=(row)=> cTrOri>=0?String(row[cTrOri]||"").trim() : (cTr>=0?(String(row[cTr]||"").includes("/")?String(row[cTr]).split("/")[0]:String(row[cTr]||"")).trim():"");
+    const trDestDe=(row)=> cTrDest>=0?String(row[cTrDest]||"").trim() : (cTr>=0?(String(row[cTr]||"").includes("/")?(String(row[cTr]).split("/")[1]||""):String(row[cTr]||"")).trim():"");
     const map=new Map();
     for(let r=1;r<rows.length;r++){ const row=rows[r]||[];
       const polR=String(row[cPol]==null?"":row[cPol]).trim(), podR=String(row[cPod]==null?"":row[cPod]).trim();
       if(!polR&&!podR) continue;
+      if(/ejemplo/i.test(String((cOri>=0?row[cOri]:"")||""))) continue;   // ignora la fila de ejemplo del template
       const srvc=String((cSrvc>=0?row[cSrvc]:"")||"").trim().toUpperCase();
-      const transp=String((cTr>=0?row[cTr]:"")||"").trim();
       let pre="",on="";
-      if(srvc.startsWith("DR")) pre=modo(transp.includes("/")?transp.split("/")[0]:transp);
-      if(srvc.endsWith("DR"))  on=modo(transp.includes("/")?(transp.split("/")[1]||""):transp);
+      if(srvc.startsWith("DR")) pre=modo(trOriDe(row));
+      if(srvc.endsWith("DR"))  on=modo(trDestDe(row));
       const pol=codigoPuerto(polR), pod=codigoPuerto(podR);
       const origen=(cOri>=0&&srvc.startsWith("DR"))?ciudadNorm(String(row[cOri]||"").trim()):"";
       const destino=(cDest>=0&&srvc.endsWith("DR"))?ciudadNorm(String(row[cDest]||"").trim()):"";
