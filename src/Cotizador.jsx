@@ -6,6 +6,7 @@ import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, a
 import { abrirCotizacion } from "./quote.js";
 import { exportarExcel } from "./quoteExcel.js";
 import * as XLSX from "xlsx";
+import ExcelJS from "exceljs";
 
 function SurchargeGrid({surs,onChange,catalog,dir,equipos}){
   const cat=catalog||CATALOG;
@@ -203,6 +204,25 @@ export function Cotizador({ loadId, onDirty }){
   const [editarPropuesta,setEditarPropuesta]=useState(false);
   const impWbRef=React.useRef(null);
   const impInputRef=React.useRef(null);
+  const bajarPlantillaTarifario=async()=>{
+    const HDR=["Customer","Origen","Transp Mode Origen","POL","POD","Destination","Transp Mode Destino","T.T.","Tarifa Base 20'","Tarifa Base 40'/40HC","Carrier","Tradelane","Srvc. Mode"];
+    const MODO=["All Truck","Rail+Truck","Rail Ramp","Truck Ramp","Barge"], CARR=["CMA","Hapag","Maersk","MSC"], SRV=["CY-CY","DR-CY","CY-DR","DR-DR"];
+    const TL=TRADELANES.map(t=>t.code);
+    const wb=new ExcelJS.Workbook();
+    const ws=wb.addWorksheet("Tarifario",{views:[{state:"frozen",ySplit:1}]});
+    ws.columns=HDR.map((h,i)=>({ header:h, width:[13,15,17,15,15,15,17,7,14,16,10,11,11][i]||14 }));
+    const hr=ws.getRow(1); hr.height=22;
+    hr.eachCell((c)=>{ c.font={name:"Arial",bold:true,size:9,color:{argb:"FFFFFFFF"}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF1A1A1A"}}; c.alignment={horizontal:"center",vertical:"middle"}; });
+    const ej=["Deacero","EJEMPLO Guadalajara","All Truck","Manzanillo, MX","Ningbo","","","28","","1650","Maersk","TPWB","DR-CY"];
+    const er=ws.getRow(2); ej.forEach((v,i)=>{ er.getCell(i+1).value=v; });
+    er.eachCell((c)=>{ c.font={name:"Arial",italic:true,size:9,color:{argb:"FF8A939C"}}; });
+    const dv=(col,opts)=>{ for(let r=2;r<=400;r++){ ws.getCell(r,col).dataValidation={ type:"list", allowBlank:true, formulae:['"'+opts.join(",")+'"'] }; } };
+    dv(3,MODO); dv(7,MODO); dv(11,CARR); dv(12,TL); dv(13,SRV);
+    ws.autoFilter="A1:"+ws.getColumn(HDR.length).letter+"1";
+    const buf=await wb.xlsx.writeBuffer();
+    const blob=new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+    const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download="Plantilla_tarifario.xlsx"; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  };
   const onTarifarioFile=async(e)=>{ const f=e.target.files&&e.target.files[0]; if(e.target) e.target.value=""; if(!f) return; try{ const buf=await f.arrayBuffer(); const wb=XLSX.read(buf,{type:"array"}); impWbRef.current=wb; if(wb.SheetNames.length===1) aplicarTarifario(wb.SheetNames[0]); else setImpSheets(wb.SheetNames); }catch(ex){ alert("No se pudo leer el archivo: "+ex.message); } };
   const aplicarTarifario=(sheet)=>{ const wb=impWbRef.current; setImpSheets(null); if(!wb) return; let nuevas=[]; try{ const rows=XLSX.utils.sheet_to_json(wb.Sheets[sheet],{header:1,defval:null}); nuevas=parseTarifario(rows); }catch(ex){ alert("Error al interpretar la hoja: "+ex.message); return; } if(!nuevas.length){ alert("No encontré rutas en la hoja \""+sheet+"\"."); return; } setEquipos(prev=>{ const s=new Set(prev); s.add("20DV"); s.add("40HC"); return [...s]; }); const hay=(rutas||[]).some(r=>tx(r.pol)||tx(r.pod)||(r.opciones||[]).some(o=>tx(o.navScac))); if(hay){ const rep=confirm("Importé "+nuevas.length+" ruta(s) de \""+sheet+"\".\n\nAceptar = REEMPLAZAR las rutas actuales.\nCancelar = AGREGAR al final."); setRutas(ordenarRutas(rep?nuevas:[...rutas,...nuevas],direccion)); } else setRutas(ordenarRutas(nuevas,direccion)); };
   const [started,setStarted]=useState(false);
@@ -437,7 +457,7 @@ export function Cotizador({ loadId, onDirty }){
       <NavierasSection quoteNav={quoteNav} setQuoteNav={setQuoteNav} rutas={rutas} catalog={mergedCat} onAlta={altaRecargo} dir={direccion} equipos={equipos} onGenerar={generarRecargos} foco={focoRecargo}/>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8}}>
         <span style={{fontSize:13,fontWeight:"bold",color:C.ink}}>Tarifas <span style={{fontWeight:"normal",color:C.label,fontSize:12}}>· base y profit por tamaño; costo, venta y subject-to salen solos</span></span>
-        <div style={{display:"flex",gap:8}}><input type="file" ref={impInputRef} accept=".xlsx,.xls" style={{display:"none"}} onChange={onTarifarioFile}/><Btn kind="ghost" small onClick={()=>impInputRef.current&&impInputRef.current.click()}>⇪ Importar tarifario</Btn><Btn kind="ghost" small onClick={()=>setEditRutas(!editRutas)}>{editRutas?"Ocultar rutas":"Editar rutas"}</Btn><Btn kind="ghost" small onClick={()=>setRutas(ordenarRutas(rutas,direccion))} title="Ordenar por ciudad origen · país POL · región POD · país POD">↕ Ordenar rutas</Btn><Btn kind="ghost" small onClick={()=>setRutas([...rutas,mkRuta()])}>＋ Agregar ruta</Btn></div>
+        <div style={{display:"flex",gap:8}}><input type="file" ref={impInputRef} accept=".xlsx,.xls" style={{display:"none"}} onChange={onTarifarioFile}/><Btn kind="ghost" small onClick={()=>impInputRef.current&&impInputRef.current.click()}>⇪ Importar tarifario</Btn><Btn kind="ghost" small onClick={bajarPlantillaTarifario} title="Descarga la plantilla con encabezados, ejemplo y listas">⬇ Plantilla</Btn><Btn kind="ghost" small onClick={()=>setEditRutas(!editRutas)}>{editRutas?"Ocultar rutas":"Editar rutas"}</Btn><Btn kind="ghost" small onClick={()=>setRutas(ordenarRutas(rutas,direccion))} title="Ordenar por ciudad origen · país POL · región POD · país POD">↕ Ordenar rutas</Btn><Btn kind="ghost" small onClick={()=>setRutas([...rutas,mkRuta()])}>＋ Agregar ruta</Btn></div>
       </div>
       {impSheets&&<div style={{background:"#FFF9E9",border:"1px solid #EAD9A0",borderRadius:8,padding:"8px 10px",marginBottom:10}}>
         <span style={{fontSize:12,fontWeight:"bold",color:"#8A6D1F",marginRight:8}}>¿Qué hoja/ciudad importar?</span>
