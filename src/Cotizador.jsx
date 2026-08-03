@@ -63,6 +63,7 @@ function SurchargeGrid({surs,onChange,catalog,dir,equipos}){
 
 function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,onGenerar,foco}){
   const [altaOpen,setAltaOpen]=useState(false);
+  const [secCol,setSecCol]=useState(false);
   const [q,setQ]=useState("");
   const [nc,setNc]=useState(""); const [nd,setNd]=useState("");
   const doAlta=async()=>{ const c=nc.trim().toUpperCase(); if(!c) return; await onAlta(c,nd.trim()); setNc(""); setNd(""); setAltaOpen(false); };
@@ -89,14 +90,15 @@ function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,
   const allCol=blocks.length>0 && blocks.every(b=>colap[bkey(b)]);
   useEffect(()=>{ if(!foco||!foco.scac) return; const b={scac:foco.scac,tl:foco.tl}; setColap(c=>({...c,[bkey(b)]:false})); const t=setTimeout(()=>{ const el=document.getElementById(eid(b)); if(el) el.scrollIntoView({behavior:"smooth",block:"center"}); },60); return ()=>clearTimeout(t); },[foco]);
   return (<div style={{background:"#fff",border:"1px solid "+C.sep2,borderRadius:12,padding:16,marginBottom:16}}>
-    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:10,flexWrap:"wrap",gap:8}}>
-      <span style={{fontSize:13,fontWeight:"bold",color:C.ink}}>Navieras y recargos <span style={{fontWeight:"normal",color:C.label,fontSize:12}}>· un bloque por naviera × lane (país POL → país POD), según tus rutas</span></span>
-      <div style={{display:"flex",gap:8,alignItems:"center"}}>
+    <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:secCol?0:10,flexWrap:"wrap",gap:8}}>
+      <span onClick={()=>setSecCol(!secCol)} style={{fontSize:13,fontWeight:"bold",color:C.ink,cursor:"pointer",userSelect:"none"}}><span style={{color:C.label,marginRight:6}}>{secCol?"▸":"▾"}</span>Navieras y recargos {secCol?<span style={{fontWeight:"normal",color:C.label,fontSize:12}}>· {blocks.length} bloque(s) — clic para expandir</span>:<span style={{fontWeight:"normal",color:C.label,fontSize:12}}>· un bloque por naviera × lane (país POL → país POD), según tus rutas</span>}</span>
+      {!secCol&&<div style={{display:"flex",gap:8,alignItems:"center"}}>
         {blocks.length>1&&<input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar naviera, país origen/destino…" style={{...inS,fontSize:12,padding:"6px 9px",width:230}}/>}
         {blocks.length>1&&<Btn kind="ghost" small onClick={()=>setAll(!allCol)}>{allCol?"Expandir todo":"Colapsar todo"}</Btn>}
         <Btn kind="ghost" small onClick={()=>setAltaOpen(!altaOpen)}>{altaOpen?"Cancelar":"＋ Alta de recargo"}</Btn>
-      </div>
+      </div>}
     </div>
+    {!secCol&&(<>
     {altaOpen&&(<div style={{display:"flex",gap:8,alignItems:"flex-end",background:C.soft,border:"1px solid "+C.sep2,borderRadius:8,padding:10,marginBottom:12}}>
       <Field label="Clave nueva" w={.6}><TI value={nc} onChange={e=>setNc(e.target.value.toUpperCase())} placeholder="EJ. ABC"/></Field>
       <Field label="Descripción"><TI value={nd} onChange={e=>setNd(e.target.value)} placeholder="Descripción del recargo"/></Field>
@@ -122,6 +124,7 @@ function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,
         {!col&&<div style={{marginTop:6}}><SurchargeGrid surs={surs} catalog={catalog} dir={dir} equipos={equipos} onChange={(s)=>setSurs(b.scac,b.tl,s)}/></div>}
       </div>);
     })}
+    </>)}
   </div>);
 }
 
