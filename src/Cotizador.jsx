@@ -63,7 +63,7 @@ function SurchargeGrid({surs,onChange,catalog,dir,equipos}){
 
 function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,onGenerar,foco}){
   const [altaOpen,setAltaOpen]=useState(false);
-  const [secCol,setSecCol]=useState(false);
+  const [secCol,setSecCol]=useState(true);
   const [q,setQ]=useState("");
   const [nc,setNc]=useState(""); const [nd,setNd]=useState("");
   const doAlta=async()=>{ const c=nc.trim().toUpperCase(); if(!c) return; await onAlta(c,nd.trim()); setNc(""); setNd(""); setAltaOpen(false); };
@@ -84,7 +84,7 @@ function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,
   const eid=(b)=>"blk_"+b.scac+"_"+String(b.tl||"nl").replace(/[^A-Za-z0-9]/g,"_");
   // Arranca colapsado cuando hay más de 2 bloques (una sola vez, al aparecer)
   const colapInit=React.useRef(false);
-  useEffect(()=>{ if(colapInit.current) return; if(blocks.length>2){ const m={}; blocks.forEach(b=>{m[bkey(b)]=true;}); setColap(m); } if(blocks.length>0) colapInit.current=true; },[blocks.length]);
+  useEffect(()=>{ if(colapInit.current) return; if(blocks.length>0){ const m={}; blocks.forEach(b=>{m[bkey(b)]=true;}); setColap(m); colapInit.current=true; } },[blocks.length]);
   const toggle=(b)=>setColap(c=>({...c,[bkey(b)]:!c[bkey(b)]}));
   const setAll=(v)=>{ const m={}; blocks.forEach(b=>{m[bkey(b)]=v;}); setColap(m); };
   const allCol=blocks.length>0 && blocks.every(b=>colap[bkey(b)]);
@@ -94,7 +94,6 @@ function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,
       <span onClick={()=>setSecCol(!secCol)} style={{fontSize:13,fontWeight:"bold",color:C.ink,cursor:"pointer",userSelect:"none"}}><span style={{color:C.label,marginRight:6}}>{secCol?"▸":"▾"}</span>Navieras y recargos {secCol?<span style={{fontWeight:"normal",color:C.label,fontSize:12}}>· {blocks.length} bloque(s) — clic para expandir</span>:<span style={{fontWeight:"normal",color:C.label,fontSize:12}}>· un bloque por naviera × lane (país POL → país POD), según tus rutas</span>}</span>
       {!secCol&&<div style={{display:"flex",gap:8,alignItems:"center"}}>
         {blocks.length>1&&<input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar naviera, país origen/destino…" style={{...inS,fontSize:12,padding:"6px 9px",width:230}}/>}
-        {blocks.length>1&&<Btn kind="ghost" small onClick={()=>setAll(!allCol)}>{allCol?"Expandir todo":"Colapsar todo"}</Btn>}
         <Btn kind="ghost" small onClick={()=>setAltaOpen(!altaOpen)}>{altaOpen?"Cancelar":"＋ Alta de recargo"}</Btn>
       </div>}
     </div>
