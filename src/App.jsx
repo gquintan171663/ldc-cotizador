@@ -6,6 +6,7 @@ import { Cotizador } from "./Cotizador.jsx";
 import { Cotizaciones } from "./Cotizaciones.jsx";
 import { Importador } from "./Importador.jsx";
 import { FletesBase } from "./FletesBase.jsx";
+import { TarifasVigentes } from "./TarifasVigentes.jsx";
 
 export default function App(){
   const { session, role, ready, signOut } = useAuth();
@@ -28,7 +29,7 @@ export default function App(){
         <Btn kind={tab==="lista"?"dark":"ghost"} small onClick={()=>setTab("lista")}>Mis cotizaciones</Btn>
         <Btn kind={tab==="cotizador"?"dark":"ghost"} small onClick={()=>setTab("cotizador")}>Cotizador</Btn>
         <Btn kind={tab==="fletes"?"dark":"ghost"} small onClick={()=>setTab("fletes")}>Fletes base</Btn>
-        <Btn kind={tab==="importar"?"dark":"ghost"} small onClick={()=>setTab("importar")}>Importar Excel</Btn>
+        <Btn kind={tab==="vigentes"?"dark":"ghost"} small onClick={()=>setTab("vigentes")}>Tarifas vigentes</Btn>
       </div>)}
       <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:12}}>
         <span style={{fontSize:12,color:C.label}}>{session.user?.email} · <b style={{color:C.slate}}>{role||"…"}</b></span>
@@ -40,7 +41,7 @@ export default function App(){
       {canQuote&&tab==="lista" && <Cotizaciones onOpen={openVersion} onNew={nuevaCotiz} role={role} />}
       {canQuote&&tab==="cotizador" && <Cotizador key={cotizKey} loadId={openId} />}
       {canQuote&&tab==="fletes" && <FletesBase role={role} />}
-      {canQuote&&tab==="importar" && (<div style={{maxWidth:1160,margin:"0 auto",background:"#fff",border:"1px solid "+C.sep2,borderRadius:12,padding:16}}><Importador onBack={()=>setTab("lista")} /></div>)}
+      {canQuote&&tab==="vigentes" && <TarifasVigentes />}
     </div>
   </div>);
 }

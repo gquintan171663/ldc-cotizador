@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient.js";
-import { matchCommodity, paisDe, tlDe, n, adicPorCont, tx, eqMeta, prefijoCliente, numeroAcuerdo, hayCambioCosto, ventaEq, mkSurOf, round10 } from "./lib.js";
+import { matchCommodity, paisDe, tlDe, n, adicPorCont, tx, eqMeta, prefijoCliente, numeroAcuerdo, hayCambioCosto, ventaEq, mkSurOf, round10, opcionActivaEq } from "./lib.js";
 
 // Mapa commodity(lower) -> id desde el catálogo
 async function commodityMap(){
@@ -659,5 +659,65 @@ export async function reporteFletesEnCotizaciones(){
       estatus:v.estatus, updated_at:v.updated_at
     });
   });
+  return { rows };
+}
+
+// ===========================================================================
+// TARIFAS VIGENTES — solo AM "enviada" oficiales.
+// Por cada contrato macro (acuerdo): si tiene enviada(s) vigente(s) hoy, se
+// muestran esas; si NO hay vigente pero sí una enviada vencida, se muestra la
+// última vencida marcada "Vencida" (para saber que el cliente ya no tiene tarifa).
+// Borradores y reemplazadas se ignoran.
+// Cada fila: ruta × equipo, con costo total (base+recargos) de la naviera elegida
+// y de la segunda opción más barata.
+// ===========================================================================
+export async function tarifasVigentes(){
+  const hoy=new Date().toISOString().slice(0,10);
+  const { data: vers, error } = await supabase.from("versiones")
+    .select("id,codigo,direccion,commodity,tradelane,estatus,updated_at,vig_desde,vig_hasta,acuerdo_id,acuerdos(no_acuerdo,clientes(nombre))")
+    .eq("estatus","enviada").order("updated_at",{ascending:false}).limit(3000);
+  if(error) return { rows:[], error:error.message };
+  const cubreHoy=(v)=>{ if(v.vig_desde&&v.vig_desde>hoy) return false; if(v.vig_hasta&&v.vig_hasta<hoy) return false; return true; };
+  // agrupar por acuerdo y elegir qué versiones incluir
+  const porAcuerdo={}; (vers||[]).forEach(v=>{ const k=v.acuerdo_id||("v:"+v.id); (porAcuerdo[k]=porAcuerdo[k]||[]).push(v); });
+  const elegidas=[];
+  Object.values(porAcuerdo).forEach(arr=>{
+    const vig=arr.filter(cubreHoy);
+    if(vig.length) vig.forEach(v=>elegidas.push({v,vencida:false}));
+    else if(arr.length) elegidas.push({v:arr[0],vencida:true});   // arr[0] = la más reciente (orden desc)
+  });
+  const dir0=(d)=>d||"E";
+  const rows=[];
+  for(const {v,vencida} of elegidas){
+    let st; try{ st=await loadVersion(v.id); }catch(_){ continue; }
+    if(!st) continue;
+    const dir=dir0(st.direccion);
+    const surOf=mkSurOf(st);
+    const scope=(r)=>((r.origen?"DR":"CY")+"-"+(r.destino?"DR":"CY"));
+    (st.rutas||[]).forEach(r=>{
+      const equipos=st.equipos&&st.equipos.length?st.equipos:["20DV"];
+      equipos.forEach(ek=>{
+        const eqObj=eqMeta(ek);
+        // costo total por opción (base + recargos que suman)
+        const totales=(r.opciones||[]).map((o,i)=>{ const pr=(o.precios||{})[ek]||{}; if(pr.base==null||pr.base==="") return null; const total=n(pr.base)+adicPorCont(surOf(o.navScac,tlDe(r)),eqObj,dir); return {i,scac:o.navScac||"",total}; }).filter(Boolean);
+        if(!totales.length) return;
+        const oiSel=opcionActivaEq(r,ek,eqObj,dir,surOf);
+        const sel=totales.find(t=>t.i===oiSel)||totales.slice().sort((a,b)=>a.total-b.total)[0];
+        const resto=totales.filter(t=>t.scac!==sel.scac).sort((a,b)=>a.total-b.total);
+        const seg=resto[0]||null;
+        const oSel=(r.opciones||[])[sel.i]||{};
+        rows.push({
+          cliente:st.clienteNombre||"", no_acuerdo:v.acuerdos?.no_acuerdo||st.no_acuerdo||"",
+          folio:v.codigo||st.codigo||"", direccion:dir, tradelane:st.tradelane||"", producto:st.commodity||"",
+          origen:r.origen||"", pre:r.precarriage_mode||"", pol:r.pol||"", pod:r.pod||"", destino:r.destino||"", on:r.oncarriage_mode||"",
+          srvc:scope(r), equipo:ek, tt:oSel.transito||"",
+          costo_total:sel.total, naviera:sel.scac,
+          costo_total2:seg?seg.total:null, naviera2:seg?seg.scac:"",
+          vig_desde:st.vigDesde||v.vig_desde||null, vig_hasta:st.vigHasta||v.vig_hasta||null,
+          vencida
+        });
+      });
+    });
+  }
   return { rows };
 }
