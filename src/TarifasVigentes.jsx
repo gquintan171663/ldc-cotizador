@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import ExcelJS from "exceljs";
-import { C } from "./lib.js";
+import { C, eqMeta } from "./lib.js";
 import { Btn } from "./ui.jsx";
 import { tarifasVigentes } from "./db.js";
 
@@ -17,32 +17,42 @@ export function TarifasVigentes(){
     if(res.error){ setMsg("Error: "+res.error); return; }
     if(!res.rows.length){ setMsg("No hay tarifas vigentes (AM enviadas) todavía."); return; }
 
-    const HDR=["Cliente","No. Acuerdo","Folio","Dir","Tradelane","Producto","Origen","Transp Mode Origen","POL","POD","Destination","Transp Mode Destino","Srvc. Mode","Equipo","T.T.","Costo (1ª opción)","Profit (1ª)","Venta (1ª)","Costo (2ª opción)","Profit (2ª)","Venta (2ª)","Vig desde","Vig hasta","Estatus"];
-    const S1="FFE8F0FE", S2="FFFBF4E0";   // fondos: set 1 azul claro, set 2 ámbar claro
-    const H1="FF1F3A66", H2="FF8A6D1F";   // encabezados de cada set
+    const equipos=res.equipos||[];
+    const BASE=["Cliente","No. Acuerdo","Folio","Dir","Tradelane","Producto","Origen","Transp Mode Origen","POL","POD","Destination","Transp Mode Destino","Srvc. Mode","T.T."];
+    const TAIL=["Vig desde","Vig hasta","Estatus"];
+    const baseW=[18,15,8,5,9,16,14,15,8,8,14,15,9,6];
+    const totalCols=BASE.length+equipos.length*3+TAIL.length;
     const wb=new ExcelJS.Workbook();
-    const ws=wb.addWorksheet("Tarifas vigentes",{views:[{state:"frozen",ySplit:1}]});
-    ws.columns=HDR.map((h,i)=>({ header:h, width:[18,15,8,5,9,16,14,15,8,8,14,15,9,7,6, 13,13,13, 13,13,13, 11,11,9][i]||12 }));
-    const hr=ws.getRow(1); hr.height=24;
-    hr.eachCell((c,col)=>{ const bg = (col>=16&&col<=18)?H1 : (col>=19&&col<=21)?H2 : "FF1A1A1A"; c.font={name:"Arial",bold:true,size:9,color:{argb:"FFFFFFFF"}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:bg}}; c.alignment={horizontal:"center",vertical:"middle",wrapText:true}; });
+    const ws=wb.addWorksheet("Tarifas vigentes",{views:[{state:"frozen",ySplit:2}]});
 
+    const styleHdr=(c,bg)=>{ c.font={name:"Arial",bold:true,size:9,color:{argb:"FFFFFFFF"}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:bg||"FF1A1A1A"}}; c.alignment={horizontal:"center",vertical:"middle",wrapText:true}; };
+    const BLK=["FF1F3A66","FF8A6D1F"];        // encabezado bloques alternando azul / ámbar
+    const S=["FFE8F0FE","FFFBF4E0"];          // fondo celdas alternando
+
+    // Encabezado en 2 filas
+    let ci=1;
+    BASE.forEach((h,i)=>{ ws.mergeCells(1,ci,2,ci); const c=ws.getCell(1,ci); c.value=h; styleHdr(c); ws.getColumn(ci).width=baseW[i]||12; ci++; });
+    equipos.forEach((ek,bi)=>{ const lab=eqMeta(ek).t+" container"; ws.mergeCells(1,ci,1,ci+2); const ch=ws.getCell(1,ci); ch.value=lab; styleHdr(ch,BLK[bi%2]); ["Costo Total","Profit","Venta"].forEach((s,j)=>{ const cc=ws.getCell(2,ci+j); cc.value=s; styleHdr(cc,BLK[bi%2]); ws.getColumn(ci+j).width=13; }); ci+=3; });
+    TAIL.forEach((h)=>{ ws.mergeCells(1,ci,2,ci); const c=ws.getCell(1,ci); c.value=h; styleHdr(c); ws.getColumn(ci).width=11; ci++; });
+    ws.getRow(1).height=20; ws.getRow(2).height=18;
+
+    // Datos (desde fila 3)
+    let rIdx=3;
     res.rows.forEach(r=>{
-      const row=ws.addRow([r.cliente,r.no_acuerdo,r.folio,r.direccion==="I"?"Imp":"Exp",r.tradelane,r.producto,r.origen,r.pre,r.pol,r.pod,r.destino,r.on,r.srvc,r.equipo,r.tt,
-        r.opt1.costo, r.opt1.profit, r.opt1.venta,
-        r.opt2?r.opt2.costo:"", r.opt2?r.opt2.profit:"", r.opt2?r.opt2.venta:"",
-        r.vig_desde||"",r.vig_hasta||"",r.vencida?"Vencida":"Vigente"]);
+      const row=ws.getRow(rIdx); let ci=1;
+      [r.cliente,r.no_acuerdo,r.folio,r.direccion==="I"?"Imp":"Exp",r.tradelane,r.producto,r.origen,r.pre,r.pol,r.pod,r.destino,r.on,r.srvc,r.tt].forEach(v=>{ row.getCell(ci).value=v; ci++; });
+      equipos.forEach((ek,bi)=>{
+        const e=r.eq[ek]; const cc=row.getCell(ci),cp=row.getCell(ci+1),cv=row.getCell(ci+2);
+        if(e){ cc.value=e.costo; cc.numFmt="$#,##0"; cp.value=e.profit; cp.numFmt='$#,##0" ('+(e.scac||"—")+')"'; cv.value=e.venta; cv.numFmt="$#,##0"; }
+        if(!r.vencida){ const f=S[bi%2]; [cc,cp,cv].forEach(x=>x.fill={type:"pattern",pattern:"solid",fgColor:{argb:f}}); }
+        ci+=3;
+      });
+      [r.vig_desde||"",r.vig_hasta||"",r.vencida?"Vencida":"Vigente"].forEach(v=>{ row.getCell(ci).value=v; ci++; });
       row.font={name:"Arial",size:9};
-      const money=(cell)=>{ if(typeof cell.value==="number") cell.numFmt="$#,##0"; };
-      const c16=row.getCell(16),c17=row.getCell(17),c18=row.getCell(18);
-      const c19=row.getCell(19),c20=row.getCell(20),c21=row.getCell(21);
-      money(c16); money(c18);
-      if(typeof c17.value==="number") c17.numFmt='$#,##0" ('+(r.opt1.scac||"—")+')"';
-      money(c19); money(c21);
-      if(r.opt2&&typeof c20.value==="number") c20.numFmt='$#,##0" ('+(r.opt2.scac||"—")+')"';
-      if(r.vencida){ row.eachCell((c)=>{ c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFFDE7E7"}}; }); const est=row.getCell(24); est.font={name:"Arial",bold:true,size:9,color:{argb:"FFC8202E"}}; }
-      else { [c16,c17,c18].forEach(c=>c.fill={type:"pattern",pattern:"solid",fgColor:{argb:S1}}); [c19,c20,c21].forEach(c=>c.fill={type:"pattern",pattern:"solid",fgColor:{argb:S2}}); }
+      if(r.vencida){ for(let k=1;k<ci;k++){ row.getCell(k).fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFFDE7E7"}}; } const est=row.getCell(ci-1); est.font={name:"Arial",bold:true,size:9,color:{argb:"FFC8202E"}}; }
+      rIdx++;
     });
-    ws.autoFilter="A1:"+ws.getColumn(HDR.length).letter+"1";
+    ws.autoFilter={from:{row:2,column:1},to:{row:2,column:totalCols}};
     const buf=await wb.xlsx.writeBuffer();
     const blob=new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download="Tarifas_vigentes_"+hoyISO()+".xlsx"; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);

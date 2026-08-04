@@ -687,7 +687,7 @@ export async function tarifasVigentes(){
     else if(arr.length) elegidas.push({v:arr[0],vencida:true});   // arr[0] = la más reciente (orden desc)
   });
   const dir0=(d)=>d||"E";
-  const rows=[];
+  const rows=[]; const equiposUsados=new Set();
   for(const {v,vencida} of elegidas){
     let st; try{ st=await loadVersion(v.id); }catch(_){ continue; }
     if(!st) continue;
@@ -695,35 +695,32 @@ export async function tarifasVigentes(){
     const surOf=mkSurOf(st);
     const scope=(r)=>((r.origen?"DR":"CY")+"-"+(r.destino?"DR":"CY"));
     (st.rutas||[]).forEach(r=>{
-      const equipos=st.equipos&&st.equipos.length?st.equipos:["20DV"];
-      equipos.forEach(ek=>{
+      const equiposV=st.equipos&&st.equipos.length?st.equipos:["20DV"];
+      const eq={}; let tt="";
+      equiposV.forEach(ek=>{
         const eqObj=eqMeta(ek);
-        // costo total por opción (base + recargos que suman)
         const totales=(r.opciones||[]).map((o,i)=>{ const pr=(o.precios||{})[ek]||{}; const b=n(pr.base); if(b===0) return null; const total=b+adicPorCont(surOf(o.navScac,tlDe(r)),eqObj,dir); return {i,scac:o.navScac||"",total,prof:n(pr.profit)}; }).filter(Boolean);
+        if(!totales.length) return;   // ese tamaño no se cotizó -> no sale columna con dato
+        const oiSel=opcionActivaEq(r,ek,eqObj,dir,surOf);
+        const sel=totales.find(t=>t.i===oiSel)||totales.slice().sort((a,b)=>a.total-b.total)[0];
         const ventaAnc=(r.ventaAncla&&r.ventaAncla[ek]!=null)?Number(r.ventaAncla[ek]):null;
-        let opt1=null,opt2=null,tt="";
-        if(totales.length){
-          const oiSel=opcionActivaEq(r,ek,eqObj,dir,surOf);
-          const sel=totales.find(t=>t.i===oiSel)||totales.slice().sort((a,b)=>a.total-b.total)[0];
-          const ventaCliente=ventaAnc!=null?ventaAnc:(sel.total+sel.prof);   // precio fijo si existe, si no costo+profit
-          opt1={costo:sel.total,venta:ventaCliente,profit:ventaCliente-sel.total,scac:sel.scac};
-          tt=((r.opciones||[])[sel.i]||{}).transito||"";
-          const resto=totales.filter(t=>t.scac!==sel.scac).sort((a,b)=>a.total-b.total);
-          const seg=resto[0]||null;
-          if(seg) opt2={costo:seg.total,venta:ventaCliente,profit:ventaCliente-seg.total,scac:seg.scac};   // misma venta, distinto margen
-        }
-        if(!opt1) return;   // sin cotización para este tamaño: se omite la línea
-        rows.push({
-          cliente:st.clienteNombre||"", no_acuerdo:v.acuerdos?.no_acuerdo||st.no_acuerdo||"",
-          folio:v.codigo||st.codigo||"", direccion:dir, tradelane:st.tradelane||"", producto:st.commodity||"",
-          origen:r.origen||"", pre:r.precarriage_mode||"", pol:r.pol||"", pod:r.pod||"", destino:r.destino||"", on:r.oncarriage_mode||"",
-          srvc:scope(r), equipo:ek, tt,
-          opt1, opt2,
-          vig_desde:st.vigDesde||v.vig_desde||null, vig_hasta:st.vigHasta||v.vig_hasta||null,
-          vencida
-        });
+        const venta=ventaAnc!=null?ventaAnc:(sel.total+sel.prof);
+        eq[ek]={costo:sel.total,profit:venta-sel.total,venta,scac:sel.scac};
+        equiposUsados.add(ek);
+        if(!tt) tt=((r.opciones||[])[sel.i]||{}).transito||"";
+      });
+      if(!Object.keys(eq).length) return;   // ruta sin ningún equipo cotizado -> se omite
+      rows.push({
+        cliente:st.clienteNombre||"", no_acuerdo:v.acuerdos?.no_acuerdo||st.no_acuerdo||"",
+        folio:v.codigo||st.codigo||"", direccion:dir, tradelane:st.tradelane||"", producto:st.commodity||"",
+        origen:r.origen||"", pre:r.precarriage_mode||"", pol:r.pol||"", pod:r.pod||"", destino:r.destino||"", on:r.oncarriage_mode||"",
+        srvc:scope(r), tt, eq,
+        vig_desde:st.vigDesde||v.vig_desde||null, vig_hasta:st.vigHasta||v.vig_hasta||null,
+        vencida
       });
     });
   }
-  return { rows };
+  const EQ_ORDER=["20DV","40DV","40HC","45HC","20RF","40RF","40HCRF","20OT","40OT","20FR","40FR","20PL","40PL","20TK","BB"];
+  const equipos=EQ_ORDER.filter(k=>equiposUsados.has(k));
+  return { rows, equipos };
 }
