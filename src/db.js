@@ -699,7 +699,7 @@ export async function tarifasVigentes(){
       equipos.forEach(ek=>{
         const eqObj=eqMeta(ek);
         // costo total por opción (base + recargos que suman)
-        const totales=(r.opciones||[]).map((o,i)=>{ const pr=(o.precios||{})[ek]||{}; if(pr.base==null||pr.base==="") return null; const total=n(pr.base)+adicPorCont(surOf(o.navScac,tlDe(r)),eqObj,dir); return {i,scac:o.navScac||"",total,prof:n(pr.profit)}; }).filter(Boolean);
+        const totales=(r.opciones||[]).map((o,i)=>{ const pr=(o.precios||{})[ek]||{}; const b=n(pr.base); if(b===0) return null; const total=b+adicPorCont(surOf(o.navScac,tlDe(r)),eqObj,dir); return {i,scac:o.navScac||"",total,prof:n(pr.profit)}; }).filter(Boolean);
         const ventaAnc=(r.ventaAncla&&r.ventaAncla[ek]!=null)?Number(r.ventaAncla[ek]):null;
         let opt1=null,opt2=null,tt="";
         if(totales.length){
