@@ -8,7 +8,7 @@ import { exportarExcel } from "./quoteExcel.js";
 import * as XLSX from "xlsx";
 import ExcelJS from "exceljs";
 
-function SurchargeGrid({surs,onChange,catalog,dir,equipos}){
+function SurchargeGrid({surs,onChange,catalog,dir,equipos,editable=true}){
   const cat=catalog||CATALOG;
   const rows=surs||[];
   const eqsQ=EQUIPOS.filter(e=>(equipos||[]).includes(e.k));
@@ -39,7 +39,7 @@ function SurchargeGrid({surs,onChange,catalog,dir,equipos}){
           <td style={{...td,textAlign:"center"}}><input type="checkbox" checked={!!r.incluido} onChange={()=>set(i,{incluido:true})} title="Incluido en la tarifa base (no se suma)"/></td>
           <td style={{...td,textAlign:"center"}}><input type="checkbox" checked={r.desplegar!==false} onChange={e=>set(i,{desplegar:e.target.checked})} title="Mostrar en el PDF (sección Incluyen / No incluyen)"/></td>
           <td style={td}><select value={r.pago} onChange={e=>set(i,{pago:e.target.value})} style={{...cell,padding:"5px 4px"}}><option value="prepaid">Prepaid</option><option value="collect">Collect</option></select></td>
-          <td style={{...td,textAlign:"center"}}><span onClick={()=>del(i)} style={{cursor:"pointer",color:C.label,fontWeight:"bold"}}>✕</span></td>
+          <td style={{...td,textAlign:"center"}}>{editable&&<span onClick={()=>del(i)} style={{cursor:"pointer",color:C.label,fontWeight:"bold"}}>✕</span>}</td>
         </tr>
         {openSize[i]&&<tr style={{borderBottom:"1px solid "+C.sep,background:C.soft}}><td colSpan={10} style={{padding:"6px 10px"}}>
           <span style={{fontSize:10,color:C.label,fontWeight:"bold",marginRight:10}}>Monto por tamaño (vacío = usa el general{r.monto?" $"+r.monto:""}):</span>
@@ -51,7 +51,7 @@ function SurchargeGrid({surs,onChange,catalog,dir,equipos}){
     </table>
     <datalist id="monedas-dl">{MONEDAS.map(m=><option key={m.code} value={m.code}>{m.code+" · "+m.name}</option>)}</datalist>
     <div style={{padding:"7px 9px",borderTop:"1px solid "+C.sep2,background:C.soft,display:"flex",justifyContent:"space-between",alignItems:"center",flexWrap:"wrap",gap:8}}>
-      <span onClick={add} style={{cursor:"pointer",color:C.red,fontWeight:"bold",fontSize:12.5}}>＋ Agregar recargo</span>
+      {editable&&<span onClick={add} style={{cursor:"pointer",color:C.red,fontWeight:"bold",fontSize:12.5}}>＋ Agregar recargo</span>}
       <span style={{fontSize:11,color:C.label}}>
         <span style={{color:C.green,fontWeight:"bold"}}>Incluidos:</span> <b style={{color:C.slate}}>{money(inclPorCont(rows,e20))}</b>/20' · <b style={{color:C.slate}}>{money(inclPorCont(rows,e40))}</b>/40'{inclBL(rows)>0&&<span> · BL <b style={{color:C.slate}}>{money(inclBL(rows))}</b></span>}
         <span style={{margin:"0 8px",color:C.sep2}}>|</span>
@@ -92,11 +92,13 @@ function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,
   useEffect(()=>{ if(!foco||!foco.scac) return; const b={scac:foco.scac,tl:foco.tl}; setColap(c=>({...c,[bkey(b)]:false})); const t=setTimeout(()=>{ const el=document.getElementById(eid(b)); if(el) el.scrollIntoView({behavior:"smooth",block:"center"}); },60); return ()=>clearTimeout(t); },[foco]);
   return (<div style={{background:"#fff",border:"1px solid "+C.sep2,borderRadius:12,padding:16,marginBottom:16}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:secColEff?0:10,flexWrap:"wrap",gap:8}}>
-      <span onClick={()=>setSecCol(!secCol)} style={{fontSize:13,fontWeight:"bold",color:C.ink,cursor:"pointer",userSelect:"none"}}><span style={{color:C.label,marginRight:6}}>{secColEff?"▸":"▾"}</span>Navieras y recargos {secColEff?<span style={{fontWeight:"normal",color:C.label,fontSize:12}}>· {blocks.length} bloque(s) — clic para expandir</span>:<span style={{fontWeight:"normal",color:C.label,fontSize:12}}>· un bloque por naviera × lane (país POL → país POD), según tus rutas</span>}</span>
-      {!secColEff&&<div style={{display:"flex",gap:8,alignItems:"center"}}>
+      <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+        <span onClick={()=>setSecCol(!secCol)} style={{fontSize:13,fontWeight:"bold",color:C.ink,cursor:"pointer",userSelect:"none"}}><span style={{color:C.label,marginRight:6}}>{secColEff?"▸":"▾"}</span>Navieras y recargos {secColEff?<span style={{fontWeight:"normal",color:C.label,fontSize:12}}>· {blocks.length} bloque(s) — clic para expandir</span>:<span style={{fontWeight:"normal",color:C.label,fontSize:12}}>· un bloque por naviera × lane (país POL → país POD), según tus rutas</span>}</span>
         {blocks.length>1&&<input value={q} onChange={e=>setQ(e.target.value)} placeholder="Buscar naviera, país origen/destino…" style={{...inS,fontSize:12,padding:"6px 9px",width:230}}/>}
         {q&&<span onClick={()=>setQ("")} title="Limpiar" style={{cursor:"pointer",fontSize:11,color:C.red}}>Limpiar</span>}
-        <Btn kind="ghost" small onClick={()=>setAltaOpen(!altaOpen)}>{altaOpen?"Cancelar":"＋ Alta de recargo"}</Btn>
+      </div>
+      {!secColEff&&<div style={{display:"flex",gap:8,alignItems:"center"}}>
+        {editable&&<Btn kind="ghost" small onClick={()=>setAltaOpen(!altaOpen)}>{altaOpen?"Cancelar":"＋ Alta de recargo"}</Btn>}
       </div>}
     </div>
     {!secColEff&&(<fieldset disabled={!editable} style={{border:"none",padding:0,margin:0,minWidth:0}}>
@@ -116,13 +118,13 @@ function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,
           <span onClick={()=>toggle(b)} style={{cursor:"pointer",fontSize:13,fontWeight:"bold",color:C.slate}}>{navName(b.scac)}</span>
           <span onClick={()=>irATarifa(b.tl)} title="Regresar a la tarifa de este lane" style={{cursor:"pointer",fontSize:11,fontWeight:"bold",color:"#fff",background:C.red,borderRadius:4,padding:"2px 8px"}}>↩ {tlLabel(b.tl)}</span>
           {col&&<span style={{fontSize:11,color:C.label}}>· {surs.length?(surs.length+" recargo(s)"):"sin recargos"}</span>}
-          {onGenerar&&<span onClick={()=>onGenerar(b.scac,b.tl)} title="Buscar coincidencias o generar recargos para esta naviera × lane" style={{cursor:"pointer",fontSize:11,fontWeight:"bold",color:surs.length?C.slate:"#fff",background:surs.length?C.soft:C.red,border:surs.length?("1px solid "+C.sep2):"none",borderRadius:6,padding:"3px 9px",marginLeft:col?8:4}}>⚡ {surs.length?"Regenerar":"Generar recargos"}</span>}
+          {editable&&onGenerar&&<span onClick={()=>onGenerar(b.scac,b.tl)} title="Buscar coincidencias o generar recargos para esta naviera × lane" style={{cursor:"pointer",fontSize:11,fontWeight:"bold",color:surs.length?C.slate:"#fff",background:surs.length?C.soft:C.red,border:surs.length?("1px solid "+C.sep2):"none",borderRadius:6,padding:"3px 9px",marginLeft:col?8:4}}>⚡ {surs.length?"Regenerar":"Generar recargos"}</span>}
           {!col&&others.length>0&&<select value="" onChange={e=>copyFrom(b.scac,b.tl,e.target.value)} style={{...inS,padding:"4px 6px",fontSize:11.5,marginLeft:"auto",maxWidth:240}}>
             <option value="">⧉ Copiar recargos de otro lane…</option>
             {others.map(x=><option key={x.tl} value={x.tl}>{tlLabel(x.tl)}</option>)}
           </select>}
         </div>
-        {!col&&<div style={{marginTop:6}}><SurchargeGrid surs={surs} catalog={catalog} dir={dir} equipos={equipos} onChange={(s)=>setSurs(b.scac,b.tl,s)}/></div>}
+        {!col&&<div style={{marginTop:6}}><SurchargeGrid surs={surs} catalog={catalog} dir={dir} equipos={equipos} editable={editable} onChange={(s)=>setSurs(b.scac,b.tl,s)}/></div>}
       </div>);
     })}
     </fieldset>)}
@@ -476,8 +478,11 @@ export function Cotizador({ loadId, onDirty }){
       </fieldset>
       <NavierasSection quoteNav={quoteNav} setQuoteNav={setQuoteNav} rutas={rutas} catalog={mergedCat} onAlta={altaRecargo} dir={direccion} equipos={equipos} onGenerar={generarRecargos} foco={focoRecargo} editable={editable}/>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
-        <span style={{fontSize:13,fontWeight:"bold",color:C.ink}}>Tarifas <span style={{fontWeight:"normal",color:C.label,fontSize:12}}>· base y profit por tamaño; costo, venta y subject-to salen solos</span></span>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}><input value={qTar} onChange={e=>setQTar(e.target.value)} placeholder="Buscar origen, destino, POL, POD…" style={{...inS,fontSize:12,padding:"6px 9px",width:220}}/>{qTar&&<span onClick={()=>setQTar("")} title="Limpiar" style={{cursor:"pointer",fontSize:11,color:C.red}}>Limpiar</span>}<input type="file" ref={impInputRef} accept=".xlsx,.xls" style={{display:"none"}} onChange={onTarifarioFile}/><Btn kind="ghost" small disabled={!editable} onClick={()=>impInputRef.current&&impInputRef.current.click()}>⇪ Importar tarifario</Btn><Btn kind="ghost" small onClick={bajarPlantillaTarifario} title="Descarga la plantilla con encabezados, ejemplo y listas">⬇ Plantilla</Btn><Btn kind="ghost" small onClick={()=>setEditRutas(!editRutas)}>{editRutas?"Ocultar rutas":"Editar rutas"}</Btn><Btn kind="ghost" small disabled={!editable} onClick={()=>setRutas(ordenarRutas(rutas,direccion))} title="Ordenar por ciudad origen · país POL · región POD · país POD">↕ Ordenar rutas</Btn><Btn kind="ghost" small disabled={!editable} onClick={()=>setRutas([...rutas,mkRuta()])}>＋ Agregar ruta</Btn></div>
+        <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
+          <span style={{fontSize:13,fontWeight:"bold",color:C.ink}}>Tarifas <span style={{fontWeight:"normal",color:C.label,fontSize:12}}>· base y profit por tamaño; costo, venta y subject-to salen solos</span></span>
+          <input value={qTar} onChange={e=>setQTar(e.target.value)} placeholder="Buscar origen, destino, POL, POD…" style={{...inS,fontSize:12,padding:"6px 9px",width:220}}/>{qTar&&<span onClick={()=>setQTar("")} title="Limpiar" style={{cursor:"pointer",fontSize:11,color:C.red}}>Limpiar</span>}
+        </div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}><input type="file" ref={impInputRef} accept=".xlsx,.xls" style={{display:"none"}} onChange={onTarifarioFile}/><Btn kind="ghost" small disabled={!editable} onClick={()=>impInputRef.current&&impInputRef.current.click()}>⇪ Importar tarifario</Btn><Btn kind="ghost" small onClick={bajarPlantillaTarifario} title="Descarga la plantilla con encabezados, ejemplo y listas">⬇ Plantilla</Btn><Btn kind="ghost" small onClick={()=>setEditRutas(!editRutas)}>{editRutas?"Ocultar rutas":"Editar rutas"}</Btn><Btn kind="ghost" small disabled={!editable} onClick={()=>setRutas(ordenarRutas(rutas,direccion))} title="Ordenar por ciudad origen · país POL · región POD · país POD">↕ Ordenar rutas</Btn><Btn kind="ghost" small disabled={!editable} onClick={()=>setRutas([...rutas,mkRuta()])}>＋ Agregar ruta</Btn></div>
       </div>
       <fieldset disabled={!editable} style={{border:"none",padding:0,margin:0,minWidth:0,opacity:editable?1:.75}}>
       {impSheets&&<div style={{background:"#FFF9E9",border:"1px solid #EAD9A0",borderRadius:8,padding:"8px 10px",marginBottom:10}}>
