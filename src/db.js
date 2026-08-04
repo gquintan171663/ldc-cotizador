@@ -699,20 +699,25 @@ export async function tarifasVigentes(){
       equipos.forEach(ek=>{
         const eqObj=eqMeta(ek);
         // costo total por opción (base + recargos que suman)
-        const totales=(r.opciones||[]).map((o,i)=>{ const pr=(o.precios||{})[ek]||{}; if(pr.base==null||pr.base==="") return null; const total=n(pr.base)+adicPorCont(surOf(o.navScac,tlDe(r)),eqObj,dir); return {i,scac:o.navScac||"",total}; }).filter(Boolean);
-        if(!totales.length) return;
-        const oiSel=opcionActivaEq(r,ek,eqObj,dir,surOf);
-        const sel=totales.find(t=>t.i===oiSel)||totales.slice().sort((a,b)=>a.total-b.total)[0];
-        const resto=totales.filter(t=>t.scac!==sel.scac).sort((a,b)=>a.total-b.total);
-        const seg=resto[0]||null;
-        const oSel=(r.opciones||[])[sel.i]||{};
+        const totales=(r.opciones||[]).map((o,i)=>{ const pr=(o.precios||{})[ek]||{}; if(pr.base==null||pr.base==="") return null; const total=n(pr.base)+adicPorCont(surOf(o.navScac,tlDe(r)),eqObj,dir); return {i,scac:o.navScac||"",total,prof:n(pr.profit)}; }).filter(Boolean);
+        const ventaAnc=(r.ventaAncla&&r.ventaAncla[ek]!=null)?Number(r.ventaAncla[ek]):null;
+        let opt1=null,opt2=null,tt="";
+        if(totales.length){
+          const oiSel=opcionActivaEq(r,ek,eqObj,dir,surOf);
+          const sel=totales.find(t=>t.i===oiSel)||totales.slice().sort((a,b)=>a.total-b.total)[0];
+          const ventaCliente=ventaAnc!=null?ventaAnc:(sel.total+sel.prof);   // precio fijo si existe, si no costo+profit
+          opt1={costo:sel.total,venta:ventaCliente,profit:ventaCliente-sel.total,scac:sel.scac};
+          tt=((r.opciones||[])[sel.i]||{}).transito||"";
+          const resto=totales.filter(t=>t.scac!==sel.scac).sort((a,b)=>a.total-b.total);
+          const seg=resto[0]||null;
+          if(seg) opt2={costo:seg.total,venta:ventaCliente,profit:ventaCliente-seg.total,scac:seg.scac};   // misma venta, distinto margen
+        }
         rows.push({
           cliente:st.clienteNombre||"", no_acuerdo:v.acuerdos?.no_acuerdo||st.no_acuerdo||"",
           folio:v.codigo||st.codigo||"", direccion:dir, tradelane:st.tradelane||"", producto:st.commodity||"",
           origen:r.origen||"", pre:r.precarriage_mode||"", pol:r.pol||"", pod:r.pod||"", destino:r.destino||"", on:r.oncarriage_mode||"",
-          srvc:scope(r), equipo:ek, tt:oSel.transito||"",
-          costo_total:sel.total, naviera:sel.scac,
-          costo_total2:seg?seg.total:null, naviera2:seg?seg.scac:"",
+          srvc:scope(r), equipo:ek, tt,
+          opt1, opt2,
           vig_desde:st.vigDesde||v.vig_desde||null, vig_hasta:st.vigHasta||v.vig_hasta||null,
           vencida
         });
