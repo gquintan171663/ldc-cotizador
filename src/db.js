@@ -712,6 +712,7 @@ export async function tarifasVigentes(){
           const seg=resto[0]||null;
           if(seg) opt2={costo:seg.total,venta:ventaCliente,profit:ventaCliente-seg.total,scac:seg.scac};   // misma venta, distinto margen
         }
+        if(!opt1) return;   // sin cotización para este tamaño: se omite la línea
         rows.push({
           cliente:st.clienteNombre||"", no_acuerdo:v.acuerdos?.no_acuerdo||st.no_acuerdo||"",
           folio:v.codigo||st.codigo||"", direccion:dir, tradelane:st.tradelane||"", producto:st.commodity||"",

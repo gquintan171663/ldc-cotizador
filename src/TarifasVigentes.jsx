@@ -26,21 +26,19 @@ export function TarifasVigentes(){
     const hr=ws.getRow(1); hr.height=24;
     hr.eachCell((c,col)=>{ const bg = (col>=16&&col<=18)?H1 : (col>=19&&col<=21)?H2 : "FF1A1A1A"; c.font={name:"Arial",bold:true,size:9,color:{argb:"FFFFFFFF"}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:bg}}; c.alignment={horizontal:"center",vertical:"middle",wrapText:true}; });
 
-    const NQ="No quote";
     res.rows.forEach(r=>{
       const row=ws.addRow([r.cliente,r.no_acuerdo,r.folio,r.direccion==="I"?"Imp":"Exp",r.tradelane,r.producto,r.origen,r.pre,r.pol,r.pod,r.destino,r.on,r.srvc,r.equipo,r.tt,
-        r.opt1?r.opt1.costo:NQ, r.opt1?r.opt1.profit:NQ, r.opt1?r.opt1.venta:NQ,
-        r.opt2?r.opt2.costo:NQ, r.opt2?r.opt2.profit:NQ, r.opt2?r.opt2.venta:NQ,
+        r.opt1.costo, r.opt1.profit, r.opt1.venta,
+        r.opt2?r.opt2.costo:"", r.opt2?r.opt2.profit:"", r.opt2?r.opt2.venta:"",
         r.vig_desde||"",r.vig_hasta||"",r.vencida?"Vencida":"Vigente"]);
       row.font={name:"Arial",size:9};
-      // Set 1 (col 16-18) y Set 2 (col 19-21): formato de número + naviera en el profit
-      const money=(cell)=>{ if(typeof cell.value==="number") cell.numFmt="$#,##0"; else { cell.font={name:"Arial",size:9,italic:true,color:{argb:"FF9AA3AD"}}; cell.alignment={horizontal:"center"}; } };
+      const money=(cell)=>{ if(typeof cell.value==="number") cell.numFmt="$#,##0"; };
       const c16=row.getCell(16),c17=row.getCell(17),c18=row.getCell(18);
       const c19=row.getCell(19),c20=row.getCell(20),c21=row.getCell(21);
       money(c16); money(c18);
-      if(r.opt1&&typeof c17.value==="number") c17.numFmt='$#,##0" ('+(r.opt1.scac||"—")+')"'; else { c17.font={name:"Arial",size:9,italic:true,color:{argb:"FF9AA3AD"}}; c17.alignment={horizontal:"center"}; }
+      if(typeof c17.value==="number") c17.numFmt='$#,##0" ('+(r.opt1.scac||"—")+')"';
       money(c19); money(c21);
-      if(r.opt2&&typeof c20.value==="number") c20.numFmt='$#,##0" ('+(r.opt2.scac||"—")+')"'; else { c20.font={name:"Arial",size:9,italic:true,color:{argb:"FF9AA3AD"}}; c20.alignment={horizontal:"center"}; }
+      if(r.opt2&&typeof c20.value==="number") c20.numFmt='$#,##0" ('+(r.opt2.scac||"—")+')"';
       if(r.vencida){ row.eachCell((c)=>{ c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFFDE7E7"}}; }); const est=row.getCell(24); est.font={name:"Arial",bold:true,size:9,color:{argb:"FFC8202E"}}; }
       else { [c16,c17,c18].forEach(c=>c.fill={type:"pattern",pattern:"solid",fgColor:{argb:S1}}); [c19,c20,c21].forEach(c=>c.fill={type:"pattern",pattern:"solid",fgColor:{argb:S2}}); }
     });
