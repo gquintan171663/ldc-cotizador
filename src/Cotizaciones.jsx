@@ -48,6 +48,8 @@ export function Cotizaciones({ onOpen, onNew, role }){
   const th={fontSize:9,letterSpacing:.5,textTransform:"uppercase",color:C.label,fontWeight:"bold",padding:"6px 10px",textAlign:"left",whiteSpace:"nowrap",borderBottom:"1px solid "+C.sep2};
   const td={padding:"8px 10px",borderBottom:"1px solid "+C.sep,fontSize:12.5,verticalAlign:"middle"};
   const fecha=(s)=>{ if(!s) return ""; try{return new Date(s+(String(s).length===10?"T12:00:00":"")).toLocaleDateString("es-MX",{day:"2-digit",month:"short",year:"2-digit"});}catch{return"";} };
+  const fechaHora=(s)=>{ if(!s) return ""; try{const d=new Date(s);return d.toLocaleDateString("es-MX",{day:"2-digit",month:"short",year:"2-digit"})+" "+d.toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});}catch{return fecha(s);} };
+  const correoCorto=(e)=>String(e||"").split("@")[0];
   const rangoVig=(a,b)=>(!a&&!b)?"—":(fecha(a)+" – "+(b?fecha(b):"…"));
 
   return (<div style={{maxWidth:1160,margin:"0 auto"}}>
@@ -102,7 +104,7 @@ export function Cotizaciones({ onOpen, onNew, role }){
                       </td>
                       <td style={td}><EstChip e={r.estatus}/></td>
                       <td style={{...td,color:C.label,fontSize:11,whiteSpace:"nowrap"}}>{r.owner}</td>
-                      <td style={{...td,color:C.label,fontSize:11,whiteSpace:"nowrap"}}>{fecha(r.updated_at)}</td>
+                      <td style={{...td,color:C.label,fontSize:11,whiteSpace:"nowrap"}}><div>{fechaHora(r.updated_at)}</div>{r.actualizadoPor&&<div title={r.actualizadoPor} style={{fontSize:10,color:C.label}}>por {correoCorto(r.actualizadoPor)}</div>}</td>
                       <td style={{...td,textAlign:"right"}}><Btn kind="ghost" small onClick={()=>onOpen(r.id)}>Abrir</Btn></td>
                     </tr>);
                   })}

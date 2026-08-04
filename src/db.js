@@ -205,7 +205,7 @@ export async function saveCotizacion(state){
 // ===== Lista de cotizaciones (todo el equipo para pricing/admin; sales: propias por RLS) =====
 export async function listCotizaciones(){
   const { data, error } = await supabase.from("versiones")
-    .select("id,codigo,direccion,estatus,commodity,owner_email,updated_at,reemplaza_a,origen,amendment,tradelane,vig_desde,vig_hasta,acuerdo_id,acuerdos(no_acuerdo,modo,vig_desde,vig_hasta,clientes(nombre,no_cliente)),lineas(validez_desde,validez_hasta)")
+    .select("id,codigo,direccion,estatus,commodity,owner_email,updated_by_email,updated_at,reemplaza_a,origen,amendment,tradelane,vig_desde,vig_hasta,acuerdo_id,acuerdos(no_acuerdo,modo,vig_desde,vig_hasta,clientes(nombre,no_cliente)),lineas(validez_desde,validez_hasta)")
     .order("updated_at",{ascending:false}).limit(300);
   if(error) return { rows:[], error:error.message };
   return { rows:(data||[]).map(v=>{
@@ -217,7 +217,7 @@ export async function listCotizaciones(){
       acuerdoVigDesde:v.acuerdos?.vig_desde||null, acuerdoVigHasta:v.acuerdos?.vig_hasta||null,
       amendment:v.amendment||1, tradelane:v.tradelane||"",
       direccion:v.direccion, estatus:v.estatus,
-      commodity:v.commodity, owner:v.owner_email, updated_at:v.updated_at, origen:v.origen, superseded_by:null,
+      commodity:v.commodity, owner:v.owner_email, actualizadoPor:v.updated_by_email||v.owner_email, updated_at:v.updated_at, origen:v.origen, superseded_by:null,
       // la vigencia del AM manda; si no está, caemos a la validez de las líneas
       vigDesde:v.vig_desde||l.validez_desde||null, vigHasta:v.vig_hasta||l.validez_hasta||null
     };
