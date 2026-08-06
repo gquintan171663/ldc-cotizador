@@ -36,7 +36,7 @@ export function Cotizaciones({ onOpen, onNew, role }){
     const m=new Map();
     filtered.forEach(r=>{
       const k=r.acuerdoId||("sin:"+r.cliente);
-      if(!m.has(k)) m.set(k,{cliente:r.cliente,noCliente:r.noCliente,noAcuerdo:r.noAcuerdo,modo:r.modo,vd:r.acuerdoVigDesde,vh:r.acuerdoVigHasta,rows:[]});
+      if(!m.has(k)) m.set(k,{cliente:r.cliente,noCliente:r.noCliente,noAcuerdo:r.noAcuerdo,acuerdoId:r.acuerdoId,modo:r.modo,vd:r.acuerdoVigDesde,vh:r.acuerdoVigHasta,rows:[]});
       m.get(k).rows.push(r);
     });
     const arr=[...m.values()];
