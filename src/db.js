@@ -178,6 +178,7 @@ export async function saveCotizacion(state){
         const cambios = resumenCambios(state, prev||{});
         await supabase.from("versiones").update({cambios}).eq("id",versionId);
         sum.cambios=cambios;
+        sum.prevVigDesde=prev?.vigDesde||null; sum.prevVigHasta=prev?.vigHasta||null;
       }
     }catch(e){ /* el diff no debe romper el guardado */ }
     return sum;
@@ -674,21 +675,27 @@ export async function reporteFletesEnCotizaciones(){
 export async function tarifasVigentes(){
   const hoy=new Date().toISOString().slice(0,10);
   const { data: vers, error } = await supabase.from("versiones")
-    .select("id,codigo,direccion,commodity,tradelane,estatus,updated_at,vig_desde,vig_hasta,acuerdo_id,acuerdos(no_acuerdo,clientes(nombre))")
+    .select("id,codigo,amendment,direccion,commodity,tradelane,estatus,updated_at,vig_desde,vig_hasta,acuerdo_id,acuerdos(no_acuerdo,clientes(nombre))")
     .eq("estatus","enviada").order("updated_at",{ascending:false}).limit(3000);
   if(error) return { rows:[], error:error.message };
-  const cubreHoy=(v)=>{ if(v.vig_desde&&v.vig_desde>hoy) return false; if(v.vig_hasta&&v.vig_hasta<hoy) return false; return true; };
+  const futura=(v)=> v.vig_desde && v.vig_desde>hoy;
+  const venc=(v)=> v.vig_hasta && v.vig_hasta<hoy;
   // agrupar por acuerdo y elegir qué versiones incluir
   const porAcuerdo={}; (vers||[]).forEach(v=>{ const k=v.acuerdo_id||("v:"+v.id); (porAcuerdo[k]=porAcuerdo[k]||[]).push(v); });
   const elegidas=[];
   Object.values(porAcuerdo).forEach(arr=>{
-    const vig=arr.filter(cubreHoy);
-    if(vig.length) vig.forEach(v=>elegidas.push({v,vencida:false}));
-    else if(arr.length) elegidas.push({v:arr[0],vencida:true});   // arr[0] = la más reciente (orden desc)
+    const vig=arr.filter(v=>!futura(v)&&!venc(v));   // cubren hoy
+    const fut=arr.filter(futura);                    // ya enviadas, empiezan a futuro
+    if(vig.length||fut.length){
+      vig.forEach(v=>elegidas.push({v,estado:"Vigente"}));
+      fut.forEach(v=>elegidas.push({v,estado:"Próxima"}));
+    } else if(arr.length){
+      elegidas.push({v:arr[0],estado:"Vencida"});    // nada vigente ni próximo: la última vencida
+    }
   });
   const dir0=(d)=>d||"E";
   const rows=[]; const equiposUsados=new Set();
-  for(const {v,vencida} of elegidas){
+  for(const {v,estado} of elegidas){
     let st; try{ st=await loadVersion(v.id); }catch(_){ continue; }
     if(!st) continue;
     const dir=dir0(st.direccion);
@@ -712,11 +719,11 @@ export async function tarifasVigentes(){
       if(!Object.keys(eq).length) return;   // ruta sin ningún equipo cotizado -> se omite
       rows.push({
         cliente:st.clienteNombre||"", no_acuerdo:v.acuerdos?.no_acuerdo||st.no_acuerdo||"",
-        folio:v.codigo||st.codigo||"", direccion:dir, tradelane:st.tradelane||"", producto:st.commodity||"",
+        folio:v.codigo||st.codigo||"", am:v.amendment?("AM"+v.amendment):"", direccion:dir, tradelane:st.tradelane||"", producto:st.commodity||"",
         origen:r.origen||"", pre:r.precarriage_mode||"", pol:r.pol||"", pod:r.pod||"", destino:r.destino||"", on:r.oncarriage_mode||"",
         srvc:scope(r), tt, eq,
-        vig_desde:st.vigDesde||v.vig_desde||null, vig_hasta:st.vigHasta||v.vig_hasta||null,
-        vencida
+        vig_desde:v.vig_desde||st.vigDesde||null, vig_hasta:v.vig_hasta||st.vigHasta||null,
+        estado
       });
     });
   }

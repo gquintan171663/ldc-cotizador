@@ -18,9 +18,9 @@ export function TarifasVigentes(){
     if(!res.rows.length){ setMsg("No hay tarifas vigentes (AM enviadas) todavía."); return; }
 
     const equipos=res.equipos||[];
-    const BASE=["Cliente","No. Acuerdo","Folio","Dir","Tradelane","Producto","Origen","Transp Mode Origen","POL","POD","Destination","Transp Mode Destino","Srvc. Mode","T.T."];
+    const BASE=["Cliente","No. Acuerdo","Folio","AM","Dir","Tradelane","Producto","Origen","Transp Mode Origen","POL","POD","Destination","Transp Mode Destino","Srvc. Mode","T.T."];
     const TAIL=["Vig desde","Vig hasta","Estatus"];
-    const baseW=[18,15,8,5,9,16,14,15,8,8,14,15,9,6];
+    const baseW=[18,15,8,6,5,9,16,14,15,8,8,14,15,9,6];
     const totalCols=BASE.length+equipos.length*3+TAIL.length;
     const wb=new ExcelJS.Workbook();
     const ws=wb.addWorksheet("Tarifas vigentes",{views:[{state:"frozen",ySplit:2}]});
@@ -40,16 +40,17 @@ export function TarifasVigentes(){
     let rIdx=3;
     res.rows.forEach(r=>{
       const row=ws.getRow(rIdx); let ci=1;
-      [r.cliente,r.no_acuerdo,r.folio,r.direccion==="I"?"Imp":"Exp",r.tradelane,r.producto,r.origen,r.pre,r.pol,r.pod,r.destino,r.on,r.srvc,r.tt].forEach(v=>{ row.getCell(ci).value=v; ci++; });
+      [r.cliente,r.no_acuerdo,r.folio,r.am,r.direccion==="I"?"Imp":"Exp",r.tradelane,r.producto,r.origen,r.pre,r.pol,r.pod,r.destino,r.on,r.srvc,r.tt].forEach(v=>{ row.getCell(ci).value=v; ci++; });
       equipos.forEach((ek,bi)=>{
         const e=r.eq[ek]; const cc=row.getCell(ci),cp=row.getCell(ci+1),cv=row.getCell(ci+2);
         if(e){ cc.value=e.costo; cc.numFmt="$#,##0"; cp.value=e.profit; cp.numFmt='$#,##0" ('+(e.scac||"—")+')"'; cv.value=e.venta; cv.numFmt="$#,##0"; }
-        if(!r.vencida){ const f=S[bi%2]; [cc,cp,cv].forEach(x=>x.fill={type:"pattern",pattern:"solid",fgColor:{argb:f}}); }
+        if(r.estado!=="Vencida"){ const f=S[bi%2]; [cc,cp,cv].forEach(x=>x.fill={type:"pattern",pattern:"solid",fgColor:{argb:f}}); }
         ci+=3;
       });
-      [r.vig_desde||"",r.vig_hasta||"",r.vencida?"Vencida":"Vigente"].forEach(v=>{ row.getCell(ci).value=v; ci++; });
+      [r.vig_desde||"",r.vig_hasta||"",r.estado].forEach(v=>{ row.getCell(ci).value=v; ci++; });
       row.font={name:"Arial",size:9};
-      if(r.vencida){ for(let k=1;k<ci;k++){ row.getCell(k).fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFFDE7E7"}}; } const est=row.getCell(ci-1); est.font={name:"Arial",bold:true,size:9,color:{argb:"FFC8202E"}}; }
+      if(r.estado==="Vencida"){ for(let k=1;k<ci;k++){ row.getCell(k).fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFFDE7E7"}}; } const est=row.getCell(ci-1); est.font={name:"Arial",bold:true,size:9,color:{argb:"FFC8202E"}}; }
+      else if(r.estado==="Próxima"){ const est=row.getCell(ci-1); est.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFE3F0FB"}}; est.font={name:"Arial",bold:true,size:9,color:{argb:"FF1F5FA6"}}; }
       rIdx++;
     });
     ws.autoFilter={from:{row:2,column:1},to:{row:2,column:totalCols}};
@@ -62,7 +63,7 @@ export function TarifasVigentes(){
   return (<div style={{maxWidth:900,margin:"0 auto",background:"#fff",border:"1px solid "+C.sep2,borderRadius:12,padding:20}}>
     <div style={{fontSize:16,fontWeight:"bold",color:C.ink,marginBottom:4}}>Tarifas vigentes</div>
     <div style={{fontSize:12.5,color:C.label,marginBottom:16,lineHeight:1.5}}>
-      Descarga en Excel todas las tarifas oficiales (amendments <b>enviados</b>) que están vigentes hoy. Incluye el <b>costo total</b> (base + recargos) de la naviera elegida y de la segunda opción más barata. Si un contrato macro ya no tiene ninguna propuesta vigente, se incluye su última tarifa <b>vencida</b> resaltada en rojo.
+      Descarga en Excel las tarifas oficiales (amendments <b>enviados</b>). Marca cada ruta como <b>Vigente</b> (cubre hoy), <b>Próxima</b> (ya enviada, empieza a futuro — resaltada en azul) o <b>Vencida</b> (ya terminó y no hay reemplazo — en rojo). Incluye el <b>costo total</b> (base + recargos) y venta por equipo. Las reemplazadas no se incluyen.
     </div>
     <Btn kind="primary" onClick={bajar} disabled={busy}>{busy?"Generando…":"⬇ Descargar tarifas vigentes"}</Btn>
     {msg&&<div style={{fontSize:12,color:C.label,marginTop:12}}>{msg}</div>}

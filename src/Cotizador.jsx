@@ -207,6 +207,8 @@ export function Cotizador({ loadId, onDirty }){
   const [cambios,setCambios]=useState(null);
   const [commodityId,setCommodityId]=useState("");
   const [vigDesde,setVigDesde]=useState("");
+  const [prevVigHasta,setPrevVigHasta]=useState("");
+  const avisoVig=(()=>{ if(!prevVigHasta||!vigDesde) return null; const p=new Date(prevVigHasta+"T00:00:00"), d=new Date(vigDesde+"T00:00:00"); if(isNaN(p)||isNaN(d)) return null; const dias=Math.round((d-p)/86400000); if(dias>1) return {tipo:"hueco",txt:"Quedan "+(dias-1)+" día(s) sin cubrir entre el AM anterior (termina "+prevVigHasta+") y este (empieza "+vigDesde+")."}; if(dias<=0) return {tipo:"traslape",txt:"Se traslapa con el AM anterior (termina "+prevVigHasta+"); este empieza "+vigDesde+", en o antes de esa fecha."}; return null; })();
   const [vigHasta,setVigHasta]=useState("");
   const [notas,setNotas]=useState("");
   const [equipos,setEquipos]=useState(["20DV","40HC"]);
@@ -335,7 +337,7 @@ export function Cotizador({ loadId, onDirty }){
       setVersionId(st.versionId); setCodigo(st.codigo); setEstatus(st.estatus);
       setCliente(st.cliente||""); setModo(st.modo||"maritimo"); setDireccion(st.direccion||"I");
       setTradelane(st.tradelane||""); setNoAcuerdo(st.no_acuerdo||""); setAmendment(st.amendment||1); setCambios(st.cambios||null);
-      setCommodityId(st.commodity_id||""); setVigDesde(st.vigDesde||""); setVigHasta(st.vigHasta||""); setNotas(st.notas||"");
+      setCommodityId(st.commodity_id||""); setVigDesde(st.vigDesde||""); setVigHasta(st.vigHasta||""); setNotas(st.notas||""); setPrevVigHasta(st.prevVigHasta||"");
       setEquipos(st.equipos&&st.equipos.length?st.equipos:["20DV","40HC"]);
       setRutas(st.rutas&&st.rutas.length?st.rutas:[mkRuta()]);
       setQuoteNav(st.quoteNav||[]); setStarted(true); setLoading(false);
@@ -363,6 +365,7 @@ export function Cotizador({ loadId, onDirty }){
 
   const guardar=async()=>{
     if(!cliente){ alert("Elige un cliente."); return; }
+    if(vigDesde&&vigHasta&&vigDesde>vigHasta){ alert("La vigencia está invertida: \"desde\" ("+vigDesde+") es posterior a \"hasta\" ("+vigHasta+"). Corrige las fechas antes de guardar."); return; }
     const falt=faltanPOLPOD(); if(falt.length){ alert("Faltan datos obligatorios en las rutas (POL, POD, naviera y modo si hay ciudad):\n\n• "+falt.join("\n• ")); return; }
     const cn=(clientes.find(c=>c.id===cliente)||{}).nombre;
     const st={versionId,codigo,cliente,clienteNombre:cn,modo,direccion,tradelane,commodity:comLabel,commodity_id:commodityId||null,vigDesde,vigHasta,notas,origen:"cero",equipos,rutas:derivarAnclaje(rutas),quoteNav};
@@ -445,6 +448,7 @@ export function Cotizador({ loadId, onDirty }){
         <Field label="Vigencia desde"><TI type="date" value={vigDesde} onChange={e=>setVigDesde(e.target.value)}/></Field>
         <Field label="Vigencia hasta"><TI type="date" value={vigHasta} onChange={e=>setVigHasta(e.target.value)}/></Field>
       </div>
+      {avisoVig&&<div style={{fontSize:11.5,color:"#8A6D1F",background:"#FBF4E0",border:"1px solid #EAD9A0",borderRadius:8,padding:"7px 10px",marginBottom:10}}>⚠ {avisoVig.txt} Es solo un aviso, no bloquea.</div>}
       {nuevoOpen&&(<div style={{display:"flex",gap:8,alignItems:"flex-end",background:C.soft,border:"1px solid "+C.sep2,borderRadius:8,padding:10,marginTop:10}}>
         <Field label="Nombre del cliente / prospecto" w={2}><TI value={nuevoNombre} onChange={e=>setNuevoNombre(e.target.value)} placeholder="Razón social" onKeyDown={e=>e.key==="Enter"&&guardarNuevoCliente()}/></Field>
         <Field label="Tipo" w={.8}><Sel value={nuevoTipo} onChange={e=>setNuevoTipo(e.target.value)} options={[{v:"prospecto",t:"Prospecto"},{v:"cliente",t:"Cliente"}]}/></Field>
