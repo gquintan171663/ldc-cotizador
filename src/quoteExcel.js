@@ -57,7 +57,7 @@ export async function exportarExcel(st, opts={}){
 
   // ===== Workbook =====
   const wb=new ExcelJS.Workbook();
-  const ws=wb.addWorksheet("Cotización",{views:[{showGridLines:false}]});
+  const ws=wb.addWorksheet("Cotización",{views:[{showGridLines:false}],pageSetup:{fitToPage:true,fitToWidth:1,fitToHeight:0,orientation:"landscape",horizontalCentered:true,margins:{left:0.3,right:0.3,top:0.4,bottom:0.4,header:0.2,footer:0.2}}});
   const font=(o={})=>Object.assign({name:ARIAL,size:10,color:{argb:"FF"+INK}},o);
   const fill=(argb)=>({type:"pattern",pattern:"solid",fgColor:{argb:"FF"+argb}});
   const thin={style:"thin",color:{argb:"FFD5DAE0"}};
