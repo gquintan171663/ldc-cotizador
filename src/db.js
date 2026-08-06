@@ -324,8 +324,8 @@ export async function markEnviada(versionId){
       const cur = await loadVersion(versionId);
       const prev = await loadVersion(vrow.reemplaza_a);
       if(cur && prev && hayCambioCosto(cur, prev, cur.direccion||"E")){
-        const hoy=new Date().toISOString().slice(0,10);
-        const man=new Date(Date.now()+86400000).toISOString().slice(0,10);
+        const hoy=(()=>{ const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); })();
+        const man=(()=>{ const d=new Date(Date.now()+86400000); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); })();
         await supabase.from("versiones").update({vig_hasta:hoy}).eq("id",vrow.reemplaza_a);
         await supabase.from("lineas").update({validez_hasta:hoy}).eq("version_id",vrow.reemplaza_a);
         await supabase.from("versiones").update({vig_desde:man}).eq("id",versionId);
@@ -673,24 +673,26 @@ export async function reporteFletesEnCotizaciones(){
 // y de la segunda opción más barata.
 // ===========================================================================
 export async function tarifasVigentes(){
-  const hoy=new Date().toISOString().slice(0,10);
+  const hoy=(()=>{ const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); })();
   const { data: vers, error } = await supabase.from("versiones")
     .select("id,codigo,amendment,direccion,commodity,tradelane,estatus,updated_at,vig_desde,vig_hasta,acuerdo_id,acuerdos(no_acuerdo,clientes(nombre))")
-    .eq("estatus","enviada").order("updated_at",{ascending:false}).limit(3000);
+    .in("estatus",["enviada","superseded"]).order("updated_at",{ascending:false}).limit(3000);
   if(error) return { rows:[], error:error.message };
   const futura=(v)=> v.vig_desde && v.vig_desde>hoy;
   const venc=(v)=> v.vig_hasta && v.vig_hasta<hoy;
+  const cubreHoy=(v)=> !futura(v)&&!venc(v);
   // agrupar por acuerdo y elegir qué versiones incluir
   const porAcuerdo={}; (vers||[]).forEach(v=>{ const k=v.acuerdo_id||("v:"+v.id); (porAcuerdo[k]=porAcuerdo[k]||[]).push(v); });
   const elegidas=[];
   Object.values(porAcuerdo).forEach(arr=>{
-    const vig=arr.filter(v=>!futura(v)&&!venc(v));   // cubren hoy
-    const fut=arr.filter(futura);                    // ya enviadas, empiezan a futuro
+    const vig=arr.filter(cubreHoy);                                   // cubren hoy (enviada o reemplazada aún válida)
+    const fut=arr.filter(v=>v.estatus==="enviada"&&futura(v));        // enviadas que empiezan a futuro
     if(vig.length||fut.length){
       vig.forEach(v=>elegidas.push({v,estado:"Vigente"}));
       fut.forEach(v=>elegidas.push({v,estado:"Próxima"}));
-    } else if(arr.length){
-      elegidas.push({v:arr[0],estado:"Vencida"});    // nada vigente ni próximo: la última vencida
+    } else {
+      const env=arr.filter(v=>v.estatus==="enviada");                 // fallback: última enviada vencida
+      if(env.length) elegidas.push({v:env[0],estado:"Vencida"});
     }
   });
   const dir0=(d)=>d||"E";
