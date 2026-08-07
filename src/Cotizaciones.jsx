@@ -14,6 +14,8 @@ export function Cotizaciones({ onOpen, onNew, role }){
   const isAdmin = role==="admin";
   const [rows,setRows]=useState(null);
   const [q,setQ]=useState("");
+  const [abierto,setAbierto]=useState({});
+  const ultimoEnviado=(g)=>{ const env=(g.rows||[]).filter(r=>r.estatus==="enviada").sort((a,b)=>(b.amendment||0)-(a.amendment||0)); return env[0]||null; };
   const reload=()=>{ setRows(null); listCotizaciones().then(({rows})=>setRows(rows||[])); };
 
   const borrarMacro=async(g)=>{
@@ -65,11 +67,12 @@ export function Cotizaciones({ onOpen, onNew, role }){
     {rows===null?<div style={{color:C.label,fontSize:13,padding:20}}>Cargando…</div>:
      grupos.length===0?<div style={{border:"1px solid "+C.sep2,borderRadius:10,background:"#fff",padding:28,textAlign:"center",color:C.label,fontSize:13}}>{q?"Sin resultados para esa búsqueda.":"Sin cotizaciones todavía."}</div>:(
       <div style={{display:"flex",flexDirection:"column",gap:16}}>
-        {grupos.map((g,gi)=>(
+        {grupos.map((g,gi)=>{ const exp=q?true:!!abierto[gi]; const ue=ultimoEnviado(g); const ueVenc=ue&&ue.vigHasta&&ue.vigHasta<hoyISO(); return (
           <div key={gi} style={{border:"1px solid "+C.sep2,borderRadius:10,background:"#fff",overflow:"hidden"}}>
 
             {/* Encabezado del cliente + contrato macro */}
-            <div style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:C.soft,borderBottom:"1px solid "+C.sep2}}>
+            <div onClick={()=>setAbierto(a=>({...a,[gi]:!(q?true:!!a[gi])}))} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:C.soft,borderBottom:exp?"1px solid "+C.sep2:"none",cursor:"pointer"}}>
+              <span style={{color:C.label,fontSize:12,flex:"none"}}>{exp?"▾":"▸"}</span>
               <div style={{height:26,width:4,background:C.red,borderRadius:2,flex:"none"}}/>
               <div style={{minWidth:0}}>
                 <div style={{fontSize:14.5,fontWeight:"bold",color:C.ink,whiteSpace:"nowrap",overflow:"hidden",textOverflow:"ellipsis"}}>
@@ -77,18 +80,18 @@ export function Cotizaciones({ onOpen, onNew, role }){
                 </div>
                 <div style={{fontSize:11,color:C.label,marginTop:2}}>
                   {MODO[g.modo]||g.modo||"—"} · {g.rows.length} {g.rows.length===1?"amendment":"amendments"}
-                  {(g.vd||g.vh)?<span> · Macro vigente {rangoVig(g.vd,g.vh)}</span>:null}
+                  {ue?<span> · Último enviado {ue.folio} <span style={{fontWeight:"bold",color:ueVenc?C.red:C.slate}}>{rangoVig(ue.vigDesde,ue.vigHasta)}{ueVenc?" · VENCIDO":""}</span></span>:<span> · sin AM enviado</span>}
                 </div>
               </div>
               <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flex:"none"}}>
                 <span style={{fontSize:9,color:C.label,letterSpacing:.5,textTransform:"uppercase"}}>Contrato macro</span>
                 <span style={{fontSize:12.5,fontWeight:"bold",color:"#fff",background:C.red,borderRadius:5,padding:"4px 10px",letterSpacing:.5}}>{g.noAcuerdo||"— sin acuerdo —"}</span>
-                {isAdmin&&g.acuerdoId&&<span onClick={()=>borrarMacro(g)} title="Borrar contrato macro (solo admin)" style={{cursor:"pointer",marginLeft:2,color:C.label,fontSize:15,lineHeight:1}}>🗑</span>}
+                {isAdmin&&g.acuerdoId&&<span onClick={(e)=>{e.stopPropagation();borrarMacro(g);}} title="Borrar contrato macro (solo admin)" style={{cursor:"pointer",marginLeft:2,color:C.label,fontSize:15,lineHeight:1}}>🗑</span>}
               </div>
             </div>
 
             {/* Amendments */}
-            <div style={{overflow:"auto"}}>
+            {exp&&<div style={{overflow:"auto"}}>
               <table style={{width:"100%",borderCollapse:"collapse"}}>
                 <thead><tr>{["","Folio","Dir.","Tradelane","Vigencia","Estatus","Responsable","Actualizado",""].map((h,i)=><th key={i} style={th}>{h}</th>)}</tr></thead>
                 <tbody>
@@ -110,10 +113,10 @@ export function Cotizaciones({ onOpen, onNew, role }){
                   })}
                 </tbody>
               </table>
-            </div>
+            </div>}
 
           </div>
-        ))}
+        );})}
       </div>
     )}
   </div>);
