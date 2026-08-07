@@ -142,7 +142,8 @@ export function resumenCorreccion(nuevo, previo, dir){
   const equipos=(nuevo.equipos&&nuevo.equipos.length)?nuevo.equipos:["20DV","40HC"];
   Object.keys(rN).forEach(k=>{ if(!rP[k]) return; const rn=rN[k], rp=rP[k];
     equipos.forEach(ek=>{ const eqObj=eqMeta(ek); if(!eqObj) return;
-      const vN=round10(ventaEq(rn,eqObj,dr,soN)), vP=round10(ventaEq(rp,eqObj,dr,soP));
+      const _vc=(r,so)=>{ const a=r.ventaAncla&&r.ventaAncla[ek]; return (a!=null&&a!=="")?Number(a):round10(ventaEq(r,eqObj,dr,so)); };
+      const vN=_vc(rn,soN), vP=_vc(rp,soP);
       if(vN!==vP && (vN||vP)) cliente.push("Precio "+ek+" "+k+": "+_money(vP)+" → "+_money(vN));
     });
   });
@@ -191,7 +192,8 @@ export function resumenCambios(nuevo, previo){
       if((on.navScac||"")!==(op.navScac||"")) out.push("Naviera "+k+" ("+ek+"): "+(op.navScac||"—")+" → "+(on.navScac||"—"));
       if(nz(pn.base)!==nz(pp.base)) out.push("Tarifa "+k+" ("+ek+") base: "+nz(pp.base)+" → "+nz(pn.base));
       if(nz(pn.profit)!==nz(pp.profit)) out.push("Tarifa "+k+" ("+ek+") profit: "+nz(pp.profit)+" → "+nz(pn.profit));
-      const vN=round10(ventaEq(rn,eqObj,_dir,_soN)), vP=round10(ventaEq(rp,eqObj,_dir,_soP));
+      const _vc=(r,so)=>{ const a=r.ventaAncla&&r.ventaAncla[ek]; return (a!=null&&a!=="")?Number(a):round10(ventaEq(r,eqObj,_dir,so)); };
+      const vN=_vc(rn,_soN), vP=_vc(rp,_soP);
       if(vN!==vP && (vN||vP)) out.push("Venta al cliente "+k+" ("+ek+"): "+vP+" → "+vN);
     });
   });
