@@ -309,9 +309,9 @@ export async function anclarVenta(versionId){
   const dir=st.direccion||"E"; const so=mkSurOf(st);
   const rk=(x)=>((x.pol||x.origen||"")+"|"+(x.pod||x.destino||""));
   const rutaByKey={}; (st.rutas||[]).forEach(r=>{ rutaByKey[rk(r)]=r; });
-  const { data: lins } = await supabase.from("lineas").select("id,pol,pod,origen,destino,equipo").eq("version_id",versionId);
+  const { data: lins } = await supabase.from("lineas").select("id,pol,pod,origen,destino,equipo,venta_anclada").eq("version_id",versionId);
   let cnt=0;
-  for(const l of (lins||[])){ const r=rutaByKey[rk(l)]; if(!r) continue; const v=round10(ventaEq(r,eqMeta(l.equipo),dir,so)); await supabase.from("lineas").update({venta_anclada:v}).eq("id",l.id); cnt++; }
+  for(const l of (lins||[])){ if(l.venta_anclada!=null) continue; const r=rutaByKey[rk(l)]; if(!r) continue; const v=round10(ventaEq(r,eqMeta(l.equipo),dir,so)); await supabase.from("lineas").update({venta_anclada:v}).eq("id",l.id); cnt++; }
   return {ok:true,anclados:cnt};
 }
 
