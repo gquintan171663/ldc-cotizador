@@ -387,7 +387,7 @@ export function Cotizador({ loadId, onDirty, role }){
     setSaving(true); setSaved(null);
     const res=await saveCotizacion(st);
     setSaving(false); setSaved(res);
-    if(res.versionId){ setVersionId(res.versionId); setCodigo(res.codigo); setEstatus("borrador"); if(res.cambios) setCambios(res.cambios); }
+    if(res.versionId){ setVersionId(res.versionId); setCodigo(res.codigo); setEstatus("borrador"); if(res.cambios){ setCambios(res.cambios); setCambiosFecha(new Date().toISOString()); } }
     onDirtyRef.current&&onDirtyRef.current(false);
     if(res.errores.length) alert("⚠ Guardado con avisos ("+res.errores.length+"):\n\n• "+res.errores.slice(0,5).join("\n• ")+(res.errores.length>5?"\n\n…y "+(res.errores.length-5)+" más.":""));
     // Si se editó un precio fijo, recargar para mostrar el precio nuevo ya congelado y salir del modo edición.
@@ -444,7 +444,7 @@ export function Cotizador({ loadId, onDirty, role }){
       const st={versionId,codigo,cliente,clienteNombre:cn,modo,direccion,tradelane,commodity:comLabel,commodity_id:commodityId||null,vigDesde,vigHasta,notas,origen:"cero",equipos,rutas:locked,quoteNav};
       const res=await saveCotizacion(st);
       setEditarPropuesta(false);
-      const st2=await loadVersion(res.versionId||versionId); if(st2&&st2.rutas) setRutas(st2.rutas);
+      const st2=await loadVersion(res.versionId||versionId); if(st2){ if(st2.rutas) setRutas(st2.rutas); if(st2.cambios) setCambios(st2.cambios); setCambiosFecha(st2.updatedAt||null); setCambiosUser(st2.updatedBy||null); }
       let cnt=0; locked.forEach(r=>{ if(r.ventaAncla) cnt+=Object.keys(r.ventaAncla).length; });
       alert("Precio fijado en "+cnt+" línea(s).");
     }catch(ex){ alert("Error al fijar el precio: "+ex.message); }
