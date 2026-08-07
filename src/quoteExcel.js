@@ -57,7 +57,7 @@ export async function exportarExcel(st, opts={}){
 
   // ===== Workbook =====
   const wb=new ExcelJS.Workbook();
-  const ws=wb.addWorksheet("Cotización",{views:[{showGridLines:false,style:"pageLayout"}],pageSetup:{fitToPage:true,fitToWidth:1,fitToHeight:0,orientation:"landscape",horizontalCentered:true,margins:{left:0.3,right:0.3,top:0.4,bottom:0.4,header:0.2,footer:0.2}}});
+  const ws=wb.addWorksheet("Cotización",{views:[{showGridLines:false}],pageSetup:{fitToPage:true,fitToWidth:1,fitToHeight:0,orientation:"landscape",horizontalCentered:true,margins:{left:0.3,right:0.3,top:0.4,bottom:0.4,header:0.2,footer:0.2}}});
   const font=(o={})=>Object.assign({name:ARIAL,size:10,color:{argb:"FF"+INK}},o);
   const fill=(argb)=>({type:"pattern",pattern:"solid",fgColor:{argb:"FF"+argb}});
   const thin={style:"thin",color:{argb:"FFD5DAE0"}};
@@ -124,6 +124,8 @@ export async function exportarExcel(st, opts={}){
 
   // Anchos: auto-ajuste al contenido real (+ mínimos), siempre visible
   cols.forEach((c,i)=>{ let w=(track[c.key]||6)+3; if(c.key==="pol"||c.key==="pod") w=Math.max(w,20); if(c.key==="srvc") w=Math.max(w,22); if(c.key.indexOf("eq_")===0) w=Math.max(w,11); if(c.key==="tt") w=Math.max(w,7); if(c.key==="term") w=Math.max(w,11); w=Math.min(w,44); ws.getColumn(i+1).width=w; });
+  // Zoom automático: ajusta para ver todas las columnas a lo ancho sin zoom manual.
+  try{ let totalPx=0; for(let i=1;i<=NC;i++){ const w=ws.getColumn(i).width||8; totalPx+=Math.round(w*7)+5; } const target=1350; let z=Math.floor(target/totalPx*100); z=Math.max(45,Math.min(100,z)); ws.views=[{showGridLines:false,zoomScale:z,zoomScaleNormal:z}]; }catch(e){}
 
   // Paneles Incluyen / No incluyen
   R++;
