@@ -141,6 +141,8 @@ export async function exportarExcel(st, opts={}){
   // Notas (si hay)
   const notas=(st.notas||"").trim();
   if(notas){ const nk=ws.getCell(R,1); nk.value="Notas:"; nk.font=font({bold:true,size:9,color:{argb:"FF"+SLATE}}); ws.mergeCells(R,2,R,NC); const nv=ws.getCell(R,2); nv.value=notas; nv.font=font({size:9}); nv.alignment={wrapText:true,vertical:"top"}; R+=2; }
+  const corr=interno?((st.correcciones||"").trim()):"";
+  if(corr){ const ck=ws.getCell(R,1); ck.value="Notas internas:"; ck.font=font({bold:true,size:9,color:{argb:"FF"+RED}}); ws.mergeCells(R,2,R,NC); const cv=ws.getCell(R,2); cv.value=corr; cv.font=font({size:9,color:{argb:"FF8A6D1F"}}); cv.alignment={wrapText:true,vertical:"top"}; cv.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFFBF4E0"}}; R+=2; }
 
   // Pie
   ws.mergeCells(R,1,R,NC);
