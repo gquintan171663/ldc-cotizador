@@ -124,6 +124,7 @@ export function buildQuoteHtml(st){
   const _li=(m)=>Object.keys(m).map(k=>'<li><b>'+esc(k)+'</b> — '+esc(m[k].d)+_amt(m[k])+_pago(m[k])+'</li>').join("")||'<li style="color:#7A8794">—</li>';
   const multiTl=tlOrder.length>1;
   const panelsHtml=tlOrder.map(tl=>{ const P=panelByTl[tl];
+    if(Object.keys(P.inc).length===0 && Object.keys(P.exc).length===0) return "";   // sin recargos: no imprimir (ya dice ALL-IN en la línea)
     const head=multiTl?('<div class="tlhead">Tradelane: '+esc(tlLabel(tl))+'</div>'):'';
     return head+'<div class="cols2"><div class="panel inc"><h4>Incluyen:</h4><ul>'+_li(P.inc)+'</ul></div>'+
       '<div class="panel exc"><h4>No incluyen (subject to):</h4><ul>'+_li(P.exc)+'</ul></div></div>';

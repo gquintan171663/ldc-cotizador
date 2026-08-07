@@ -132,6 +132,7 @@ export async function exportarExcel(st, opts={}){
   const multiTl=tlOrder.length>1;
   tlOrder.forEach(tl=>{
     const P=panelByTl[tl];
+    if(Object.keys(P.inc).length===0 && Object.keys(P.exc).length===0) return;   // sin recargos: no imprimir (ya dice ALL-IN en la línea)
     if(multiTl){ ws.mergeCells(R,1,R,NC); const c=ws.getCell(R,1); c.value="Tradelane: "+tlLabel(tl); c.font=font({bold:true,size:9,color:{argb:"FF"+SLATE}}); R++; }
     const c1=ws.getCell(R,1); c1.value="Incluyen en la tarifa:"; c1.font=font({bold:true,size:9,color:{argb:"FF"+GREEN}}); ws.mergeCells(R,2,R,NC); const c2=ws.getCell(R,2); c2.value=liTxt(P.inc).join("   ·   ")||"—"; c2.font=font({size:9}); c2.alignment={wrapText:true,vertical:"middle"}; R++;
     const e1=ws.getCell(R,1); e1.value="No incluyen (subject to):"; e1.font=font({bold:true,size:9,color:{argb:"FF"+RED}}); ws.mergeCells(R,2,R,NC); const e2=ws.getCell(R,2); e2.value=liTxt(P.exc).join("   ·   ")||"—"; e2.font=font({size:9}); e2.alignment={wrapText:true,vertical:"middle"}; R++;
