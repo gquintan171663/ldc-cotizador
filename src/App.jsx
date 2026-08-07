@@ -39,7 +39,7 @@ export default function App(){
     <div style={{padding:20}}>
       {!canQuote&&(<div style={{maxWidth:560,margin:"60px auto",textAlign:"center",color:C.label,fontSize:14}}>Este módulo es de Pricing. Tu rol ({role||"sin rol"}) no tiene acceso a cotizaciones.</div>)}
       {canQuote&&tab==="lista" && <Cotizaciones onOpen={openVersion} onNew={nuevaCotiz} role={role} />}
-      {canQuote&&tab==="cotizador" && <Cotizador key={cotizKey} loadId={openId} />}
+      {canQuote&&tab==="cotizador" && <Cotizador key={cotizKey} loadId={openId} role={role} />}
       {canQuote&&tab==="fletes" && <FletesBase role={role} />}
       {canQuote&&tab==="vigentes" && <TarifasVigentes />}
     </div>

@@ -124,6 +124,54 @@ async function insertChildren(versionId, state, sum){
 // ===== Control de cambios: diff legible de un amendment vs la versión anterior =====
 const _rk=(r)=>((r.pol||r.origen||"?")+" → "+(r.pod||r.destino||"?"));
 const _chosen=(r)=>((r.opciones||[])[r.elegida??0]||(r.opciones||[])[0]||{precios:{}});
+// ===========================================================================
+// CORRECCIÓN de un AM enviado (solo admin). Separa cambios visibles al cliente
+// (precio de venta al cliente + rutas) de los internos (costo base, recargos, profit).
+// ===========================================================================
+const _money=(v)=>{ const x=Number(v)||0; return "$"+x.toLocaleString("en-US",{maximumFractionDigits:0}); };
+export function resumenCorreccion(nuevo, previo, dir){
+  const cliente=[], full=resumenCambios(nuevo, previo);
+  const dr=dir||nuevo.direccion||"E";
+  const soN=mkSurOf(nuevo), soP=mkSurOf(previo);
+  const rk=(r)=>((r.pol||r.origen||"")+"›"+(r.pod||r.destino||""));
+  const rN={}, rP={};
+  (nuevo.rutas||[]).forEach(r=>rN[rk(r)]=r); (previo.rutas||[]).forEach(r=>rP[rk(r)]=r);
+  Object.keys(rN).forEach(k=>{ if(!rP[k]) cliente.push("Ruta agregada: "+k); });
+  Object.keys(rP).forEach(k=>{ if(!rN[k]) cliente.push("Ruta eliminada: "+k); });
+  const equipos=(nuevo.equipos&&nuevo.equipos.length)?nuevo.equipos:["20DV","40HC"];
+  Object.keys(rN).forEach(k=>{ if(!rP[k]) return; const rn=rN[k], rp=rP[k];
+    equipos.forEach(ek=>{ const eqObj=eqMeta(ek); if(!eqObj) return;
+      const vN=round10(ventaEq(rn,eqObj,dr,soN)), vP=round10(ventaEq(rp,eqObj,dr,soP));
+      if(vN!==vP && (vN||vP)) cliente.push("Precio "+ek+" "+k+": "+_money(vP)+" → "+_money(vN));
+    });
+  });
+  return { cliente:[...new Set(cliente)], interno:full };
+}
+
+// Guarda una corrección sobre un AM ya enviado, conservando folio, vigencia y estatus.
+// Devuelve {needNota:true,...} si hay cambios y falta la nota. Registra quién y qué cambió.
+export async function guardarCorreccion(state, notaManual){
+  const prev = await loadVersion(state.versionId);
+  const dir = state.direccion||(prev&&prev.direccion)||"E";
+  const dif = resumenCorreccion(state, prev||{}, dir);
+  const hayCambios = dif.cliente.length>0 || dif.interno.length>0;
+  if(hayCambios && !(notaManual && notaManual.trim())) return { needNota:true, cliente:dif.cliente, interno:dif.interno };
+  const fecha=(()=>{ const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); })();
+  let quien=""; try{ const { data:{ user } }=await supabase.auth.getUser(); quien=(user&&user.email)||""; }catch(_){}
+  let notasNueva = state.notas||"";
+  let correccionesNueva=null;
+  if(hayCambios){
+    const selloCli="— Corrección "+fecha+(quien?(" · "+quien):"")+": "+notaManual.trim()+(dif.cliente.length?("  [Cambios: "+dif.cliente.join("; ")+"]"):"");
+    notasNueva=(notasNueva?notasNueva+"\n":"")+selloCli;
+    const selloInt="Corrección "+fecha+(quien?(" · "+quien):"")+": "+notaManual.trim()+"\n  "+dif.interno.join("\n  ");
+    let prevCorr=""; try{ const { data:vrow }=await supabase.from("versiones").select("correcciones").eq("id",state.versionId).maybeSingle(); prevCorr=(vrow&&vrow.correcciones)||""; }catch(_){}
+    correccionesNueva=(prevCorr?prevCorr+"\n\n":"")+selloInt;
+  }
+  const res = await saveCotizacion({...state, notas:notasNueva});   // mantiene estatus 'enviada', folio y vigencia
+  if(hayCambios){ try{ await supabase.from("versiones").update({correcciones:correccionesNueva}).eq("id",state.versionId); }catch(_){} }
+  return { ok:true, res, cliente:dif.cliente, interno:dif.interno, sinCambios:!hayCambios };
+}
+
 export function resumenCambios(nuevo, previo){
   const out=[]; const nz=(v)=>String(v==null||v===""?0:v);
   if((nuevo.vigDesde||"")!==(previo.vigDesde||"")||(nuevo.vigHasta||"")!==(previo.vigHasta||""))

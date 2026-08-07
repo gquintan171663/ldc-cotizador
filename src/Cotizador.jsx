@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { supabase } from "./supabaseClient.js";
 import { C, F, EQUIPOS, EQUIPO_CATS, NAVIERAS, navName, CATALOG, COMMODITY_INDUSTRIAS, tx, scopeFull, serviceMode, transportMode, n, round10, adicPorCont, cargosBL, inclPorCont, inclBL, subjectTo, enPrecio, esSubjectTo, money, MONEDAS, optPuertos, optCiudades, puertoNombre, paisOrigen, paisDestino, rutaPaisLabel, tlDe, tlLabel, TRADELANES, tradeLabel, rutaEnTradelane, opcionActivaEq, mejorOpcionEq, ordenOpciones, ordenRecargos, ovRazon, PLANTILLA_RECARGOS, parseTarifario, ordenarRutas } from "./lib.js";
 import { inS, Lbl, Field, TI, Sel, Chip, Btn, ClaveAutocomplete, ComboBox } from "./ui.jsx";
-import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges, recargosDeRutaSimilar, recargosDeRutaSimilarPorNaviera, recargosDeNaviera, anclarVenta, checkConflictoTarifa } from "./db.js";
+import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges, recargosDeRutaSimilar, recargosDeRutaSimilarPorNaviera, recargosDeNaviera, anclarVenta, checkConflictoTarifa, guardarCorreccion } from "./db.js";
 import { abrirCotizacion } from "./quote.js";
 import { exportarExcel } from "./quoteExcel.js";
 import * as XLSX from "xlsx";
@@ -195,7 +195,9 @@ function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir,onFoco,editarProp,filt
   </div>);
 }
 
-export function Cotizador({ loadId, onDirty }){
+export function Cotizador({ loadId, onDirty, role }){
+  const isAdmin = role==="admin";
+  const [corrigiendo,setCorrigiendo]=useState(false);
   const [clientes,setClientes]=useState([]);
   const [comms,setComms]=useState([]);
   const [cliente,setCliente]=useState("");
@@ -357,7 +359,7 @@ export function Cotizador({ loadId, onDirty }){
     onDirtyRef.current&&onDirtyRef.current(true);
   },[cliente,modo,direccion,tradelane,commodityId,vigDesde,vigHasta,notas,equipos,rutas,quoteNav,started]);
 
-  const editable = estatus==="borrador";
+  const editable = estatus==="borrador" || corrigiendo;
   const comLabel=(comms.find(c=>c.id===commodityId)||{}).commodity||"";
   const folio = (noAcuerdo||codigo) ? ((noAcuerdo||codigo)+(tradelane?(" · "+tradelane):"")+(amendment?(" · AM"+amendment):"")+(comLabel?(" · "+comLabel):"")) : null;
   const codigoPreview=useMemo(()=>{const p=modo==="maritimo"?"M":modo==="terrestre"?"T":"A";return p+direccion+"?";},[modo,direccion]);
@@ -400,6 +402,28 @@ export function Cotizador({ loadId, onDirty }){
   const confirmProfit=()=>{ const low=bajoProfit(); if(!low.length) return true; return confirm("⚠ Profit bajo o nulo (menor a $250 USD) en:\n\n• "+low.slice(0,12).join("\n• ")+"\n\n¿Continuar de todas formas?"); };
   const faltanPOLPOD=()=>{ const out=[]; (rutas||[]).forEach((r,i)=>{ const f=[]; if(!tx(r.pol))f.push("POL"); if(!tx(r.pod))f.push("POD"); if(!(r.opciones||[]).some(o=>tx(o.navScac)))f.push("naviera"); if(tx(r.origen)&&!tx(r.precarriage_mode))f.push("modo (origen)"); if(tx(r.destino)&&!tx(r.oncarriage_mode))f.push("modo (destino)"); if(f.length) out.push("R"+(i+1)+": falta "+f.join(", ")); }); return out; };
   const enviar=async()=>{ if(!versionId) return; if(vigDesde&&vigHasta&&vigDesde>vigHasta){ alert("La vigencia está invertida: \"desde\" ("+vigDesde+") es posterior a \"hasta\" ("+vigHasta+"). Corrige las fechas antes de enviar."); return; } if(traslapeVig){ alert(traslapeVig); return; } if(!confirmProfit()) return; await markEnviada(versionId); setEstatus("enviada"); };
+  const guardarCorreccionUI=async()=>{
+    if(!versionId) return;
+    if(vigDesde&&vigHasta&&vigDesde>vigHasta){ alert("La vigencia está invertida. Corrige las fechas antes de guardar."); return; }
+    const cn=(clientes.find(c=>c.id===cliente)||{}).nombre;
+    const st={versionId,codigo,cliente,clienteNombre:cn,modo,direccion,tradelane,commodity:comLabel,commodity_id:commodityId||null,vigDesde,vigHasta,notas,origen:"cero",equipos,rutas:derivarAnclaje(rutas),quoteNav};
+    setSaving(true);
+    let r; try{ r=await guardarCorreccion(st,""); }catch(ex){ setSaving(false); alert("Error: "+ex.message); return; }
+    if(r&&r.needNota){
+      setSaving(false);
+      const resumen=(r.cliente&&r.cliente.length)?("\n\nCambios visibles al cliente:\n• "+r.cliente.join("\n• ")):"\n\n(Sin cambios de precio ni rutas; solo internos.)";
+      const nota=window.prompt("CORRECCIÓN de un AM enviado.\n\nEscribe el MOTIVO (obligatorio). Se anexará a la nota junto con el detalle del cambio."+resumen);
+      if(!nota||!nota.trim()){ alert("Cancelado: la corrección requiere una nota."); return; }
+      setSaving(true);
+      try{ r=await guardarCorreccion(st,nota.trim()); }catch(ex){ setSaving(false); alert("Error: "+ex.message); return; }
+    }
+    setSaving(false);
+    if(r&&r.ok){
+      try{ const st2=await loadVersion(versionId); if(st2){ if(st2.rutas) setRutas(st2.rutas); if(st2.notas!=null) setNotas(st2.notas); } }catch(_){}
+      setCorrigiendo(false);
+      alert(r.sinCambios?"No hubo cambios que registrar.":"Corrección guardada. El cambio quedó en la nota (y en el registro interno).");
+    }
+  };
   const nueva=async()=>{ if(!versionId) return; if(!confirm("¿Crear un nuevo Amendment (AM"+((amendment||1)+1)+")? Se copia el actual para que edites las diferencias; el AM anterior queda superseded.")) return; setSaving(true); const res=await nuevaVersion(versionId); setSaving(false); if(res.errores&&res.errores.length){ alert("Error: "+res.errores.join(" · ")); return; } if(res.versionId){ setVersionId(res.versionId); setCodigo(res.codigo); setAmendment(res.amendment||((amendment||1)+1)); if(res.vigDesde) setVigDesde(res.vigDesde); setCambios(null); setEstatus("borrador"); setSaved(res); } };
   const stCotiz=()=>{ const cn=(clientes.find(c=>c.id===cliente)||{}).nombre; return {clienteNombre:cn,codigo:codigo||codigoPreview,no_acuerdo:noAcuerdo,tradelane,amendment,commodity:comLabel,direccion,equipos,rutas:derivarAnclaje(rutas),quoteNav,vigDesde,vigHasta,notas}; };
   const generar=()=>{ const falt=faltanPOLPOD(); if(falt.length){ alert("Faltan datos obligatorios en las rutas (POL, POD, naviera y modo si hay ciudad):\n\n• "+falt.join("\n• ")); return; } if(!confirmProfit()) return; abrirCotizacion(stCotiz()); };
@@ -430,6 +454,8 @@ export function Cotizador({ loadId, onDirty }){
       <span style={{fontSize:15,fontWeight:"bold",color:C.ink}}>{folio}</span>
       <span style={{fontSize:11,fontWeight:"bold",color:editable?C.label:"#8A6D1F",background:editable?C.soft:"#FBF4E0",border:"1px solid "+C.sep2,borderRadius:4,padding:"2px 8px"}}>{estatus}</span>
       {!editable&&<span style={{fontSize:11,color:C.label}}>Versión congelada — crea un nuevo Amendment para editar.</span>}
+      {corrigiendo&&<span style={{fontSize:11,fontWeight:"bold",color:"#C77800"}}>✎ Modo corrección (admin) — al guardar deberás poner una nota del cambio.</span>}
+      {estatus==="enviada"&&isAdmin&&!corrigiendo&&<span style={{marginLeft:"auto"}}><Btn kind="ghost" small onClick={()=>{ if(confirm("¿Corregir este AM enviado?\n\nEsto es para arreglar errores nuestros SIN mandarle un nuevo Amendment al cliente. Al guardar se te pedirá una nota y el sistema registrará qué cambió. Conserva el mismo folio y vigencia.")) setCorrigiendo(true); }}>✎ Corregir enviada (admin)</Btn></span>}
     </div>)}
     {cambios&&cambios.length>0&&(<div style={{marginBottom:12,padding:"10px 14px",background:"#FFF9E9",border:"1px solid #EAD9A0",borderRadius:10}}>
       <div style={{fontSize:12,fontWeight:"bold",color:"#8A6D1F",marginBottom:6}}>Control de cambios vs. amendment anterior ({cambios.length})</div>
@@ -537,8 +563,10 @@ export function Cotizador({ loadId, onDirty }){
           <Btn kind="ghost" onClick={generar}>Generar cotización (PDF)</Btn>
           <Btn kind="ghost" onClick={()=>exportarXlsx(false)}>Exportar a Excel</Btn>
           <Btn kind="ghost" onClick={()=>exportarXlsx(true)} title="Mismo formato + profit por equipo. No enviar al cliente.">Excel interno (profits)</Btn>
-          {editable&&<Btn kind="green" onClick={guardar} disabled={saving}>{saving?"Guardando…":(versionId?"Guardar cambios":"Guardar cotización")}</Btn>}
-          {editable&&versionId&&<Btn kind="dark" onClick={enviar} disabled={saving}>Marcar enviada</Btn>}
+          {corrigiendo&&<Btn kind="primary" onClick={guardarCorreccionUI} disabled={saving}>{saving?"Guardando…":"✎ Guardar corrección"}</Btn>}
+          {corrigiendo&&<Btn kind="ghost" onClick={async()=>{ setCorrigiendo(false); try{ const st2=await loadVersion(versionId); if(st2){ if(st2.rutas) setRutas(st2.rutas); if(st2.notas!=null) setNotas(st2.notas); } }catch(_){} }} disabled={saving}>Cancelar corrección</Btn>}
+          {editable&&!corrigiendo&&<Btn kind="green" onClick={guardar} disabled={saving}>{saving?"Guardando…":(versionId?"Guardar cambios":"Guardar cotización")}</Btn>}
+          {editable&&!corrigiendo&&versionId&&<Btn kind="dark" onClick={enviar} disabled={saving}>Marcar enviada</Btn>}
           {editable&&versionId&&!hayAncla&&<Btn kind="ghost" onClick={anclar} disabled={saving} title="Congela el precio al cliente. Al ajustar costos cambia tu profit, no el precio.">🔒 Fijar precio al cliente</Btn>}
           {editable&&hayAncla&&!editarPropuesta&&<Btn kind="ghost" onClick={toggleEditProp} disabled={saving}>✎ Editar precio</Btn>}
           {editable&&hayAncla&&editarPropuesta&&<Btn kind="primary" onClick={async()=>{ await anclar(); setEditarPropuesta(false); }} disabled={saving}>🔒 Fijar este nuevo precio</Btn>}
