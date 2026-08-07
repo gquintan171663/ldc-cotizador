@@ -122,7 +122,8 @@ async function insertChildren(versionId, state, sum){
 }
 
 // ===== Control de cambios: diff legible de un amendment vs la versión anterior =====
-const _rk=(r)=>((r.pol||r.origen||"?")+" → "+(r.pod||r.destino||"?"));
+const _loc=(v)=>{ const nm=puertoNombre(v)||String(v||""); const pais=paisDe(v); return nm+(pais&&!/\(\s*[A-Z]{2}\s*\)\s*$/.test(nm)&&!/,\s*[A-Z]{2}\s*$/.test(nm)?" ("+pais+")":""); };
+const _rk=(r)=> _loc(r.pol||r.origen)+" → "+_loc(r.pod||r.destino);
 const _chosen=(r)=>((r.opciones||[])[r.elegida??0]||(r.opciones||[])[0]||{precios:{}});
 // ===========================================================================
 // CORRECCIÓN de un AM enviado (solo admin). Separa cambios visibles al cliente
@@ -133,7 +134,7 @@ export function resumenCorreccion(nuevo, previo, dir){
   const cliente=[], full=resumenCambios(nuevo, previo);
   const dr=dir||nuevo.direccion||"E";
   const soN=mkSurOf(nuevo), soP=mkSurOf(previo);
-  const rk=(r)=>{ const o=r.origen||puertoNombre(r.pol)||r.pol||"", d=r.destino||puertoNombre(r.pod)||r.pod||""; return o+" → "+d; };
+  const rk=(r)=>_loc(r.pol||r.origen)+" → "+_loc(r.pod||r.destino);
   const rN={}, rP={};
   (nuevo.rutas||[]).forEach(r=>rN[rk(r)]=r); (previo.rutas||[]).forEach(r=>rP[rk(r)]=r);
   Object.keys(rN).forEach(k=>{ if(!rP[k]) cliente.push("Ruta agregada: "+k); });
@@ -342,7 +343,7 @@ export async function loadVersion(versionId){
   return {
     versionId, codigo:ver.codigo, estatus:ver.estatus, acuerdo_id:ver.acuerdos?.id,
     no_acuerdo:ver.acuerdos?.no_acuerdo||"", tradelane:ver.tradelane||"", amendment:ver.amendment||1,
-    cambios:ver.cambios||null, reemplaza_a:ver.reemplaza_a||null,
+    cambios:ver.cambios||null, reemplaza_a:ver.reemplaza_a||null, updatedAt:ver.updated_at||null, updatedBy:ver.updated_by_email||null,
     cliente:ver.acuerdos?.cliente_id, clienteNombre:ver.acuerdos?.clientes?.nombre,
     modo:ver.acuerdos?.modo||"maritimo", direccion:ver.direccion,
     commodity:ver.commodity, commodity_id:ver.commodity_id, notas:ver.notas||"", correcciones:ver.correcciones||"",

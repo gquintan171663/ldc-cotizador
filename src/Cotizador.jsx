@@ -207,6 +207,8 @@ export function Cotizador({ loadId, onDirty, role }){
   const [noAcuerdo,setNoAcuerdo]=useState("");
   const [amendment,setAmendment]=useState(1);
   const [cambios,setCambios]=useState(null);
+  const [cambiosFecha,setCambiosFecha]=useState(null);
+  const [cambiosUser,setCambiosUser]=useState(null);
   const [commodityId,setCommodityId]=useState("");
   const [vigDesde,setVigDesde]=useState("");
   const [prevVigHasta,setPrevVigHasta]=useState("");
@@ -340,7 +342,7 @@ export function Cotizador({ loadId, onDirty, role }){
     loadVersion(loadId).then(st=>{
       setVersionId(st.versionId); setCodigo(st.codigo); setEstatus(st.estatus);
       setCliente(st.cliente||""); setModo(st.modo||"maritimo"); setDireccion(st.direccion||"I");
-      setTradelane(st.tradelane||""); setNoAcuerdo(st.no_acuerdo||""); setAmendment(st.amendment||1); setCambios(st.cambios||null);
+      setTradelane(st.tradelane||""); setNoAcuerdo(st.no_acuerdo||""); setAmendment(st.amendment||1); setCambios(st.cambios||null); setCambiosFecha(st.updatedAt||null); setCambiosUser(st.updatedBy||null);
       setCommodityId(st.commodity_id||""); setVigDesde(st.vigDesde||""); setVigHasta(st.vigHasta||""); setNotas(st.notas||""); setNotasInternas(st.correcciones||""); setPrevVigHasta(st.prevVigHasta||"");
       setEquipos(st.equipos&&st.equipos.length?st.equipos:["20DV","40HC"]);
       setRutas(st.rutas&&st.rutas.length?st.rutas:[mkRuta()]);
@@ -458,10 +460,13 @@ export function Cotizador({ loadId, onDirty, role }){
       {corrigiendo&&<span style={{fontSize:11,fontWeight:"bold",color:"#C77800"}}>✎ Modo corrección (admin) — al guardar deberás poner una nota del cambio.</span>}
       {estatus==="enviada"&&isAdmin&&!corrigiendo&&<span style={{marginLeft:"auto"}}><Btn kind="ghost" small onClick={()=>{ if(confirm("¿Corregir este AM enviado?\n\nEsto es para arreglar errores nuestros SIN mandarle un nuevo Amendment al cliente. Al guardar se te pedirá una nota y el sistema registrará qué cambió. Conserva el mismo folio y vigencia.")) setCorrigiendo(true); }}>✎ Corregir enviada (admin)</Btn></span>}
     </div>)}
-    {cambios&&cambios.length>0&&(<div style={{marginBottom:12,padding:"10px 14px",background:"#FFF9E9",border:"1px solid #EAD9A0",borderRadius:10}}>
+    {cambios&&cambios.length>0&&(()=>{ const fh=cambiosFecha?(()=>{ const d=new Date(cambiosFecha); if(isNaN(d)) return null; const ms=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"]; return d.getDate()+"-"+ms[d.getMonth()]+"-"+d.getFullYear(); })():null; const us=cambiosUser?String(cambiosUser).split("@")[0]:null; return (<div style={{marginBottom:12,padding:"10px 14px",background:"#FFF9E9",border:"1px solid #EAD9A0",borderRadius:10}}>
       <div style={{fontSize:12,fontWeight:"bold",color:"#8A6D1F",marginBottom:6}}>Control de cambios vs. amendment anterior ({cambios.length})</div>
-      <ul style={{margin:0,paddingLeft:18,fontSize:11.5,color:C.slate,lineHeight:1.5}}>{cambios.slice(0,40).map((c,i)=><li key={i}>{c}</li>)}</ul>
-    </div>)}
+      <div style={{fontSize:11.5,color:C.slate}}>
+        {(fh||us)&&<div style={{fontWeight:"bold",color:"#8A6D1F",marginBottom:2}}>{fh||""}{fh&&us?" · ":""}{us?"por "+us:""}:</div>}
+        <ul style={{margin:0,paddingLeft:18,lineHeight:1.5}}>{cambios.slice(0,40).map((c,i)=><li key={i}>{c}</li>)}</ul>
+      </div>
+    </div>); })()}
     {editarPropuesta&&(()=>{ const pm=lineasPropModificada(); return (<div style={{marginBottom:12,padding:"10px 14px",background:"#FFF3E0",border:"1px solid #F0C79A",borderRadius:10}}>
       <div style={{fontSize:12,fontWeight:"bold",color:"#C77800",marginBottom:pm.length?6:0}}>✎ Editando el precio al cliente — el precio ya no está congelado y puede cambiar al ajustar costos.{pm.length?" Cambios de precio ("+pm.length+"):":" (aún sin cambios de precio)"}</div>
       {pm.length>0&&<ul style={{margin:0,paddingLeft:18,fontSize:11.5,color:C.slate,lineHeight:1.5}}>{pm.slice(0,20).map((c,i)=><li key={i}>{c}</li>)}</ul>}
