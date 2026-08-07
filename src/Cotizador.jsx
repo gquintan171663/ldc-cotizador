@@ -406,7 +406,22 @@ export function Cotizador({ loadId, onDirty }){
   const exportarXlsx=async(interno)=>{ const falt=faltanPOLPOD(); if(falt.length){ alert("Faltan datos obligatorios en las rutas (POL, POD, naviera y modo si hay ciudad):\n\n• "+falt.join("\n• ")); return; } if(!interno&&!confirmProfit()) return; try{ await exportarExcel(stCotiz(),{interno:!!interno}); }catch(ex){ alert("Error al exportar a Excel: "+ex.message); } };
   const toggleEditProp=()=>{ const next=!editarPropuesta; setRutas(derivarAnclaje(rutas,next)); setEditarPropuesta(next); };
   const lineasPropModificada=()=>{ const out=[]; (rutas||[]).forEach(r=>{ if(!r.ventaAncla) return; Object.keys(r.ventaAncla).forEach(ek=>{ const eqObj=EQUIPOS.find(x=>x.k===ek); if(!eqObj) return; const oi=opcionActivaEq(r,ek,eqObj,direccion,surOfMain); const o=(r.opciones||[])[oi]; if(!o) return; const pr=(o.precios||{})[ek]||{}; if(pr.base==null||pr.base==="") return; const venta=round10(n(pr.base)+adicPorCont(surOfMain(o.navScac,tlDe(r)),eqObj,direccion)+n(pr.profit)); if(venta!==Math.round(Number(r.ventaAncla[ek]))) out.push((r.pol||r.origen||"?")+"→"+(r.pod||r.destino||"?")+" "+eqObj.t+": "+money(Number(r.ventaAncla[ek]))+" → "+money(venta)); }); }); return out; };
-  const anclar=async()=>{ if(!versionId){ alert("Guarda la cotización antes de fijar el precio al cliente."); return; } if(faltanPOLPOD().length){ alert("Completa POL, POD y naviera antes de fijar el precio."); return; } if(!confirm("¿Fijar el precio actual al cliente?\n\nEl precio queda congelado: al ajustar costos cambia tu profit, no el precio. Para cambiarlo después usa \"Editar precio\" o crea un nuevo Amendment.")) return; setSaving(true); try{ await guardar(); const res=await anclarVenta(versionId); const st=await loadVersion(versionId); if(st&&st.rutas) setRutas(st.rutas); alert("Precio fijado en "+((res&&res.anclados)||0)+" línea(s)."); }catch(ex){ alert("Error al fijar el precio: "+ex.message); } setSaving(false); };
+  const anclar=async()=>{ if(!versionId){ alert("Guarda la cotización antes de fijar el precio al cliente."); return; } if(faltanPOLPOD().length){ alert("Completa POL, POD y naviera antes de fijar el precio."); return; } if(!confirm("¿Fijar el precio actual al cliente?\n\nEl precio queda congelado: al ajustar costos cambia tu profit, no el precio. Para cambiarlo después usa \"Editar precio\" o crea un nuevo Amendment.")) return; setSaving(true);
+    try{
+      // 1) Toma el precio que se ve AHORA (base + recargos + profit de la naviera activa) por equipo y fíjalo como ancla.
+      const conAncla=(rutas||[]).map(r=>{ const na={...(r.ventaAncla||{})}; (equipos||[]).forEach(ek=>{ const eqObj=EQUIPOS.find(x=>x.k===ek); if(!eqObj) return; const oi=opcionActivaEq(r,ek,eqObj,direccion,surOfMain); const o=(r.opciones||[])[oi]; if(!o) return; const pr=(o.precios||{})[ek]||{}; if(pr.base==null||pr.base==="") return; na[ek]=round10(n(pr.base)+adicPorCont(surOfMain(o.navScac,tlDe(r)),eqObj,direccion)+n(pr.profit)); }); return {...r,ventaAncla:na}; });
+      // 2) Bloquea: los profits de cada opción se ajustan para dar exactamente ese ancla nuevo.
+      const locked=derivarAnclaje(conAncla,false);
+      // 3) Guarda ese estado ya anclado.
+      const cn=(clientes.find(c=>c.id===cliente)||{}).nombre;
+      const st={versionId,codigo,cliente,clienteNombre:cn,modo,direccion,tradelane,commodity:comLabel,commodity_id:commodityId||null,vigDesde,vigHasta,notas,origen:"cero",equipos,rutas:locked,quoteNav};
+      const res=await saveCotizacion(st);
+      setEditarPropuesta(false);
+      const st2=await loadVersion(res.versionId||versionId); if(st2&&st2.rutas) setRutas(st2.rutas);
+      let cnt=0; locked.forEach(r=>{ if(r.ventaAncla) cnt+=Object.keys(r.ventaAncla).length; });
+      alert("Precio fijado en "+cnt+" línea(s).");
+    }catch(ex){ alert("Error al fijar el precio: "+ex.message); }
+    setSaving(false); };
   const hayAncla=(rutas||[]).some(r=>r.ventaAncla&&Object.keys(r.ventaAncla).length>0);
 
   return (<div style={{maxWidth:1160,margin:"0 auto"}}>
