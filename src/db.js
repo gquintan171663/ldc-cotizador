@@ -516,7 +516,7 @@ export async function recargosDeNaviera(scac, excludeVersionId){
 // ===== #5 Conflicto: misma ruta + misma vigencia, tarifa distinta (otro cliente o no) =====
 // Devuelve [{folio, cliente, ruta, vig, tarifaExistente, tarifaNueva}]
 export async function checkConflictoTarifa(state){
-  const { versionId, vigDesde, vigHasta, rutas, equipos, quoteNav, direccion } = state;
+  const { versionId, vigDesde, vigHasta, rutas, equipos, quoteNav, direccion, cliente } = state;
   if(!vigDesde && !vigHasta) return [];
   const surOf=(scac,tl)=>((quoteNav||[]).find(q=>q.scac===scac&&(q.tl||"")===(tl||""))||{}).surcharges||[];
   // venta (base+profit+recargos que suman según dirección) de la opción elegida, primer equipo
@@ -529,7 +529,7 @@ export async function checkConflictoTarifa(state){
   if(!rutasReq.length) return [];
   // Trae versiones con misma vigencia (en lineas) y sus tarifas
   const { data } = await supabase.from("lineas")
-    .select("pol,pod,validez_desde,validez_hasta,version_id,opcion_elegida_id,versiones(id,codigo,estatus,direccion,acuerdos(clientes(nombre)))")
+    .select("pol,pod,validez_desde,validez_hasta,version_id,opcion_elegida_id,versiones(id,codigo,estatus,direccion,acuerdos(cliente_id,clientes(nombre)))")
     .eq("validez_desde", vigDesde||null).eq("validez_hasta", vigHasta||null).limit(500);
   if(!data || !data.length) return [];
   const lids=data.filter(l=>l.opcion_elegida_id).map(l=>l.opcion_elegida_id);
@@ -541,10 +541,13 @@ export async function checkConflictoTarifa(state){
   const conflictos=[];
   for(const l of data){
     if(l.version_id===versionId) continue;
+    if(cliente && l.versiones?.acuerdos?.cliente_id && l.versiones.acuerdos.cliente_id!==cliente) continue;  // solo mismo cliente
     const mine=rutasReq.find(x=>x.pol===l.pol && x.pod===l.pod);
     if(!mine) continue;
+    if(mine.venta<=0) continue;   // tarifa nueva aún sin capturar: no comparar
     const op=opMap[l.opcion_elegida_id]; if(!op) continue;
     const ventaExist=op.base+op.profit+adicPorCont(surByOp[l.opcion_elegida_id]||[],eqMeta("20DV"),l.versiones?.direccion||"E");
+    if(ventaExist<=0) continue;   // tarifa existente sin capturar: no comparar
     if(Math.abs(ventaExist-mine.venta) > 0.5){  // tarifa distinta
       conflictos.push({
         folio:l.versiones?.codigo||"?",
