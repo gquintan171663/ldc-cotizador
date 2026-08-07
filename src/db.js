@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient.js";
-import { matchCommodity, paisDe, tlDe, n, adicPorCont, tx, eqMeta, prefijoCliente, numeroAcuerdo, hayCambioCosto, ventaEq, mkSurOf, round10, opcionActivaEq } from "./lib.js";
+import { matchCommodity, paisDe, tlDe, n, adicPorCont, tx, eqMeta, prefijoCliente, numeroAcuerdo, hayCambioCosto, ventaEq, mkSurOf, round10, opcionActivaEq, puertoNombre } from "./lib.js";
 
 // Mapa commodity(lower) -> id desde el catálogo
 async function commodityMap(){
@@ -133,7 +133,7 @@ export function resumenCorreccion(nuevo, previo, dir){
   const cliente=[], full=resumenCambios(nuevo, previo);
   const dr=dir||nuevo.direccion||"E";
   const soN=mkSurOf(nuevo), soP=mkSurOf(previo);
-  const rk=(r)=>((r.pol||r.origen||"")+"›"+(r.pod||r.destino||""));
+  const rk=(r)=>{ const o=r.origen||puertoNombre(r.pol)||r.pol||"", d=r.destino||puertoNombre(r.pod)||r.pod||""; return o+" → "+d; };
   const rN={}, rP={};
   (nuevo.rutas||[]).forEach(r=>rN[rk(r)]=r); (previo.rutas||[]).forEach(r=>rP[rk(r)]=r);
   Object.keys(rN).forEach(k=>{ if(!rP[k]) cliente.push("Ruta agregada: "+k); });
@@ -157,13 +157,13 @@ export async function guardarCorreccion(state, notaManual){
   const hayCambios = dif.cliente.length>0 || dif.interno.length>0;
   if(hayCambios && !(notaManual && notaManual.trim())) return { needNota:true, cliente:dif.cliente, interno:dif.interno };
   const fecha=(()=>{ const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); })();
-  let quien=""; try{ const { data:{ user } }=await supabase.auth.getUser(); quien=(user&&user.email)||""; }catch(_){}
   let notasNueva = state.notas||"";
   let correccionesNueva=null;
   if(hayCambios){
-    const selloCli="— Corrección "+fecha+(quien?(" · "+quien):"")+": "+notaManual.trim()+(dif.cliente.length?("  [Cambios: "+dif.cliente.join("; ")+"]"):"");
-    notasNueva=(notasNueva?notasNueva+"\n":"")+selloCli;
-    const selloInt="Corrección "+fecha+(quien?(" · "+quien):"")+": "+notaManual.trim()+"\n  "+dif.interno.join("\n  ");
+    // Cliente (sale en PDF/Excel del cliente): solo cambios visibles (precio/rutas), sin motivo ni correo.
+    if(dif.cliente.length){ const selloCli="— Corrección "+fecha+": "+dif.cliente.join("; "); notasNueva=(notasNueva?notasNueva+"\n":"")+selloCli; }
+    // Notas internas (registro completo, no sale al cliente): motivo + todos los cambios. Sin correo (ya queda en "actualizado por").
+    const detalle=[...dif.cliente, ...dif.interno]; const selloInt="— Corrección "+fecha+": "+notaManual.trim()+(detalle.length?("\n    "+detalle.join("\n    ")):"");
     let prevCorr=""; try{ const { data:vrow }=await supabase.from("versiones").select("correcciones").eq("id",state.versionId).maybeSingle(); prevCorr=(vrow&&vrow.correcciones)||""; }catch(_){}
     correccionesNueva=(prevCorr?prevCorr+"\n\n":"")+selloInt;
   }
@@ -345,7 +345,7 @@ export async function loadVersion(versionId){
     cambios:ver.cambios||null, reemplaza_a:ver.reemplaza_a||null,
     cliente:ver.acuerdos?.cliente_id, clienteNombre:ver.acuerdos?.clientes?.nombre,
     modo:ver.acuerdos?.modo||"maritimo", direccion:ver.direccion,
-    commodity:ver.commodity, commodity_id:ver.commodity_id, notas:ver.notas||"",
+    commodity:ver.commodity, commodity_id:ver.commodity_id, notas:ver.notas||"", correcciones:ver.correcciones||"",
     vigDesde:anyL.validez_desde||"", vigHasta:anyL.validez_hasta||"",
     equipos:[...equiposSet], rutas:rutas.length?rutas:[], quoteNav:Object.values(quoteNavMap),
   };

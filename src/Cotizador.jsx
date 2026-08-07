@@ -214,6 +214,7 @@ export function Cotizador({ loadId, onDirty, role }){
   const traslapeVig=(prevVigHasta&&vigDesde&&vigDesde<=prevVigHasta)?(()=>{ const d=new Date(prevVigHasta+"T00:00:00"); d.setDate(d.getDate()+1); const sig=new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); return "Traslape de vigencia: este amendment empieza el "+vigDesde+", pero el AM anterior sigue vigente hasta el "+prevVigHasta+". Cambia \"Vigencia desde\" al "+sig+" o después para que no se empalmen (no se puede tener dos tarifas vigentes el mismo día)."; })():null;
   const [vigHasta,setVigHasta]=useState("");
   const [notas,setNotas]=useState("");
+  const [notasInternas,setNotasInternas]=useState("");
   const [equipos,setEquipos]=useState(["20DV","40HC"]);
   const [impSheets,setImpSheets]=useState(null);
   const [focoRecargo,setFocoRecargo]=useState(null);
@@ -340,7 +341,7 @@ export function Cotizador({ loadId, onDirty, role }){
       setVersionId(st.versionId); setCodigo(st.codigo); setEstatus(st.estatus);
       setCliente(st.cliente||""); setModo(st.modo||"maritimo"); setDireccion(st.direccion||"I");
       setTradelane(st.tradelane||""); setNoAcuerdo(st.no_acuerdo||""); setAmendment(st.amendment||1); setCambios(st.cambios||null);
-      setCommodityId(st.commodity_id||""); setVigDesde(st.vigDesde||""); setVigHasta(st.vigHasta||""); setNotas(st.notas||""); setPrevVigHasta(st.prevVigHasta||"");
+      setCommodityId(st.commodity_id||""); setVigDesde(st.vigDesde||""); setVigHasta(st.vigHasta||""); setNotas(st.notas||""); setNotasInternas(st.correcciones||""); setPrevVigHasta(st.prevVigHasta||"");
       setEquipos(st.equipos&&st.equipos.length?st.equipos:["20DV","40HC"]);
       setRutas(st.rutas&&st.rutas.length?st.rutas:[mkRuta()]);
       setQuoteNav(st.quoteNav||[]); setStarted(true); setLoading(false);
@@ -419,7 +420,7 @@ export function Cotizador({ loadId, onDirty, role }){
     }
     setSaving(false);
     if(r&&r.ok){
-      try{ const st2=await loadVersion(versionId); if(st2){ if(st2.rutas) setRutas(st2.rutas); if(st2.notas!=null) setNotas(st2.notas); } }catch(_){}
+      try{ const st2=await loadVersion(versionId); if(st2){ if(st2.rutas) setRutas(st2.rutas); if(st2.notas!=null) setNotas(st2.notas); setNotasInternas(st2.correcciones||""); } }catch(_){}
       setCorrigiendo(false);
       alert(r.sinCambios?"No hubo cambios que registrar.":"Corrección guardada. El cambio quedó en la nota (y en el registro interno).");
     }
@@ -556,6 +557,10 @@ export function Cotizador({ loadId, onDirty, role }){
       <div style={{background:"#fff",border:"1px solid "+C.sep2,borderRadius:12,padding:14,marginTop:14,opacity:editable?1:.7,pointerEvents:editable?"auto":"none"}}>
         <Lbl>Notas <span style={{fontWeight:"normal",color:C.label,textTransform:"none"}}>· texto libre que aparece en el PDF (condiciones, comentarios, etc.)</span></Lbl>
         <textarea value={notas} onChange={e=>setNotas(e.target.value)} placeholder="Ej. Tarifas sujetas a disponibilidad de espacio y equipo. No incluye seguro de la mercancía…" rows={3} style={{...inS,marginTop:4,resize:"vertical",minHeight:64,fontFamily:F,lineHeight:1.45}}/>
+        {notasInternas&&<div style={{marginTop:12}}>
+          <Lbl>Notas internas <span style={{fontWeight:"normal",color:C.label,textTransform:"none"}}>· registro de correcciones (uso interno, NO sale al cliente)</span></Lbl>
+          <div style={{marginTop:4,padding:"8px 10px",background:"#FBF4E0",border:"1px solid #EAD9A0",borderRadius:8,fontSize:11.5,color:C.slate,whiteSpace:"pre-wrap",fontFamily:F,lineHeight:1.5}}>{notasInternas}</div>
+        </div>}
       </div>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:14,padding:"6px 0"}}>
         <span style={{fontSize:12,color:saved?C.green:C.label}}>{saved?("Guardado "+(saved.codigo||codigo||"")+" · "+saved.lineas+" líneas, "+saved.opciones+" opciones, "+saved.surcharges+" recargos"):""}</span>
