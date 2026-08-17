@@ -693,33 +693,38 @@ export async function matchFletesBase(claves){
 // ===========================================================================
 export async function reporteFletesEnCotizaciones(){
   const { data: vers, error } = await supabase.from("versiones")
-    .select("id,codigo,direccion,commodity,tradelane,estatus,updated_at,vig_desde,vig_hasta,acuerdos(no_acuerdo,modo,clientes(nombre))")
+    .select("id,codigo,amendment,direccion,commodity,tradelane,estatus,updated_at,vig_desde,vig_hasta,acuerdos(no_acuerdo,modo,clientes(nombre))")
     .order("updated_at",{ascending:false}).limit(3000);
   if(error) return { rows:[], error:error.message };
-  const vById={}; (vers||[]).forEach(v=>{ vById[v.id]=v; });
-  const vIds=(vers||[]).map(v=>v.id);
-  if(!vIds.length) return { rows:[] };
-  let lineas, ops;
-  try{
-    lineas = await selectAllIn("lineas","id,version_id,origen,pol,pod,destino,equipo,validez_desde,validez_hasta","version_id",vIds);
-    const lIds=(lineas||[]).map(l=>l.id);
-    ops = lIds.length ? await selectAllIn("opciones_costo","linea_id,naviera,costo_base,profit,transito_dias","linea_id",lIds) : [];
-  }catch(ex){ return { rows:[], error:ex.message }; }
-  const lById={}; (lineas||[]).forEach(l=>{ lById[l.id]=l; });
   const rows=[];
-  (ops||[]).forEach(o=>{
-    const base=Number(o.costo_base)||0; if(base<=0) return;   // $0 = no cotizó, se omite
-    const l=lById[o.linea_id]; if(!l) return;
-    const v=vById[l.version_id]; if(!v) return;
-    rows.push({
-      cliente:v.acuerdos?.clientes?.nombre||"", no_acuerdo:v.acuerdos?.no_acuerdo||"", modo:v.acuerdos?.modo||"",
-      codigo:v.codigo||"", direccion:v.direccion, tradelane:v.tradelane||"", producto:v.commodity||"",
-      origen:l.origen||"", pol:l.pol||"", pod:l.pod||"", destino:l.destino||"", equipo:l.equipo||"",
-      naviera:o.naviera||"", flete_base:base, profit:Number(o.profit)||0, transito:o.transito_dias,
-      vig_desde:l.validez_desde||v.vig_desde||null, vig_hasta:l.validez_hasta||v.vig_hasta||null,
-      estatus:v.estatus, updated_at:v.updated_at
+  for(const v of (vers||[])){
+    let st; try{ st=await loadVersion(v.id); }catch(_){ continue; }
+    if(!st) continue;
+    const dir=st.direccion||"E";
+    const surOf=mkSurOf(st);
+    const equiposV=st.equipos&&st.equipos.length?st.equipos:["20DV"];
+    (st.rutas||[]).forEach(r=>{
+      equiposV.forEach(ek=>{
+        const eqObj=eqMeta(ek); if(!eqObj) return;
+        const oi=opcionActivaEq(r,ek,eqObj,dir,surOf);
+        const o=(r.opciones||[])[oi]; if(!o) return;
+        const pr=(o.precios||{})[ek]||{}; const base=n(pr.base); if(base===0) return;   // ese equipo no se cotizó
+        const recargos=adicPorCont(surOf(o.navScac,tlDe(r)),eqObj,dir);
+        const costoTotal=base+recargos;
+        const ventaAnc=(r.ventaAncla&&r.ventaAncla[ek]!=null)?Number(r.ventaAncla[ek]):null;
+        const venta=ventaAnc!=null?ventaAnc:(costoTotal+n(pr.profit));
+        const profit=venta-costoTotal;
+        rows.push({
+          cliente:v.acuerdos?.clientes?.nombre||st.clienteNombre||"", no_acuerdo:v.acuerdos?.no_acuerdo||st.no_acuerdo||"", modo:v.acuerdos?.modo||st.modo||"",
+          codigo:v.codigo||"", am:v.amendment?("AM"+v.amendment):"", direccion:v.direccion, tradelane:v.tradelane||"", producto:v.commodity||"",
+          origen:r.origen||"", pol:r.pol||"", pod:r.pod||"", destino:r.destino||"", equipo:ek,
+          naviera:o.navScac||"", flete_base:base, recargos, profit, tarifa_cliente:venta, transito:o.transito,
+          vig_desde:r.validez_desde||v.vig_desde||null, vig_hasta:r.validez_hasta||v.vig_hasta||null,
+          estatus:v.estatus, updated_at:v.updated_at
+        });
+      });
     });
-  });
+  }
   return { rows };
 }
 

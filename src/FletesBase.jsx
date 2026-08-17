@@ -101,15 +101,15 @@ export function FletesBase({ role }){
     setBusy(false);
     if(res.error){ alert("Error al generar el reporte: "+res.error); return; }
     if(!res.rows.length){ alert("No hay fletes base en cotizaciones todavía."); return; }
-    const head=["Cliente","No. Acuerdo","Modo","Folio","Dir","Tradelane","Producto","Origen","POL","POL nombre","POD","POD nombre","Destino","Equipo","Naviera","Flete Base","Profit","T.T.","Vig desde","Vig hasta","Estatus","Actualizado"];
-    const filas=res.rows.map(r=>[r.cliente,r.no_acuerdo,r.modo,r.codigo,r.direccion==="I"?"Imp":"Exp",r.tradelane,r.producto,r.origen,r.pol,puertoNombre(r.pol),r.pod,puertoNombre(r.pod),r.destino,r.equipo,r.naviera,Number(r.flete_base)||0,Number(r.profit)||0,r.transito||"",r.vig_desde||"",r.vig_hasta||"",r.estatus,r.updated_at?String(r.updated_at).slice(0,10):""]);
+    const head=["Cliente","No. Acuerdo","Modo","Folio","AM","Dir","Tradelane","Producto","Origen","POL","POL nombre","POD","POD nombre","Destino","Equipo","Naviera","Flete Base","Recargos","Profit","Tarifa al cliente","T.T.","Vig desde","Vig hasta","Estatus","Actualizado"];
+    const filas=res.rows.map(r=>[r.cliente,r.no_acuerdo,r.modo,r.codigo,r.am||"",r.direccion==="I"?"Imp":"Exp",r.tradelane,r.producto,r.origen,r.pol,puertoNombre(r.pol),r.pod,puertoNombre(r.pod),r.destino,r.equipo,r.naviera,Number(r.flete_base)||0,Number(r.recargos)||0,Number(r.profit)||0,Number(r.tarifa_cliente)||0,r.transito||"",r.vig_desde||"",r.vig_hasta||"",r.estatus,r.updated_at?String(r.updated_at).slice(0,10):""]);
     const wb=new ExcelJS.Workbook();
     const ws=wb.addWorksheet("Fletes en cotizaciones",{views:[{state:"frozen",ySplit:1}]});
     ws.columns=head.map(h=>({ header:h, width:Math.min(Math.max(h.length+2,9),24) }));
     const hr=ws.getRow(1); hr.height=20;
     hr.eachCell((c)=>{ c.font={name:"Arial",bold:true,size:9,color:{argb:"FFFFFFFF"}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF1A1A1A"}}; c.alignment={horizontal:"center",vertical:"middle"}; });
     filas.forEach(f=>{ const row=ws.addRow(f); row.font={name:"Arial",size:9}; });
-    ws.getColumn(16).numFmt="$#,##0"; ws.getColumn(17).numFmt="$#,##0"; // Flete Base y Profit
+    ["Q","R","S","T"].forEach(col=>{ ws.getColumn(col).numFmt="$#,##0"; });   // Flete Base, Recargos, Profit, Tarifa al cliente
     ws.autoFilter="A1:"+ws.getColumn(head.length).letter+"1";
     const buf=await wb.xlsx.writeBuffer();
     const blob=new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
