@@ -8,7 +8,7 @@ import { exportarExcel } from "./quoteExcel.js";
 import * as XLSX from "xlsx";
 import ExcelJS from "exceljs";
 
-function SurchargeGrid({surs,onChange,catalog,dir,equipos,editable=true}){
+function SurchargeGrid({surs,onChange,catalog,dir,equipos,editable=true,onPropagar}){
   const cat=catalog||CATALOG;
   const rows=surs||[];
   const eqsQ=EQUIPOS.filter(e=>(equipos||[]).includes(e.k));
@@ -39,7 +39,7 @@ function SurchargeGrid({surs,onChange,catalog,dir,equipos,editable=true}){
           <td style={{...td,textAlign:"center"}}><input type="checkbox" checked={!!r.incluido} onChange={()=>set(i,{incluido:true})} title="Incluido en la tarifa base (no se suma)"/></td>
           <td style={{...td,textAlign:"center"}}><input type="checkbox" checked={r.desplegar!==false} onChange={e=>set(i,{desplegar:e.target.checked})} title="Mostrar en el PDF (sección Incluyen / No incluyen)"/></td>
           <td style={td}><select value={r.pago} onChange={e=>set(i,{pago:e.target.value})} style={{...cell,padding:"5px 4px"}}><option value="prepaid">Prepaid</option><option value="collect">Collect</option></select></td>
-          <td style={{...td,textAlign:"center"}}>{editable&&<span onClick={()=>del(i)} style={{cursor:"pointer",color:C.label,fontWeight:"bold"}}>✕</span>}</td>
+          <td style={{...td,textAlign:"center"}}>{editable&&onPropagar&&tx(r.c)&&<span onClick={()=>onPropagar(r)} title="Propagar este recargo a otros borradores (misma naviera + países)" style={{cursor:"pointer",color:C.slate,fontWeight:"bold",marginRight:8}}>⇄</span>}{editable&&<span onClick={()=>del(i)} style={{cursor:"pointer",color:C.label,fontWeight:"bold"}}>✕</span>}</td>
         </tr>
         {openSize[i]&&<tr style={{borderBottom:"1px solid "+C.sep,background:C.soft}}><td colSpan={10} style={{padding:"6px 10px"}}>
           <span style={{fontSize:10,color:C.label,fontWeight:"bold",marginRight:10}}>Monto por tamaño (vacío = usa el general{r.monto?" $"+r.monto:""}):</span>
@@ -61,7 +61,7 @@ function SurchargeGrid({surs,onChange,catalog,dir,equipos,editable=true}){
   </div>);
 }
 
-function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,onGenerar,foco,editable}){
+function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,onGenerar,foco,editable,onPropagarRec}){
   const [altaOpen,setAltaOpen]=useState(false);
   const [secCol,setSecCol]=useState(true);
   const [q,setQ]=useState("");
@@ -124,7 +124,7 @@ function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,
             {others.map(x=><option key={x.tl} value={x.tl}>{tlLabel(x.tl)}</option>)}
           </select>}
         </div>
-        {!col&&<div style={{marginTop:6}}><SurchargeGrid surs={surs} catalog={catalog} dir={dir} equipos={equipos} editable={editable} onChange={(s)=>setSurs(b.scac,b.tl,s)}/></div>}
+        {!col&&<div style={{marginTop:6}}><SurchargeGrid surs={surs} catalog={catalog} dir={dir} equipos={equipos} editable={editable} onChange={(s)=>setSurs(b.scac,b.tl,s)} onPropagar={onPropagarRec?(sur)=>onPropagarRec(b.scac,b.tl,sur):null}/></div>}
       </div>);
     })}
     </fieldset>)}
@@ -219,22 +219,26 @@ export function Cotizador({ loadId, onDirty, role }){
   const [notasInternas,setNotasInternas]=useState("");
   const [prop,setProp]=useState(null); // {route,scac,clave,monto,coinc,sel,busy}
   const _surObj=(scac,r,clave)=> (surOfMain(scac,tlDe(r))||[]).find(s=>s.c===clave)||{};
-  const abrirPropagar=(r)=>{
-    const navs=[...new Set((r.opciones||[]).map(o=>o.navScac).filter(Boolean))];
-    const scac0=navs[0]||"";
-    const surs=surOfMain(scac0,tlDe(r));
-    const clave0=(surs[0]&&surs[0].c)||"";
-    const s0=surs.find(s=>s.c===clave0)||{};
-    setProp({ route:r, navs, scac:scac0, clave:clave0, monto:String(s0.monto||""), montos:{...(s0.montos||{})}, coinc:null, sel:{}, busy:false });
-  };
   const _locR=(v)=>{ const nm=puertoNombre(v)||String(v||""); return nm; };
-  const propRecargos=()=> prop ? surOfMain(prop.scac,tlDe(prop.route)) : [];
+  const paresDeNaviera=(scac,tl)=>{ const seen={}; (rutas||[]).forEach(r=>{ if(tlDe(r)!==(tl||"")) return; if(!(r.opciones||[]).some(o=>o.navScac===scac)) return; const pp=paisOrigen(r), pd=paisDestino(r); if(!pp||!pd) return; const k=pp+">"+pd; if(!seen[k]) seen[k]={paisPol:pp,paisPod:pd,label:_locR(r.pol)+" → "+_locR(r.pod)}; }); return Object.values(seen); };
+  const abrirPropagar=(r)=>{  // desde una ruta (Tarifas)
+    const navs=[...new Set((r.opciones||[]).map(o=>o.navScac).filter(Boolean))];
+    const scac0=navs[0]||""; const tl=tlDe(r);
+    const surs=surOfMain(scac0,tl); const s0=surs.find(s=>s.c===((surs[0]&&surs[0].c)||""))||{};
+    const pares=[{paisPol:paisOrigen(r),paisPod:paisDestino(r),label:_locR(r.pol)+" → "+_locR(r.pod)}];
+    setProp({ scac:scac0, tl, navs, clave:s0.c||"", monto:String(s0.monto||""), montos:{...(s0.montos||{})}, pares, paisIdx:0, coinc:null, sel:{}, busy:false });
+  };
+  const abrirPropagarNav=(scac,tl,sur)=>{  // desde un recargo en Navieras y recargos
+    const pares=paresDeNaviera(scac,tl);
+    setProp({ scac, tl, navs:[scac], clave:sur.c||"", monto:String(sur.monto||""), montos:{...(sur.montos||{})}, pares, paisIdx:0, coinc:null, sel:{}, busy:false });
+  };
+  const propRecargos=()=> prop ? surOfMain(prop.scac,prop.tl) : [];
   const _rkey=(x)=> x.versionId+"|"+(x.pol||"")+"|"+(x.pod||"");
   const propBuscar=async()=>{
     if(!prop) return;
-    const paisPol=paisOrigen(prop.route), paisPod=paisDestino(prop.route);
+    const par=(prop.pares||[])[prop.paisIdx||0]; if(!par){ alert("No se pudo determinar el país origen/destino."); return; }
     setProp(p=>({...p,busy:true,coinc:null}));
-    try{ const { rows }=await buscarCoincidenciasRecargo({ scac:prop.scac, paisPol, paisPod, clave:prop.clave, versionExcluir:versionId });
+    try{ const { rows }=await buscarCoincidenciasRecargo({ scac:prop.scac, paisPol:par.paisPol, paisPod:par.paisPod, clave:prop.clave, versionExcluir:versionId });
       const sel={}; (rows||[]).forEach(x=>{ sel[_rkey(x)]=true; });
       setProp(p=>({...p,busy:false,coinc:rows||[],sel}));
     }catch(ex){ setProp(p=>({...p,busy:false,coinc:[]})); alert("Error al buscar: "+ex.message); }
@@ -574,7 +578,7 @@ export function Cotizador({ loadId, onDirty, role }){
       </div>
       {tradelane && (()=>{ const off=(rutas||[]).filter(r=>(tx(r.pol)||tx(r.origen))&&(tx(r.pod)||tx(r.destino))&&!rutaEnTradelane(tradelane,r)); return off.length?(<div style={{fontSize:11.5,color:"#8A6D1F",background:"#FBF4E0",border:"1px solid #EAD9A0",borderRadius:8,padding:"7px 10px",marginBottom:10}}>⚠ {off.length} ruta(s) parecen fuera del tradelane <b>{tradelane}</b> ({tradeLabel(tradelane)}). Es solo un aviso, no bloquea.</div>):null; })()}
       </fieldset>
-      <NavierasSection quoteNav={quoteNav} setQuoteNav={setQuoteNav} rutas={rutas} catalog={mergedCat} onAlta={altaRecargo} dir={direccion} equipos={equipos} onGenerar={generarRecargos} foco={focoRecargo} editable={editable}/>
+      <NavierasSection quoteNav={quoteNav} setQuoteNav={setQuoteNav} rutas={rutas} catalog={mergedCat} onAlta={altaRecargo} dir={direccion} equipos={equipos} onGenerar={generarRecargos} foco={focoRecargo} editable={editable} onPropagarRec={abrirPropagarNav}/>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
         <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
           <span style={{fontSize:13,fontWeight:"bold",color:C.ink}}>Tarifas <span style={{fontWeight:"normal",color:C.label,fontSize:12}}>· base y profit por tamaño; costo, venta y subject-to salen solos</span></span>
@@ -636,7 +640,8 @@ export function Cotizador({ loadId, onDirty, role }){
         <div style={{fontSize:15,fontWeight:"bold",color:C.ink,marginBottom:4}}>⇄ Propagar recargo a otros borradores</div>
         <div style={{fontSize:11.5,color:C.label,marginBottom:14,lineHeight:1.45}}>Copia un recargo de esta naviera y par de países a otros borradores (de cualquier cliente). Los amendments enviados no se tocan. Se conserva la <b>tarifa al cliente</b>: el profit absorbe el cambio de costo.</div>
         <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end",marginBottom:12}}>
-          <div><Lbl>Naviera</Lbl><Sel value={prop.scac} onChange={e=>{const scac=e.target.value; const surs=surOfMain(scac,tlDe(prop.route)); const s=surs[0]||{}; setProp(p=>({...p,scac,clave:s.c||"",monto:String(s.monto||""),montos:{...(s.montos||{})},coinc:null}));}} options={prop.navs.map(s=>({v:s,t:s+" · "+navName(s)}))} style={{minWidth:150}}/></div>
+          <div><Lbl>Naviera</Lbl><Sel value={prop.scac} onChange={e=>{const scac=e.target.value; const surs=surOfMain(scac,prop.tl); const s=surs[0]||{}; setProp(p=>({...p,scac,clave:s.c||"",monto:String(s.monto||""),montos:{...(s.montos||{})},coinc:null}));}} options={prop.navs.map(s=>({v:s,t:s+" · "+navName(s)}))} style={{minWidth:150}}/></div>
+          {(prop.pares||[]).length>1&&<div><Lbl>País origen → destino</Lbl><Sel value={String(prop.paisIdx||0)} onChange={e=>setProp(p=>({...p,paisIdx:Number(e.target.value),coinc:null}))} options={(prop.pares||[]).map((pp,i)=>({v:String(i),t:pp.paisPol+" → "+pp.paisPod}))} style={{minWidth:150}}/></div>}
           <div><Lbl>Recargo</Lbl><Sel value={prop.clave} onChange={e=>{const clave=e.target.value; const s=propRecargos().find(x=>x.c===clave)||{}; setProp(p=>({...p,clave,monto:String(s.monto||""),montos:{...(s.montos||{})},coinc:null}));}} options={propRecargos().map(s=>({v:s.c,t:s.c+(s.d?" · "+s.d:"")}))} style={{minWidth:170}}/></div>
           <div><Lbl>Monto general</Lbl><TI value={prop.monto} onChange={e=>setProp(p=>({...p,monto:e.target.value}))} inputMode="decimal" style={{width:100}}/></div>
           <Btn kind="dark" onClick={propBuscar} disabled={prop.busy||!prop.scac||!prop.clave}>{prop.busy?"Buscando…":"Buscar coincidencias"}</Btn>
@@ -645,7 +650,7 @@ export function Cotizador({ loadId, onDirty, role }){
           <div style={{fontSize:10.5,color:C.label,fontWeight:"bold",marginBottom:4}}>Monto por tamaño <span style={{fontWeight:"normal"}}>(vacío = usa el general{prop.monto?" $"+prop.monto:""})</span></div>
           <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>{(equipos||[]).map(ek=>{const eqObj=EQUIPOS.find(x=>x.k===ek);return (<span key={ek} style={{display:"inline-flex",alignItems:"center",gap:4}}><span style={{fontSize:11,color:C.slate}}>{eqObj?eqObj.t:ek}</span><TI value={(prop.montos&&prop.montos[ek])||""} onChange={e=>setProp(p=>({...p,montos:{...(p.montos||{}),[ek]:e.target.value}}))} inputMode="decimal" placeholder={prop.monto||"0"} style={{width:70}}/></span>);})}</div>
         </div>}
-        <div style={{fontSize:11,color:C.label,marginBottom:10}}>Ruta base: <b>{prop.route?(_locR(prop.route.pol)+" → "+_locR(prop.route.pod)):""}</b></div>
+        <div style={{fontSize:11,color:C.label,marginBottom:10}}>Buscar en: <b>{(prop.pares||[])[prop.paisIdx||0]?((prop.pares[prop.paisIdx||0].paisPol)+" → "+(prop.pares[prop.paisIdx||0].paisPod)):"—"}</b> · naviera <b>{prop.scac}</b> · recargo <b>{prop.clave}</b></div>
         {prop.coinc!=null&&(prop.coinc.length===0?<div style={{fontSize:12.5,color:C.label,padding:"12px 0"}}>No hay otros borradores con esa naviera, esos países y ese recargo.</div>:
           <div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
