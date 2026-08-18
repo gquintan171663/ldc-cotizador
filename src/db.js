@@ -691,6 +691,70 @@ export async function matchFletesBase(claves){
 // Barre todas las versiones, sus líneas y opciones de costo, y devuelve una fila
 // por (cotización × ruta × naviera × equipo) con su costo_base.
 // ===========================================================================
+// ===========================================================================
+// PROPAGACIÓN DE RECARGOS (Fase 1) — al cambiar un recargo de una naviera para
+// un par país-origen → país-destino, buscar OTROS borradores con la misma
+// naviera + mismos países que tengan esa misma clave de recargo, y (con
+// aprobación manual) copiarles el nuevo monto. Solo borradores; nunca enviados.
+// Al aplicar, se conserva la tarifa al cliente: el profit absorbe el cambio de costo.
+// ===========================================================================
+export async function buscarCoincidenciasRecargo({ scac, paisPol, paisPod, clave, versionExcluir }){
+  if(!scac || !clave) return { rows:[] };
+  const { data: vers, error } = await supabase.from("versiones")
+    .select("id,codigo,amendment,estatus,acuerdos(no_acuerdo,clientes(nombre))")
+    .eq("estatus","borrador").limit(2000);
+  if(error) return { rows:[], error:error.message };
+  const cl=String(clave).toUpperCase();
+  const out=[];
+  for(const v of (vers||[])){
+    if(v.id===versionExcluir) continue;
+    let st; try{ st=await loadVersion(v.id); }catch(_){ continue; }
+    if(!st) continue;
+    const surOf=mkSurOf(st);
+    (st.rutas||[]).forEach(r=>{
+      if(!((r.opciones||[]).some(o=>o.navScac===scac))) return;        // usa esa naviera
+      if(paisDe(r.pol)!==paisPol || paisDe(r.pod)!==paisPod) return;   // mismos países
+      const s=(surOf(scac,tlDe(r))||[]).find(x=>String(x.c||"").toUpperCase()===cl);
+      if(!s) return;                                                    // tiene esa clave
+      out.push({ versionId:v.id, cliente:v.acuerdos?.clientes?.nombre||st.clienteNombre||"", folio:v.codigo||st.codigo||"",
+        pol:r.pol, pod:r.pod, rutaLabel:_loc(r.pol)+" → "+_loc(r.pod), montoActual:(s.monto!=null?s.monto:""), clave:s.c||clave });
+    });
+  }
+  return { rows:out };
+}
+
+// Aplica el nuevo monto del recargo (clave) de la naviera scac en los borradores dados,
+// conservando TODAS las ventas de cada borrador (el profit absorbe el cambio de costo).
+export async function aplicarRecargoEnBorradores({ versionIds, scac, clave, nuevoMonto }){
+  const cl=String(clave||"").toUpperCase();
+  const ids=[...new Set(versionIds||[])];
+  let aplicados=0; const errores=[];
+  for(const vid of ids){
+    try{
+      let st=await loadVersion(vid); if(!st){ errores.push(vid+": no encontrado"); continue; }
+      if(st.estatus && st.estatus!=="borrador"){ errores.push((st.codigo||vid)+": no es borrador"); continue; }
+      const dir=st.direccion||"E";
+      // 1) capturar la venta actual de cada opción×equipo (antes del cambio)
+      const surOfOld=mkSurOf(st);
+      const eqs=(st.equipos&&st.equipos.length?st.equipos:["20DV"]).map(k=>eqMeta(k)).filter(Boolean);
+      const target={}; // key ruta|opcIdx|equipo -> venta
+      (st.rutas||[]).forEach((r,ri)=>{ (r.opciones||[]).forEach((o,oi)=>{ eqs.forEach(eqObj=>{ const pr=(o.precios||{})[eqObj.k]||{}; if(pr.base==null||pr.base==="") return; const venta=n(pr.base)+adicPorCont(surOfOld(o.navScac,tlDe(r)),eqObj,dir)+n(pr.profit); target[ri+"|"+oi+"|"+eqObj.k]=venta; }); }); });
+      // 2) cambiar el monto del recargo (clave) en TODOS los bloques scac×tl de este borrador
+      let toco=false;
+      (st.quoteNav||[]).forEach(q=>{ if(q.scac!==scac) return; (q.surcharges||[]).forEach(s=>{ if(String(s.c||"").toUpperCase()===cl){ s.monto=String(nuevoMonto); toco=true; } }); });
+      if(!toco){ errores.push((st.codigo||vid)+": sin esa clave"); continue; }
+      // 3) reajustar profit para conservar cada venta (solo cambian las opciones de scac; el resto queda igual)
+      const surOfNew=mkSurOf(st);
+      (st.rutas||[]).forEach((r,ri)=>{ (r.opciones||[]).forEach((o,oi)=>{ eqs.forEach(eqObj=>{ const pr=(o.precios||{})[eqObj.k]; if(!pr||pr.base==null||pr.base==="") return; const t=target[ri+"|"+oi+"|"+eqObj.k]; if(t==null) return; const nuevoProfit=t-n(pr.base)-adicPorCont(surOfNew(o.navScac,tlDe(r)),eqObj,dir); pr.profit=String(Math.round(nuevoProfit)); }); }); });
+      // 4) guardar (mantiene estatus borrador)
+      const stState={ versionId:vid, codigo:st.codigo, cliente:st.cliente, clienteNombre:st.clienteNombre, modo:st.modo, direccion:dir, tradelane:st.tradelane, commodity:st.commodity, commodity_id:st.commodity_id||null, vigDesde:st.vigDesde, vigHasta:st.vigHasta, notas:st.notas, origen:"cero", equipos:st.equipos, rutas:st.rutas, quoteNav:st.quoteNav };
+      await saveCotizacion(stState);
+      aplicados++;
+    }catch(ex){ errores.push(vid+": "+ex.message); }
+  }
+  return { aplicados, errores };
+}
+
 export async function reporteFletesEnCotizaciones(){
   const { data: vers, error } = await supabase.from("versiones")
     .select("id,codigo,amendment,direccion,commodity,tradelane,estatus,updated_at,vig_desde,vig_hasta,acuerdos(no_acuerdo,modo,clientes(nombre))")

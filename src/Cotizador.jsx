@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { supabase } from "./supabaseClient.js";
 import { C, F, EQUIPOS, EQUIPO_CATS, NAVIERAS, navName, CATALOG, COMMODITY_INDUSTRIAS, tx, scopeFull, serviceMode, transportMode, n, round10, adicPorCont, cargosBL, inclPorCont, inclBL, subjectTo, enPrecio, esSubjectTo, money, MONEDAS, optPuertos, optCiudades, puertoNombre, paisOrigen, paisDestino, rutaPaisLabel, tlDe, tlLabel, TRADELANES, tradeLabel, rutaEnTradelane, opcionActivaEq, mejorOpcionEq, ordenOpciones, ordenRecargos, ovRazon, PLANTILLA_RECARGOS, parseTarifario, ordenarRutas } from "./lib.js";
 import { inS, Lbl, Field, TI, Sel, Chip, Btn, ClaveAutocomplete, ComboBox } from "./ui.jsx";
-import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges, recargosDeRutaSimilar, recargosDeRutaSimilarPorNaviera, recargosDeNaviera, anclarVenta, checkConflictoTarifa, guardarCorreccion } from "./db.js";
+import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges, recargosDeRutaSimilar, recargosDeRutaSimilarPorNaviera, recargosDeNaviera, anclarVenta, checkConflictoTarifa, guardarCorreccion, buscarCoincidenciasRecargo, aplicarRecargoEnBorradores } from "./db.js";
 import { abrirCotizacion } from "./quote.js";
 import { exportarExcel } from "./quoteExcel.js";
 import * as XLSX from "xlsx";
@@ -133,7 +133,7 @@ function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,
 
 // id del ancla de tarifas por lane (para regresar desde el bloque de recargos)
 export const eidTarifa=(tl)=>"trf_"+String(tl||"nl").replace(/[^A-Za-z0-9]/g,"_");
-function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir,onFoco,editarProp,filtro,editable=true}){
+function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir,onFoco,editarProp,filtro,editable=true,onPropagar}){
   // primera ruta de cada lane: ahí ponemos el ancla
   const tlAnchor={}; (rutas||[]).forEach((r,ri)=>{ const t=tlDe(r); if(tlAnchor[t]==null) tlAnchor[t]=ri; });
   const navOpts=[{v:"",t:"— naviera —"},...NAVIERAS.map(x=>({v:x.scac,t:x.scac+" · "+x.nombre}))];
@@ -188,7 +188,7 @@ function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir,onFoco,editarProp,filt
               <td style={{...td,borderLeft:"1px solid "+C.sep2}}>{o.navScac?(st.length?<span style={{fontSize:11}}><b style={{color:C.slate}}>{st.join(" · ")}</b>{bl>0&&<div style={{color:C.label,marginTop:1}}>+ BL {money(bl)}</div>}</span>:<Chip kind="green">ALL-IN</Chip>):""}</td>
               <td style={{...td,textAlign:"center"}}>{editable&&r.opciones.length>1&&<span onClick={()=>delOpt(ri,oi)} title="Quitar naviera alterna" style={{cursor:"pointer",color:C.label,fontSize:12}}>✕</span>}</td>
             </tr>);
-          }).concat(<tr key={ri+"-add"}><td colSpan={4+eqs.length*4+2} style={{padding:"4px 8px",borderBottom:"1px solid "+C.sep}}>{editable&&<span onClick={()=>addOpt(ri)} style={{cursor:"pointer",color:C.red,fontSize:11.5,fontWeight:"bold"}}>＋ naviera alterna para esta ruta</span>}{r.opciones.length>1&&<span style={{fontSize:11,color:C.label,marginLeft:editable?12:0}}>Mejor por equipo: {eqs.map(e=>{const bi=mejorOpcionEq(r,e.k,e,dir,surOf);return e.t+" "+((bi>=0&&r.opciones[bi].navScac)||"—");}).join(" · ")}{editable&&r.elegidaEq&&Object.keys(r.elegidaEq).length>0&&<span style={{color:C.red,marginLeft:8,cursor:"pointer"}} onClick={()=>setRutas(rutas.map((x,i)=>i===ri?{...x,elegidaEq:{}}:x))}>· volver todo a auto</span>}</span>}</td></tr>);
+          }).concat(<tr key={ri+"-add"}><td colSpan={4+eqs.length*4+2} style={{padding:"4px 8px",borderBottom:"1px solid "+C.sep}}>{editable&&<span onClick={()=>addOpt(ri)} style={{cursor:"pointer",color:C.red,fontSize:11.5,fontWeight:"bold"}}>＋ naviera alterna para esta ruta</span>}{editable&&onPropagar&&(r.pol&&r.pod)&&<span onClick={()=>onPropagar(r)} title="Copiar un recargo de esta naviera/país a otros borradores" style={{cursor:"pointer",color:C.slate,fontSize:11.5,fontWeight:"bold",marginLeft:12}}>⇄ Propagar recargo</span>}{r.opciones.length>1&&<span style={{fontSize:11,color:C.label,marginLeft:editable?12:0}}>Mejor por equipo: {eqs.map(e=>{const bi=mejorOpcionEq(r,e.k,e,dir,surOf);return e.t+" "+((bi>=0&&r.opciones[bi].navScac)||"—");}).join(" · ")}{editable&&r.elegidaEq&&Object.keys(r.elegidaEq).length>0&&<span style={{color:C.red,marginLeft:8,cursor:"pointer"}} onClick={()=>setRutas(rutas.map((x,i)=>i===ri?{...x,elegidaEq:{}}:x))}>· volver todo a auto</span>}</span>}</td></tr>);
         })}
       </tbody>
     </table>
@@ -217,6 +217,37 @@ export function Cotizador({ loadId, onDirty, role }){
   const [vigHasta,setVigHasta]=useState("");
   const [notas,setNotas]=useState("");
   const [notasInternas,setNotasInternas]=useState("");
+  const [prop,setProp]=useState(null); // {route,scac,clave,monto,coinc,sel,busy}
+  const abrirPropagar=(r)=>{
+    const navs=[...new Set((r.opciones||[]).map(o=>o.navScac).filter(Boolean))];
+    const scac0=navs[0]||"";
+    const surs=surOfMain(scac0,tlDe(r));
+    const clave0=(surs[0]&&surs[0].c)||"";
+    const monto0=(surs.find(s=>s.c===clave0)||{}).monto||"";
+    setProp({ route:r, navs, scac:scac0, clave:clave0, monto:String(monto0), coinc:null, sel:{}, busy:false });
+  };
+  const _locR=(v)=>{ const nm=puertoNombre(v)||String(v||""); return nm; };
+  const propRecargos=()=> prop ? surOfMain(prop.scac,tlDe(prop.route)) : [];
+  const propBuscar=async()=>{
+    if(!prop) return;
+    const paisPol=paisOrigen(prop.route), paisPod=paisDestino(prop.route);
+    setProp(p=>({...p,busy:true,coinc:null}));
+    try{ const { rows }=await buscarCoincidenciasRecargo({ scac:prop.scac, paisPol, paisPod, clave:prop.clave, versionExcluir:versionId });
+      const sel={}; (rows||[]).forEach(x=>{ sel[x.versionId]=true; });
+      setProp(p=>({...p,busy:false,coinc:rows||[],sel}));
+    }catch(ex){ setProp(p=>({...p,busy:false,coinc:[]})); alert("Error al buscar: "+ex.message); }
+  };
+  const propAplicar=async(todos)=>{
+    if(!prop||!prop.coinc) return;
+    const ids=[...new Set((prop.coinc||[]).filter(x=>todos||prop.sel[x.versionId]).map(x=>x.versionId))];
+    if(!ids.length){ alert("No hay borradores seleccionados."); return; }
+    if(!confirm("¿Aplicar el recargo "+prop.clave+" = $"+prop.monto+" a "+ids.length+" borrador(es)?\n\nSe conserva la tarifa al cliente (el profit absorbe el cambio de costo).")) return;
+    setProp(p=>({...p,busy:true}));
+    try{ const res=await aplicarRecargoEnBorradores({ versionIds:ids, scac:prop.scac, clave:prop.clave, nuevoMonto:prop.monto });
+      setProp(null);
+      alert("Aplicado a "+res.aplicados+" borrador(es)."+(res.errores&&res.errores.length?("\n\nAvisos:\n• "+res.errores.join("\n• ")):""));
+    }catch(ex){ setProp(p=>({...p,busy:false})); alert("Error al aplicar: "+ex.message); }
+  };
   const [equipos,setEquipos]=useState(["20DV","40HC"]);
   const [impSheets,setImpSheets]=useState(null);
   const [focoRecargo,setFocoRecargo]=useState(null);
@@ -566,7 +597,7 @@ export function Cotizador({ loadId, onDirty, role }){
           <span onClick={()=>setRutas(rutas.filter((_,i)=>i!==ri))} style={{cursor:"pointer",color:C.label,fontSize:11,marginBottom:6}}>✕</span>
         </div>);})}
       </div>)}
-      <TarifasGrid rutas={rutas} setRutas={setRutas} quoteNav={quoteNav} equipos={equipos} dir={direccion} editarProp={editarPropuesta} filtro={matchTar} editable={editable} onFoco={(scac,tl)=>setFocoRecargo({scac,tl,ts:Date.now()})}/>
+      <TarifasGrid rutas={rutas} setRutas={setRutas} quoteNav={quoteNav} equipos={equipos} dir={direccion} editarProp={editarPropuesta} filtro={matchTar} editable={editable} onPropagar={abrirPropagar} onFoco={(scac,tl)=>setFocoRecargo({scac,tl,ts:Date.now()})}/>
       </fieldset>
       <div style={{background:"#fff",border:"1px solid "+C.sep2,borderRadius:12,padding:14,marginTop:14,opacity:editable?1:.7,pointerEvents:editable?"auto":"none"}}>
         <Lbl>Notas <span style={{fontWeight:"normal",color:C.label,textTransform:"none"}}>· texto libre que aparece en el PDF (condiciones, comentarios, etc.)</span></Lbl>
@@ -596,5 +627,41 @@ export function Cotizador({ loadId, onDirty, role }){
         </div>
       </div>
     </>)}
+    {prop&&<div onClick={()=>!prop.busy&&setProp(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,padding:20,width:"min(680px,94vw)",maxHeight:"88vh",overflow:"auto",boxShadow:"0 12px 44px rgba(0,0,0,0.28)"}}>
+        <div style={{fontSize:15,fontWeight:"bold",color:C.ink,marginBottom:4}}>⇄ Propagar recargo a otros borradores</div>
+        <div style={{fontSize:11.5,color:C.label,marginBottom:14,lineHeight:1.45}}>Copia un recargo de esta naviera y par de países a otros borradores (de cualquier cliente). Los amendments enviados no se tocan. Se conserva la <b>tarifa al cliente</b>: el profit absorbe el cambio de costo.</div>
+        <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end",marginBottom:12}}>
+          <div><Lbl>Naviera</Lbl><Sel value={prop.scac} onChange={e=>{const scac=e.target.value; const surs=surOfMain(scac,tlDe(prop.route)); const clave=(surs[0]&&surs[0].c)||""; const monto=(surs.find(s=>s.c===clave)||{}).monto||""; setProp(p=>({...p,scac,clave,monto:String(monto),coinc:null}));}} options={prop.navs.map(s=>({v:s,t:s+" · "+navName(s)}))} style={{minWidth:150}}/></div>
+          <div><Lbl>Recargo</Lbl><Sel value={prop.clave} onChange={e=>{const clave=e.target.value; const monto=(propRecargos().find(s=>s.c===clave)||{}).monto||""; setProp(p=>({...p,clave,monto:String(monto),coinc:null}));}} options={propRecargos().map(s=>({v:s.c,t:s.c+(s.d?" · "+s.d:"")}))} style={{minWidth:170}}/></div>
+          <div><Lbl>Nuevo monto</Lbl><TI value={prop.monto} onChange={e=>setProp(p=>({...p,monto:e.target.value}))} inputMode="decimal" style={{width:110}}/></div>
+          <Btn kind="dark" onClick={propBuscar} disabled={prop.busy||!prop.scac||!prop.clave}>{prop.busy?"Buscando…":"Buscar coincidencias"}</Btn>
+        </div>
+        <div style={{fontSize:11,color:C.label,marginBottom:10}}>Ruta base: <b>{prop.route?(_locR(prop.route.pol)+" → "+_locR(prop.route.pod)):""}</b></div>
+        {prop.coinc!=null&&(prop.coinc.length===0?<div style={{fontSize:12.5,color:C.label,padding:"12px 0"}}>No hay otros borradores con esa naviera, esos países y ese recargo.</div>:
+          <div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+              <div style={{fontSize:12,fontWeight:"bold",color:C.slate}}>{prop.coinc.length} coincidencia(s)</div>
+              <span onClick={()=>{const all=prop.coinc.every(x=>prop.sel[x.versionId]); const sel={}; if(!all) prop.coinc.forEach(x=>sel[x.versionId]=true); setProp(p=>({...p,sel}));}} style={{fontSize:11,color:C.red,cursor:"pointer"}}>{prop.coinc.every(x=>prop.sel[x.versionId])?"Quitar todas":"Seleccionar todas"}</span>
+            </div>
+            <div style={{border:"1px solid "+C.sep2,borderRadius:8,overflow:"hidden"}}>
+              {prop.coinc.map((x,i)=><label key={i} style={{display:"flex",gap:8,alignItems:"center",padding:"7px 10px",borderBottom:i<prop.coinc.length-1?"1px solid "+C.sep:"none",fontSize:12,cursor:"pointer"}}>
+                <input type="checkbox" checked={!!prop.sel[x.versionId]} onChange={e=>setProp(p=>({...p,sel:{...p.sel,[x.versionId]:e.target.checked}}))}/>
+                <span style={{fontWeight:"bold",color:C.ink,minWidth:64}}>{x.folio}</span>
+                <span style={{color:C.slate,flex:1,minWidth:120}}>{x.cliente}</span>
+                <span style={{color:C.label,flex:1.4}}>{x.rutaLabel}</span>
+                <span style={{color:C.label,whiteSpace:"nowrap"}}>actual ${x.montoActual||0}</span>
+              </label>)}
+            </div>
+            <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:12,flexWrap:"wrap"}}>
+              <Btn kind="ghost" onClick={()=>setProp(null)} disabled={prop.busy}>Cancelar</Btn>
+              <Btn kind="primary" onClick={()=>propAplicar(false)} disabled={prop.busy}>{prop.busy?"Aplicando…":"Aplicar a seleccionadas"}</Btn>
+              <Btn kind="dark" onClick={()=>propAplicar(true)} disabled={prop.busy}>Aplicar a todas</Btn>
+            </div>
+          </div>
+        )}
+        {prop.coinc==null&&<div style={{display:"flex",justifyContent:"flex-end",marginTop:6}}><Btn kind="ghost" onClick={()=>setProp(null)}>Cerrar</Btn></div>}
+      </div>
+    </div>}
   </div>);
 }
