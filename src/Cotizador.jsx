@@ -218,34 +218,38 @@ export function Cotizador({ loadId, onDirty, role }){
   const [notas,setNotas]=useState("");
   const [notasInternas,setNotasInternas]=useState("");
   const [prop,setProp]=useState(null); // {route,scac,clave,monto,coinc,sel,busy}
+  const _surObj=(scac,r,clave)=> (surOfMain(scac,tlDe(r))||[]).find(s=>s.c===clave)||{};
   const abrirPropagar=(r)=>{
     const navs=[...new Set((r.opciones||[]).map(o=>o.navScac).filter(Boolean))];
     const scac0=navs[0]||"";
     const surs=surOfMain(scac0,tlDe(r));
     const clave0=(surs[0]&&surs[0].c)||"";
-    const monto0=(surs.find(s=>s.c===clave0)||{}).monto||"";
-    setProp({ route:r, navs, scac:scac0, clave:clave0, monto:String(monto0), coinc:null, sel:{}, busy:false });
+    const s0=surs.find(s=>s.c===clave0)||{};
+    setProp({ route:r, navs, scac:scac0, clave:clave0, monto:String(s0.monto||""), montos:{...(s0.montos||{})}, coinc:null, sel:{}, busy:false });
   };
   const _locR=(v)=>{ const nm=puertoNombre(v)||String(v||""); return nm; };
   const propRecargos=()=> prop ? surOfMain(prop.scac,tlDe(prop.route)) : [];
+  const _rkey=(x)=> x.versionId+"|"+(x.pol||"")+"|"+(x.pod||"");
   const propBuscar=async()=>{
     if(!prop) return;
     const paisPol=paisOrigen(prop.route), paisPod=paisDestino(prop.route);
     setProp(p=>({...p,busy:true,coinc:null}));
     try{ const { rows }=await buscarCoincidenciasRecargo({ scac:prop.scac, paisPol, paisPod, clave:prop.clave, versionExcluir:versionId });
-      const sel={}; (rows||[]).forEach(x=>{ sel[x.versionId]=true; });
+      const sel={}; (rows||[]).forEach(x=>{ sel[_rkey(x)]=true; });
       setProp(p=>({...p,busy:false,coinc:rows||[],sel}));
     }catch(ex){ setProp(p=>({...p,busy:false,coinc:[]})); alert("Error al buscar: "+ex.message); }
   };
   const propAplicar=async(todos)=>{
     if(!prop||!prop.coinc) return;
-    const ids=[...new Set((prop.coinc||[]).filter(x=>todos||prop.sel[x.versionId]).map(x=>x.versionId))];
-    if(!ids.length){ alert("No hay borradores seleccionados."); return; }
-    if(!confirm("¿Aplicar el recargo "+prop.clave+" = $"+prop.monto+" a "+ids.length+" borrador(es)?\n\nSe conserva la tarifa al cliente (el profit absorbe el cambio de costo).")) return;
+    const targets=(prop.coinc||[]).filter(x=>todos||prop.sel[_rkey(x)]).map(x=>({versionId:x.versionId,pol:x.pol,pod:x.pod}));
+    if(!targets.length){ alert("No hay rutas seleccionadas."); return; }
+    const nBorr=new Set(targets.map(t=>t.versionId)).size;
+    const montosTxt=(prop.montos&&Object.values(prop.montos).some(v=>v!==""&&v!=null))?(" (por tamaño: "+Object.entries(prop.montos).filter(([k,v])=>v!==""&&v!=null).map(([k,v])=>k+" $"+v).join(", ")+")"):"";
+    if(!confirm("¿Aplicar el recargo "+prop.clave+" = $"+(prop.monto||0)+montosTxt+" a "+targets.length+" ruta(s) en "+nBorr+" borrador(es)?\n\nSe conserva la tarifa al cliente (el profit absorbe el cambio de costo).")) return;
     setProp(p=>({...p,busy:true}));
-    try{ const res=await aplicarRecargoEnBorradores({ versionIds:ids, scac:prop.scac, clave:prop.clave, nuevoMonto:prop.monto });
+    try{ const res=await aplicarRecargoEnBorradores({ targets, scac:prop.scac, clave:prop.clave, nuevoMonto:prop.monto, nuevosMontos:prop.montos||null });
       setProp(null);
-      alert("Aplicado a "+res.aplicados+" borrador(es)."+(res.errores&&res.errores.length?("\n\nAvisos:\n• "+res.errores.join("\n• ")):""));
+      alert("Aplicado a "+res.aplicados+" ruta(s)."+(res.errores&&res.errores.length?("\n\nAvisos:\n• "+res.errores.join("\n• ")):""));
     }catch(ex){ setProp(p=>({...p,busy:false})); alert("Error al aplicar: "+ex.message); }
   };
   const [equipos,setEquipos]=useState(["20DV","40HC"]);
@@ -632,21 +636,25 @@ export function Cotizador({ loadId, onDirty, role }){
         <div style={{fontSize:15,fontWeight:"bold",color:C.ink,marginBottom:4}}>⇄ Propagar recargo a otros borradores</div>
         <div style={{fontSize:11.5,color:C.label,marginBottom:14,lineHeight:1.45}}>Copia un recargo de esta naviera y par de países a otros borradores (de cualquier cliente). Los amendments enviados no se tocan. Se conserva la <b>tarifa al cliente</b>: el profit absorbe el cambio de costo.</div>
         <div style={{display:"flex",gap:10,flexWrap:"wrap",alignItems:"flex-end",marginBottom:12}}>
-          <div><Lbl>Naviera</Lbl><Sel value={prop.scac} onChange={e=>{const scac=e.target.value; const surs=surOfMain(scac,tlDe(prop.route)); const clave=(surs[0]&&surs[0].c)||""; const monto=(surs.find(s=>s.c===clave)||{}).monto||""; setProp(p=>({...p,scac,clave,monto:String(monto),coinc:null}));}} options={prop.navs.map(s=>({v:s,t:s+" · "+navName(s)}))} style={{minWidth:150}}/></div>
-          <div><Lbl>Recargo</Lbl><Sel value={prop.clave} onChange={e=>{const clave=e.target.value; const monto=(propRecargos().find(s=>s.c===clave)||{}).monto||""; setProp(p=>({...p,clave,monto:String(monto),coinc:null}));}} options={propRecargos().map(s=>({v:s.c,t:s.c+(s.d?" · "+s.d:"")}))} style={{minWidth:170}}/></div>
-          <div><Lbl>Nuevo monto</Lbl><TI value={prop.monto} onChange={e=>setProp(p=>({...p,monto:e.target.value}))} inputMode="decimal" style={{width:110}}/></div>
+          <div><Lbl>Naviera</Lbl><Sel value={prop.scac} onChange={e=>{const scac=e.target.value; const surs=surOfMain(scac,tlDe(prop.route)); const s=surs[0]||{}; setProp(p=>({...p,scac,clave:s.c||"",monto:String(s.monto||""),montos:{...(s.montos||{})},coinc:null}));}} options={prop.navs.map(s=>({v:s,t:s+" · "+navName(s)}))} style={{minWidth:150}}/></div>
+          <div><Lbl>Recargo</Lbl><Sel value={prop.clave} onChange={e=>{const clave=e.target.value; const s=propRecargos().find(x=>x.c===clave)||{}; setProp(p=>({...p,clave,monto:String(s.monto||""),montos:{...(s.montos||{})},coinc:null}));}} options={propRecargos().map(s=>({v:s.c,t:s.c+(s.d?" · "+s.d:"")}))} style={{minWidth:170}}/></div>
+          <div><Lbl>Monto general</Lbl><TI value={prop.monto} onChange={e=>setProp(p=>({...p,monto:e.target.value}))} inputMode="decimal" style={{width:100}}/></div>
           <Btn kind="dark" onClick={propBuscar} disabled={prop.busy||!prop.scac||!prop.clave}>{prop.busy?"Buscando…":"Buscar coincidencias"}</Btn>
         </div>
+        {(equipos||[]).length>0&&<div style={{marginBottom:12,padding:"8px 10px",background:C.soft,border:"1px solid "+C.sep2,borderRadius:8}}>
+          <div style={{fontSize:10.5,color:C.label,fontWeight:"bold",marginBottom:4}}>Monto por tamaño <span style={{fontWeight:"normal"}}>(vacío = usa el general{prop.monto?" $"+prop.monto:""})</span></div>
+          <div style={{display:"flex",gap:12,flexWrap:"wrap"}}>{(equipos||[]).map(ek=>{const eqObj=EQUIPOS.find(x=>x.k===ek);return (<span key={ek} style={{display:"inline-flex",alignItems:"center",gap:4}}><span style={{fontSize:11,color:C.slate}}>{eqObj?eqObj.t:ek}</span><TI value={(prop.montos&&prop.montos[ek])||""} onChange={e=>setProp(p=>({...p,montos:{...(p.montos||{}),[ek]:e.target.value}}))} inputMode="decimal" placeholder={prop.monto||"0"} style={{width:70}}/></span>);})}</div>
+        </div>}
         <div style={{fontSize:11,color:C.label,marginBottom:10}}>Ruta base: <b>{prop.route?(_locR(prop.route.pol)+" → "+_locR(prop.route.pod)):""}</b></div>
         {prop.coinc!=null&&(prop.coinc.length===0?<div style={{fontSize:12.5,color:C.label,padding:"12px 0"}}>No hay otros borradores con esa naviera, esos países y ese recargo.</div>:
           <div>
             <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
               <div style={{fontSize:12,fontWeight:"bold",color:C.slate}}>{prop.coinc.length} coincidencia(s)</div>
-              <span onClick={()=>{const all=prop.coinc.every(x=>prop.sel[x.versionId]); const sel={}; if(!all) prop.coinc.forEach(x=>sel[x.versionId]=true); setProp(p=>({...p,sel}));}} style={{fontSize:11,color:C.red,cursor:"pointer"}}>{prop.coinc.every(x=>prop.sel[x.versionId])?"Quitar todas":"Seleccionar todas"}</span>
+              <span onClick={()=>{const all=prop.coinc.every(x=>prop.sel[_rkey(x)]); const sel={}; if(!all) prop.coinc.forEach(x=>sel[_rkey(x)]=true); setProp(p=>({...p,sel}));}} style={{fontSize:11,color:C.red,cursor:"pointer"}}>{prop.coinc.every(x=>prop.sel[_rkey(x)])?"Quitar todas":"Seleccionar todas"}</span>
             </div>
             <div style={{border:"1px solid "+C.sep2,borderRadius:8,overflow:"hidden"}}>
               {prop.coinc.map((x,i)=><label key={i} style={{display:"flex",gap:8,alignItems:"center",padding:"7px 10px",borderBottom:i<prop.coinc.length-1?"1px solid "+C.sep:"none",fontSize:12,cursor:"pointer"}}>
-                <input type="checkbox" checked={!!prop.sel[x.versionId]} onChange={e=>setProp(p=>({...p,sel:{...p.sel,[x.versionId]:e.target.checked}}))}/>
+                <input type="checkbox" checked={!!prop.sel[_rkey(x)]} onChange={e=>setProp(p=>({...p,sel:{...p.sel,[_rkey(x)]:e.target.checked}}))}/>
                 <span style={{fontWeight:"bold",color:C.ink,minWidth:64}}>{x.folio}</span>
                 <span style={{color:C.slate,flex:1,minWidth:120}}>{x.cliente}</span>
                 <span style={{color:C.label,flex:1.4}}>{x.rutaLabel}</span>

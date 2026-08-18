@@ -716,8 +716,9 @@ export async function buscarCoincidenciasRecargo({ scac, paisPol, paisPod, clave
       if(paisDe(r.pol)!==paisPol || paisDe(r.pod)!==paisPod) return;   // mismos países
       const s=(surOf(scac,tlDe(r))||[]).find(x=>String(x.c||"").toUpperCase()===cl);
       if(!s) return;                                                    // tiene esa clave
+      const tieneSizes=s.montos&&Object.values(s.montos).some(x=>x!==""&&x!=null);
       out.push({ versionId:v.id, cliente:v.acuerdos?.clientes?.nombre||st.clienteNombre||"", folio:v.codigo||st.codigo||"",
-        pol:r.pol, pod:r.pod, rutaLabel:_loc(r.pol)+" → "+_loc(r.pod), montoActual:(s.monto!=null?s.monto:""), clave:s.c||clave });
+        pol:r.pol, pod:r.pod, rutaLabel:_loc(r.pol)+" → "+_loc(r.pod), montoActual:tieneSizes?("por tamaño"):(s.monto!=null?s.monto:""), clave:s.c||clave });
     });
   }
   return { rows:out };
@@ -725,31 +726,38 @@ export async function buscarCoincidenciasRecargo({ scac, paisPol, paisPod, clave
 
 // Aplica el nuevo monto del recargo (clave) de la naviera scac en los borradores dados,
 // conservando TODAS las ventas de cada borrador (el profit absorbe el cambio de costo).
-export async function aplicarRecargoEnBorradores({ versionIds, scac, clave, nuevoMonto }){
+export async function aplicarRecargoEnBorradores({ targets, versionIds, scac, clave, nuevoMonto, nuevosMontos }){
   const cl=String(clave||"").toUpperCase();
-  const ids=[...new Set(versionIds||[])];
+  // agrupar targets por versionId; cada target trae {versionId,pol,pod}. Compat: versionIds sueltos = todas sus rutas.
+  const porVer={};
+  (targets||[]).forEach(t=>{ (porVer[t.versionId]=porVer[t.versionId]||[]).push(t); });
+  (versionIds||[]).forEach(vid=>{ if(!porVer[vid]) porVer[vid]=null; }); // null = aplicar a todo el borrador
+  const montosLimpio=(()=>{ if(!nuevosMontos) return null; const o={}; Object.keys(nuevosMontos).forEach(k=>{ const v=nuevosMontos[k]; if(v!==""&&v!=null) o[k]=String(v); }); return Object.keys(o).length?o:null; })();
   let aplicados=0; const errores=[];
-  for(const vid of ids){
+  for(const vid of Object.keys(porVer)){
     try{
       let st=await loadVersion(vid); if(!st){ errores.push(vid+": no encontrado"); continue; }
       if(st.estatus && st.estatus!=="borrador"){ errores.push((st.codigo||vid)+": no es borrador"); continue; }
       const dir=st.direccion||"E";
-      // 1) capturar la venta actual de cada opción×equipo (antes del cambio)
+      // tls (tradelanes) de las rutas seleccionadas de este borrador (null = todas)
+      const selRutas=porVer[vid];
+      let tlsPermitidos=null;
+      if(selRutas){ tlsPermitidos=new Set(); (st.rutas||[]).forEach(r=>{ if(selRutas.some(t=>t.pol===r.pol&&t.pod===r.pod)) tlsPermitidos.add(tlDe(r)); }); if(tlsPermitidos.size===0){ errores.push((st.codigo||vid)+": ruta no encontrada"); continue; } }
+      // 1) capturar venta actual por opción×equipo
       const surOfOld=mkSurOf(st);
       const eqs=(st.equipos&&st.equipos.length?st.equipos:["20DV"]).map(k=>eqMeta(k)).filter(Boolean);
-      const target={}; // key ruta|opcIdx|equipo -> venta
+      const target={};
       (st.rutas||[]).forEach((r,ri)=>{ (r.opciones||[]).forEach((o,oi)=>{ eqs.forEach(eqObj=>{ const pr=(o.precios||{})[eqObj.k]||{}; if(pr.base==null||pr.base==="") return; const venta=n(pr.base)+adicPorCont(surOfOld(o.navScac,tlDe(r)),eqObj,dir)+n(pr.profit); target[ri+"|"+oi+"|"+eqObj.k]=venta; }); }); });
-      // 2) cambiar el monto del recargo (clave) en TODOS los bloques scac×tl de este borrador
+      // 2) cambiar el recargo (clave) en los bloques scac×tl permitidos
       let toco=false;
-      (st.quoteNav||[]).forEach(q=>{ if(q.scac!==scac) return; (q.surcharges||[]).forEach(s=>{ if(String(s.c||"").toUpperCase()===cl){ s.monto=String(nuevoMonto); toco=true; } }); });
+      (st.quoteNav||[]).forEach(q=>{ if(q.scac!==scac) return; if(tlsPermitidos && !tlsPermitidos.has(q.tl||"")) return; (q.surcharges||[]).forEach(s=>{ if(String(s.c||"").toUpperCase()===cl){ s.monto=String(nuevoMonto!=null?nuevoMonto:s.monto); if(montosLimpio) s.montos={...montosLimpio}; else if(nuevosMontos!==undefined) s.montos=null; toco=true; } }); });
       if(!toco){ errores.push((st.codigo||vid)+": sin esa clave"); continue; }
-      // 3) reajustar profit para conservar cada venta (solo cambian las opciones de scac; el resto queda igual)
+      // 3) reajustar profit para conservar cada venta
       const surOfNew=mkSurOf(st);
       (st.rutas||[]).forEach((r,ri)=>{ (r.opciones||[]).forEach((o,oi)=>{ eqs.forEach(eqObj=>{ const pr=(o.precios||{})[eqObj.k]; if(!pr||pr.base==null||pr.base==="") return; const t=target[ri+"|"+oi+"|"+eqObj.k]; if(t==null) return; const nuevoProfit=t-n(pr.base)-adicPorCont(surOfNew(o.navScac,tlDe(r)),eqObj,dir); pr.profit=String(Math.round(nuevoProfit)); }); }); });
-      // 4) guardar (mantiene estatus borrador)
       const stState={ versionId:vid, codigo:st.codigo, cliente:st.cliente, clienteNombre:st.clienteNombre, modo:st.modo, direccion:dir, tradelane:st.tradelane, commodity:st.commodity, commodity_id:st.commodity_id||null, vigDesde:st.vigDesde, vigHasta:st.vigHasta, notas:st.notas, origen:"cero", equipos:st.equipos, rutas:st.rutas, quoteNav:st.quoteNav };
       await saveCotizacion(stState);
-      aplicados++;
+      aplicados+= selRutas?selRutas.length:1;
     }catch(ex){ errores.push(vid+": "+ex.message); }
   }
   return { aplicados, errores };
