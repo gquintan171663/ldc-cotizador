@@ -7,7 +7,7 @@ const ESTATUS={borrador:{t:"Borrador",c:C.label,bg:C.soft},enviada:{t:"Enviada",
 function EstChip({e}){const m=ESTATUS[e]||{t:e,c:C.label,bg:C.soft};return <span style={{fontSize:10,fontWeight:"bold",color:m.c,background:m.bg,border:"1px solid "+C.sep2,borderRadius:4,padding:"2px 7px",whiteSpace:"nowrap"}}>{m.t}</span>;}
 
 const MODO={ME:"Marítimo Exportación",MI:"Marítimo Importación",AE:"Aéreo Exportación",AI:"Aéreo Importación"};
-const hoyISO=()=>new Date().toISOString().slice(0,10);
+const hoyISO=()=>{ const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); };
 const vigenteHoy=(a,b)=>{ const h=hoyISO(); if(!a&&!b) return false; if(a&&a>h) return false; if(b&&b<h) return false; return true; };
 
 export function Cotizaciones({ onOpen, onNew, role }){
@@ -15,7 +15,7 @@ export function Cotizaciones({ onOpen, onNew, role }){
   const [rows,setRows]=useState(null);
   const [q,setQ]=useState("");
   const [abierto,setAbierto]=useState({});
-  const ultimoEnviado=(g)=>{ const env=(g.rows||[]).filter(r=>r.estatus==="enviada").sort((a,b)=>(b.amendment||0)-(a.amendment||0)); return env[0]||null; };
+  const ultimoEnviado=(g)=>{ const env=(g.rows||[]).filter(r=>r.estatus&&r.estatus!=="borrador").sort((a,b)=>(b.amendment||0)-(a.amendment||0)); return env[0]||null; };
   const reload=()=>{ setRows(null); listCotizaciones().then(({rows})=>setRows(rows||[])); };
 
   const borrarMacro=async(g)=>{
@@ -67,7 +67,7 @@ export function Cotizaciones({ onOpen, onNew, role }){
     {rows===null?<div style={{color:C.label,fontSize:13,padding:20}}>Cargando…</div>:
      grupos.length===0?<div style={{border:"1px solid "+C.sep2,borderRadius:10,background:"#fff",padding:28,textAlign:"center",color:C.label,fontSize:13}}>{q?"Sin resultados para esa búsqueda.":"Sin cotizaciones todavía."}</div>:(
       <div style={{display:"flex",flexDirection:"column",gap:16}}>
-        {grupos.map((g,gi)=>{ const exp=q?true:!!abierto[gi]; const ue=ultimoEnviado(g); const ueVenc=ue&&ue.vigHasta&&ue.vigHasta<hoyISO(); return (
+        {grupos.map((g,gi)=>{ const exp=q?true:!!abierto[gi]; const ue=ultimoEnviado(g); const ueVenc=ue&&ue.vigHasta&&ue.vigHasta<hoyISO(); const hayBorr=(g.rows||[]).some(r=>r.estatus==="borrador"); return (
           <div key={gi} style={{border:"1px solid "+C.sep2,borderRadius:10,background:"#fff",overflow:"hidden"}}>
 
             {/* Encabezado del cliente + contrato macro */}
@@ -80,7 +80,8 @@ export function Cotizaciones({ onOpen, onNew, role }){
                 </div>
                 <div style={{fontSize:11,color:C.label,marginTop:2}}>
                   {MODO[g.modo]||g.modo||"—"} · {g.rows.length} {g.rows.length===1?"amendment":"amendments"}
-                  {ue?<span> · Último enviado {ue.folio} <span style={{fontWeight:"bold",color:ueVenc?C.red:C.slate}}>{rangoVig(ue.vigDesde,ue.vigHasta)}{ueVenc?" · VENCIDO":""}</span></span>:<span> · sin AM enviado</span>}
+                  {ue?<span> · Último enviado {ue.folio} <span style={{fontWeight:"bold",color:ueVenc?C.red:C.slate}}>· vig {rangoVig(ue.vigDesde,ue.vigHasta)}{ueVenc?" · VENCIDO":""}</span></span>:<span> · sin AM enviado</span>}
+                  {hayBorr&&<span style={{fontSize:10.5,fontWeight:"bold",color:"#1F6FB2",background:"#E7F1FB",border:"1px solid #BBD7F0",borderRadius:6,padding:"1px 7px",marginLeft:8}}>📝 borrador en curso</span>}
                 </div>
               </div>
               <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:8,flex:"none"}}>
