@@ -212,7 +212,7 @@ export function Cotizador({ loadId, onDirty, role }){
   const [vigDesde,setVigDesde]=useState("");
   const [prevVigHasta,setPrevVigHasta]=useState("");
   const avisoVig=(()=>{ if(!prevVigHasta||!vigDesde) return null; const p=new Date(prevVigHasta+"T00:00:00"), d=new Date(vigDesde+"T00:00:00"); if(isNaN(p)||isNaN(d)) return null; const dias=Math.round((d-p)/86400000); if(dias>1) return {tipo:"hueco",txt:"Quedan "+(dias-1)+" día(s) sin cubrir entre el AM anterior (termina "+prevVigHasta+") y este (empieza "+vigDesde+")."}; return null; })();
-  const traslapeVig=(prevVigHasta&&vigDesde&&vigDesde<=prevVigHasta)?(()=>{ const d=new Date(prevVigHasta+"T00:00:00"); d.setDate(d.getDate()+1); const sig=new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); return "Traslape de vigencia: este amendment empieza el "+vigDesde+", pero el AM anterior sigue vigente hasta el "+prevVigHasta+". Cambia \"Vigencia desde\" al "+sig+" o después para que no se empalmen (no se puede tener dos tarifas vigentes el mismo día)."; })():null;
+  const traslapeVig=(prevVigHasta&&vigDesde&&vigDesde<=prevVigHasta)?(()=>{ const d=new Date(vigDesde+"T00:00:00"); d.setDate(d.getDate()-1); const cierre=new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); return "Al enviar, el AM anterior (vigente hasta "+prevVigHasta+") se cerrará automáticamente el "+cierre+" (un día antes de que empiece este) para que no se empalmen. Puedes seguir editando."; })():null;
   const [vigHasta,setVigHasta]=useState("");
   const [notas,setNotas]=useState("");
   const [notasInternas,setNotasInternas]=useState("");
@@ -410,7 +410,6 @@ export function Cotizador({ loadId, onDirty, role }){
   const guardar=async()=>{
     if(!cliente){ alert("Elige un cliente."); return; }
     if(vigDesde&&vigHasta&&vigDesde>vigHasta){ alert("La vigencia está invertida: \"desde\" ("+vigDesde+") es posterior a \"hasta\" ("+vigHasta+"). Corrige las fechas antes de guardar."); return; }
-    if(traslapeVig){ alert(traslapeVig); return; }
     const falt=faltanPOLPOD(); if(falt.length){ alert("Faltan datos obligatorios en las rutas (POL, POD, naviera y modo si hay ciudad):\n\n• "+falt.join("\n• ")); return; }
     const cn=(clientes.find(c=>c.id===cliente)||{}).nombre;
     const st={versionId,codigo,cliente,clienteNombre:cn,modo,direccion,tradelane,commodity:comLabel,commodity_id:commodityId||null,vigDesde,vigHasta,notas,origen:"cero",equipos,rutas:derivarAnclaje(rutas),quoteNav};
@@ -442,7 +441,7 @@ export function Cotizador({ loadId, onDirty, role }){
   const bajoProfit=()=>{ const eqObjs=EQUIPOS.filter(e=>equipos.includes(e.k)); const out=[]; (rutas||[]).forEach(r=>{ eqObjs.forEach(e=>{ const oi=opcionActivaEq(r,e.k,e,direccion,surOfMain); const o=(r.opciones||[])[oi]; if(!o) return; const pr=(o.precios||{})[e.k]||{}; if(pr.base==null||pr.base===""||n(pr.base)<=0) return; const prof=n(pr.profit); if(prof<250) out.push((r.pol||r.origen||"?")+"→"+(r.pod||r.destino||"?")+" "+e.t+" ("+(o.navScac||"—")+"): "+(prof>0?("$"+prof):"SIN PROFIT")); }); }); return out; };
   const confirmProfit=()=>{ const low=bajoProfit(); if(!low.length) return true; return confirm("⚠ Profit bajo o nulo (menor a $250 USD) en:\n\n• "+low.slice(0,12).join("\n• ")+"\n\n¿Continuar de todas formas?"); };
   const faltanPOLPOD=()=>{ const out=[]; (rutas||[]).forEach((r,i)=>{ const f=[]; if(!tx(r.pol))f.push("POL"); if(!tx(r.pod))f.push("POD"); if(!(r.opciones||[]).some(o=>tx(o.navScac)))f.push("naviera"); if(tx(r.origen)&&!tx(r.precarriage_mode))f.push("modo (origen)"); if(tx(r.destino)&&!tx(r.oncarriage_mode))f.push("modo (destino)"); if(f.length) out.push("R"+(i+1)+": falta "+f.join(", ")); }); return out; };
-  const enviar=async()=>{ if(!versionId) return; if(vigDesde&&vigHasta&&vigDesde>vigHasta){ alert("La vigencia está invertida: \"desde\" ("+vigDesde+") es posterior a \"hasta\" ("+vigHasta+"). Corrige las fechas antes de enviar."); return; } if(traslapeVig){ alert(traslapeVig); return; } if(!confirmProfit()) return; await markEnviada(versionId); setEstatus("enviada"); };
+  const enviar=async()=>{ if(!versionId) return; if(vigDesde&&vigHasta&&vigDesde>vigHasta){ alert("La vigencia está invertida: \"desde\" ("+vigDesde+") es posterior a \"hasta\" ("+vigHasta+"). Corrige las fechas antes de enviar."); return; } if(!confirmProfit()) return; await markEnviada(versionId); setEstatus("enviada"); };
   const guardarCorreccionUI=async()=>{
     if(!versionId) return;
     if(vigDesde&&vigHasta&&vigDesde>vigHasta){ alert("La vigencia está invertida. Corrige las fechas antes de guardar."); return; }
@@ -551,7 +550,7 @@ export function Cotizador({ loadId, onDirty, role }){
         <Field label="Vigencia desde"><TI type="date" value={vigDesde} onChange={e=>setVigDesde(e.target.value)}/></Field>
         <Field label="Vigencia hasta"><TI type="date" value={vigHasta} onChange={e=>setVigHasta(e.target.value)}/></Field>
       </div>
-      {traslapeVig&&<div style={{fontSize:11.5,color:"#C8202E",background:"#FDECEC",border:"1px solid #F1B0B0",borderRadius:8,padding:"7px 10px",marginBottom:10,fontWeight:"bold"}}>⛔ {traslapeVig} No se puede guardar ni enviar hasta corregirlo.</div>}
+      {traslapeVig&&<div style={{fontSize:11.5,color:"#8A6D1F",background:"#FBF4E0",border:"1px solid #EAD9A0",borderRadius:8,padding:"7px 10px",marginBottom:10}}>ℹ {traslapeVig}</div>}
       {avisoVig&&<div style={{fontSize:11.5,color:"#8A6D1F",background:"#FBF4E0",border:"1px solid #EAD9A0",borderRadius:8,padding:"7px 10px",marginBottom:10}}>⚠ {avisoVig.txt} Es solo un aviso, no bloquea.</div>}
       {nuevoOpen&&(<div style={{display:"flex",gap:8,alignItems:"flex-end",background:C.soft,border:"1px solid "+C.sep2,borderRadius:8,padding:10,marginTop:10}}>
         <Field label="Nombre del cliente / prospecto" w={2}><TI value={nuevoNombre} onChange={e=>setNuevoNombre(e.target.value)} placeholder="Razón social" onKeyDown={e=>e.key==="Enter"&&guardarNuevoCliente()}/></Field>

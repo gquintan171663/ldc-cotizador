@@ -388,19 +388,20 @@ export async function anclarVenta(versionId){
 
 export async function markEnviada(versionId){
   const res = await supabase.from("versiones").update({estatus:"enviada"}).eq("id",versionId);
-  // Reglas de vigencia: si es amendment con cambio de costo, el AM anterior expira hoy y el nuevo arranca mañana (sin huecos ni empalmes).
+  // Vigencias: si es amendment que reemplaza a otro, cerrar el AM anterior UN DÍA ANTES del
+  // inicio del nuevo (respetando la vig_desde capturada del nuevo, sea hoy o una fecha futura
+  // para envíos anticipados). Aplica siempre que haya reemplazo, no solo con cambio de costo.
   try{
     const { data: vrow } = await supabase.from("versiones").select("reemplaza_a").eq("id",versionId).maybeSingle();
     if(vrow && vrow.reemplaza_a){
       const cur = await loadVersion(versionId);
-      const prev = await loadVersion(vrow.reemplaza_a);
-      if(cur && prev && hayCambioCosto(cur, prev, cur.direccion||"E")){
+      if(cur){
         const hoy=(()=>{ const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); })();
-        const man=(()=>{ const d=new Date(Date.now()+86400000); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); })();
-        await supabase.from("versiones").update({vig_hasta:hoy}).eq("id",vrow.reemplaza_a);
-        await supabase.from("lineas").update({validez_hasta:hoy}).eq("version_id",vrow.reemplaza_a);
-        await supabase.from("versiones").update({vig_desde:man}).eq("id",versionId);
-        await supabase.from("lineas").update({validez_desde:man}).eq("version_id",versionId);
+        const nuevoDesde = cur.vigDesde || hoy;   // respeta lo capturado; si no hay, hoy
+        const cierreAnterior=(()=>{ const d=new Date(nuevoDesde+"T00:00:00"); d.setDate(d.getDate()-1); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); })();
+        if(!cur.vigDesde){ await supabase.from("versiones").update({vig_desde:nuevoDesde}).eq("id",versionId); await supabase.from("lineas").update({validez_desde:nuevoDesde}).eq("version_id",versionId); }
+        await supabase.from("versiones").update({vig_hasta:cierreAnterior}).eq("id",vrow.reemplaza_a);
+        await supabase.from("lineas").update({validez_hasta:cierreAnterior}).eq("version_id",vrow.reemplaza_a);
       }
     }
   }catch(e){ /* el ajuste de vigencias no debe romper el envío */ }
