@@ -327,6 +327,57 @@ async function selectAllEq(table, sel, col, val, orderBy){
 }
 
 // ===== Reconstruir el estado del cotizador desde una versión =====
+// ===========================================================================
+// BUSCAR RUTAS SIMILARES (reusar tarifas) — busca en TODOS los borradores rutas
+// con el mismo POL/POD (por clave) o con nombre de puerto similar (ej. Ningbo /
+// Ningbo pt). Devuelve navieras con base + recargos + profit para importarlas
+// como base de una nueva cotización, conservando el POL/POD ya capturado.
+// ===========================================================================
+const _norm=(s)=>String(s||"").toLowerCase().replace(/[^a-z0-9]+/g," ").trim();
+const _nombreSimilar=(claveA, claveB)=>{
+  if(!claveA||!claveB) return false;
+  if(claveA===claveB) return true;
+  const a=_norm(puertoNombre(claveA)||claveA), b=_norm(puertoNombre(claveB)||claveB);
+  if(!a||!b) return false;
+  if(a===b) return true;
+  if(a.includes(b)||b.includes(a)) return true;            // "ningbo" ⊂ "ningbo pt"
+  const a1=a.split(" ")[0], b1=b.split(" ")[0];
+  return !!a1 && a1===b1 && a1.length>=3;                  // misma primera palabra
+};
+const _matchPuerto=(a,b)=> a===b || _nombreSimilar(a,b);
+
+export async function buscarRutasSimilares({ pol, pod, versionExcluir }){
+  if(!pol || !pod) return { exactas:[], aproximadas:[] };
+  const { data: vers, error } = await supabase.from("versiones")
+    .select("id,codigo,commodity,acuerdos(clientes(nombre))")
+    .eq("estatus","borrador").limit(500);
+  if(error) return { exactas:[], aproximadas:[], error:error.message };
+  const exactas=[], aproximadas=[];
+  for(const v of (vers||[])){
+    if(v.id===versionExcluir) continue;
+    let st; try{ st=await loadVersion(v.id); }catch(_){ continue; }
+    if(!st) continue;
+    const surOf=mkSurOf(st);
+    (st.rutas||[]).forEach(r=>{
+      if(!r.pol || !r.pod) return;
+      if(!(_matchPuerto(r.pol,pol) && _matchPuerto(r.pod,pod))) return;
+      const exacta = (r.pol===pol && r.pod===pod);
+      const navieras=(r.opciones||[]).map(o=>({
+        scac:o.navScac||"", transito:o.transito||"",
+        precios:o.precios||{},
+        recargos:(surOf(o.navScac,tlDe(r))||[]).map(s=>({...s})),
+        tl:tlDe(r)
+      })).filter(nv=>nv.scac);
+      if(!navieras.length) return;
+      const row={ versionId:v.id, cliente:v.acuerdos?.clientes?.nombre||st.clienteNombre||"", folio:v.codigo||st.codigo||"",
+        producto:v.commodity||st.commodity||"", pol:r.pol, pod:r.pod, polNombre:_loc(r.pol), podNombre:_loc(r.pod),
+        exacta, navieras };
+      (exacta?exactas:aproximadas).push(row);
+    });
+  }
+  return { exactas, aproximadas };
+}
+
 export async function loadVersion(versionId){
   const { data: ver } = await supabase.from("versiones").select("*, acuerdos(id,no_acuerdo,modo,cliente_id,clientes(nombre))").eq("id",versionId).single();
   const lineas = await selectAllEq("lineas","*","version_id",versionId,"created_at");
@@ -402,6 +453,8 @@ export async function markEnviada(versionId){
         if(!cur.vigDesde){ await supabase.from("versiones").update({vig_desde:nuevoDesde}).eq("id",versionId); await supabase.from("lineas").update({validez_desde:nuevoDesde}).eq("version_id",versionId); }
         await supabase.from("versiones").update({vig_hasta:cierreAnterior}).eq("id",vrow.reemplaza_a);
         await supabase.from("lineas").update({validez_hasta:cierreAnterior}).eq("version_id",vrow.reemplaza_a);
+        // Recién ahora (al enviar el nuevo) el AM anterior pasa a superseded
+        await supabase.from("versiones").update({estatus:"superseded"}).eq("id",vrow.reemplaza_a);
       }
     }
   }catch(e){ /* el ajuste de vigencias no debe romper el envío */ }
@@ -422,7 +475,7 @@ export async function nuevaVersion(versionId){
   if(ve){ sum.errores.push("nuevo amendment: "+ve.message); return sum; }
   sum.codigo=ver.codigo; sum.versionId=ver.id; sum.amendment=nextAm; sum.vigDesde=st.vigDesde;
   await insertChildren(ver.id, st, sum);
-  await supabase.from("versiones").update({estatus:"superseded"}).eq("id",versionId);
+  // El AM anterior se conserva "enviada" y NO pasa a superseded hasta que se ENVÍE este nuevo AM (ver markEnviada).
   return sum;
 }
 

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { supabase } from "./supabaseClient.js";
 import { C, F, EQUIPOS, EQUIPO_CATS, NAVIERAS, navName, CATALOG, COMMODITY_INDUSTRIAS, tx, scopeFull, serviceMode, transportMode, n, round10, adicPorCont, cargosBL, inclPorCont, inclBL, subjectTo, enPrecio, esSubjectTo, money, MONEDAS, optPuertos, optCiudades, puertoNombre, paisOrigen, paisDestino, rutaPaisLabel, tlDe, tlLabel, TRADELANES, tradeLabel, rutaEnTradelane, opcionActivaEq, mejorOpcionEq, ordenOpciones, ordenRecargos, ovRazon, PLANTILLA_RECARGOS, parseTarifario, ordenarRutas } from "./lib.js";
 import { inS, Lbl, Field, TI, Sel, Chip, Btn, ClaveAutocomplete, ComboBox } from "./ui.jsx";
-import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges, recargosDeRutaSimilar, recargosDeRutaSimilarPorNaviera, recargosDeNaviera, anclarVenta, checkConflictoTarifa, guardarCorreccion, buscarCoincidenciasRecargo, aplicarRecargoEnBorradores } from "./db.js";
+import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges, recargosDeRutaSimilar, recargosDeRutaSimilarPorNaviera, recargosDeNaviera, anclarVenta, checkConflictoTarifa, guardarCorreccion, buscarCoincidenciasRecargo, aplicarRecargoEnBorradores, buscarRutasSimilares } from "./db.js";
 import { abrirCotizacion } from "./quote.js";
 import { exportarExcel } from "./quoteExcel.js";
 import * as XLSX from "xlsx";
@@ -133,7 +133,7 @@ function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,
 
 // id del ancla de tarifas por lane (para regresar desde el bloque de recargos)
 export const eidTarifa=(tl)=>"trf_"+String(tl||"nl").replace(/[^A-Za-z0-9]/g,"_");
-function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir,onFoco,editarProp,filtro,editable=true,onPropagar}){
+function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir,onFoco,editarProp,filtro,editable=true,onPropagar,onSimilares}){
   // primera ruta de cada lane: ahí ponemos el ancla
   const tlAnchor={}; (rutas||[]).forEach((r,ri)=>{ const t=tlDe(r); if(tlAnchor[t]==null) tlAnchor[t]=ri; });
   const navOpts=[{v:"",t:"— naviera —"},...NAVIERAS.map(x=>({v:x.scac,t:x.scac+" · "+x.nombre}))];
@@ -188,7 +188,7 @@ function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir,onFoco,editarProp,filt
               <td style={{...td,borderLeft:"1px solid "+C.sep2}}>{o.navScac?(st.length?<span style={{fontSize:11}}><b style={{color:C.slate}}>{st.join(" · ")}</b>{bl>0&&<div style={{color:C.label,marginTop:1}}>+ BL {money(bl)}</div>}</span>:<Chip kind="green">ALL-IN</Chip>):""}</td>
               <td style={{...td,textAlign:"center"}}>{editable&&r.opciones.length>1&&<span onClick={()=>delOpt(ri,oi)} title="Quitar naviera alterna" style={{cursor:"pointer",color:C.label,fontSize:12}}>✕</span>}</td>
             </tr>);
-          }).concat(<tr key={ri+"-add"}><td colSpan={4+eqs.length*4+2} style={{padding:"4px 8px",borderBottom:"1px solid "+C.sep}}>{editable&&<span onClick={()=>addOpt(ri)} style={{cursor:"pointer",color:C.red,fontSize:11.5,fontWeight:"bold"}}>＋ naviera alterna para esta ruta</span>}{editable&&onPropagar&&(r.pol&&r.pod)&&<span onClick={()=>onPropagar(r)} title="Copiar un recargo de esta naviera/país a otros borradores" style={{cursor:"pointer",color:C.slate,fontSize:11.5,fontWeight:"bold",marginLeft:12}}>⇄ Propagar recargo</span>}{r.opciones.length>1&&<span style={{fontSize:11,color:C.label,marginLeft:editable?12:0}}>Mejor por equipo: {eqs.map(e=>{const bi=mejorOpcionEq(r,e.k,e,dir,surOf);return e.t+" "+((bi>=0&&r.opciones[bi].navScac)||"—");}).join(" · ")}{editable&&r.elegidaEq&&Object.keys(r.elegidaEq).length>0&&<span style={{color:C.red,marginLeft:8,cursor:"pointer"}} onClick={()=>setRutas(rutas.map((x,i)=>i===ri?{...x,elegidaEq:{}}:x))}>· volver todo a auto</span>}</span>}</td></tr>);
+          }).concat(<tr key={ri+"-add"}><td colSpan={4+eqs.length*4+2} style={{padding:"4px 8px",borderBottom:"1px solid "+C.sep}}>{editable&&<span onClick={()=>addOpt(ri)} style={{cursor:"pointer",color:C.red,fontSize:11.5,fontWeight:"bold"}}>＋ naviera alterna para esta ruta</span>}{editable&&onPropagar&&(r.pol&&r.pod)&&<span onClick={()=>onPropagar(r)} title="Copiar un recargo de esta naviera/país a otros borradores" style={{cursor:"pointer",color:C.slate,fontSize:11.5,fontWeight:"bold",marginLeft:12}}>⇄ Propagar recargo</span>}{editable&&onSimilares&&(r.pol&&r.pod)&&<span onClick={()=>onSimilares(ri)} title="Buscar tarifas de rutas similares (mismo POL/POD) en otros borradores para usarlas de base" style={{cursor:"pointer",color:"#1F6FB2",fontSize:11.5,fontWeight:"bold",marginLeft:12}}>🔎 Buscar tarifas similares</span>}{r.opciones.length>1&&<span style={{fontSize:11,color:C.label,marginLeft:editable?12:0}}>Mejor por equipo: {eqs.map(e=>{const bi=mejorOpcionEq(r,e.k,e,dir,surOf);return e.t+" "+((bi>=0&&r.opciones[bi].navScac)||"—");}).join(" · ")}{editable&&r.elegidaEq&&Object.keys(r.elegidaEq).length>0&&<span style={{color:C.red,marginLeft:8,cursor:"pointer"}} onClick={()=>setRutas(rutas.map((x,i)=>i===ri?{...x,elegidaEq:{}}:x))}>· volver todo a auto</span>}</span>}</td></tr>);
         })}
       </tbody>
     </table>
@@ -217,6 +217,36 @@ export function Cotizador({ loadId, onDirty, role }){
   const [notas,setNotas]=useState("");
   const [notasInternas,setNotasInternas]=useState("");
   const [prop,setProp]=useState(null); // {route,scac,clave,monto,coinc,sel,busy}
+  const [sim,setSim]=useState(null); // {ri, busy, exactas, aproximadas}
+  const abrirSimilares=async(ri)=>{
+    const r=rutas[ri]; if(!r||!r.pol||!r.pod){ alert("Captura POL y POD en la ruta antes de buscar tarifas similares."); return; }
+    setSim({ ri, busy:true, exactas:null, aproximadas:null });
+    try{ const res=await buscarRutasSimilares({ pol:r.pol, pod:r.pod, versionExcluir:versionId });
+      setSim({ ri, busy:false, exactas:res.exactas||[], aproximadas:res.aproximadas||[] });
+    }catch(ex){ setSim({ ri, busy:false, exactas:[], aproximadas:[] }); alert("Error al buscar: "+ex.message); }
+  };
+  const importarSimilar=(match)=>{
+    if(!sim) return; const ri=sim.ri; const r=rutas[ri]; if(!r) return;
+    const tlDest=tlDe(r);
+    // 1) navieras (base+profit+transito) -> opciones de la ruta actual (evita duplicar SCAC)
+    const nuevasOps=[...(r.opciones||[])];
+    // 2) recargos -> quoteNav bajo (scac, tl de la ruta actual)
+    const nuevoQN=quoteNav.map(q=>({...q,surcharges:[...(q.surcharges||[])]}));
+    let addedNav=0;
+    (match.navieras||[]).forEach(nv=>{
+      if(!nv.scac) return;
+      const yaOp=nuevasOps.some(o=>o.navScac===nv.scac);
+      if(!yaOp){ nuevasOps.push({ navScac:nv.scac, transito:nv.transito||"", precios:JSON.parse(JSON.stringify(nv.precios||{})) }); addedNav++; }
+      // recargos al bloque (scac, tlDest)
+      let blk=nuevoQN.find(q=>q.scac===nv.scac&&(q.tl||"")===(tlDest||""));
+      if(!blk){ blk={scac:nv.scac,tl:tlDest||"",surcharges:[]}; nuevoQN.push(blk); }
+      (nv.recargos||[]).forEach(s=>{ if(!blk.surcharges.some(x=>String(x.c||"").toUpperCase()===String(s.c||"").toUpperCase())) blk.surcharges.push({...s}); });
+    });
+    setQuoteNav(nuevoQN);
+    setRutas(rutas.map((x,i)=>i===ri?{...x,opciones:nuevasOps}:x));
+    setSim(null);
+    alert("Importado: "+addedNav+" naviera(s) con sus recargos"+(addedNav<(match.navieras||[]).length?" (algunas ya existían y se conservaron)":"")+".\n\nRevisa base, recargos y profit; el POL/POD se conservó.");
+  };
   const _surObj=(scac,r,clave)=> (surOfMain(scac,tlDe(r))||[]).find(s=>s.c===clave)||{};
   const _locR=(v)=>{ const nm=puertoNombre(v)||String(v||""); return nm; };
   const paresDeNaviera=(scac,tl)=>{ const seen={}; (rutas||[]).forEach(r=>{ if(tlDe(r)!==(tl||"")) return; if(!(r.opciones||[]).some(o=>o.navScac===scac)) return; const pp=paisOrigen(r), pd=paisDestino(r); if(!pp||!pd) return; const k=pp+">"+pd; if(!seen[k]) seen[k]={paisPol:pp,paisPod:pd,label:_locR(r.pol)+" → "+_locR(r.pod)}; }); return Object.values(seen); };
@@ -610,7 +640,7 @@ export function Cotizador({ loadId, onDirty, role }){
           <span onClick={()=>setRutas(rutas.filter((_,i)=>i!==ri))} style={{cursor:"pointer",color:C.label,fontSize:11,marginBottom:6}}>✕</span>
         </div>);})}
       </div>)}
-      <TarifasGrid rutas={rutas} setRutas={setRutas} quoteNav={quoteNav} equipos={equipos} dir={direccion} editarProp={editarPropuesta} filtro={matchTar} editable={editable} onPropagar={abrirPropagar} onFoco={(scac,tl)=>setFocoRecargo({scac,tl,ts:Date.now()})}/>
+      <TarifasGrid rutas={rutas} setRutas={setRutas} quoteNav={quoteNav} equipos={equipos} dir={direccion} editarProp={editarPropuesta} filtro={matchTar} editable={editable} onPropagar={abrirPropagar} onSimilares={abrirSimilares} onFoco={(scac,tl)=>setFocoRecargo({scac,tl,ts:Date.now()})}/>
       </fieldset>
       <div style={{background:"#fff",border:"1px solid "+C.sep2,borderRadius:12,padding:14,marginTop:14,opacity:editable?1:.7,pointerEvents:editable?"auto":"none"}}>
         <Lbl>Notas <span style={{fontWeight:"normal",color:C.label,textTransform:"none"}}>· texto libre que aparece en el PDF (condiciones, comentarios, etc.)</span></Lbl>
@@ -640,6 +670,34 @@ export function Cotizador({ loadId, onDirty, role }){
         </div>
       </div>
     </>)}
+    {sim&&<div onClick={()=>!sim.busy&&setSim(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,padding:20,width:"min(760px,95vw)",maxHeight:"88vh",overflow:"auto",boxShadow:"0 12px 44px rgba(0,0,0,0.28)"}}>
+        <div style={{fontSize:15,fontWeight:"bold",color:C.ink,marginBottom:4}}>🔎 Tarifas de rutas similares</div>
+        <div style={{fontSize:11.5,color:C.label,marginBottom:12,lineHeight:1.45}}>Rutas en otros borradores con el mismo POL/POD (o puertos de nombre similar). Importa navieras + base + recargos + profit como base; se conserva tu POL/POD. Revisa los números antes de cotizar.</div>
+        {sim.busy&&<div style={{fontSize:12.5,color:C.label,padding:"14px 0"}}>Buscando…</div>}
+        {!sim.busy&&(()=>{ const render=(lista,titulo,badge)=> (lista&&lista.length>0)&&(<div style={{marginBottom:14}}>
+          <div style={{fontSize:12,fontWeight:"bold",color:C.slate,marginBottom:6}}>{titulo} ({lista.length})</div>
+          {lista.map((m,mi)=>(<div key={mi} style={{border:"1px solid "+C.sep2,borderRadius:8,padding:"9px 11px",marginBottom:8}}>
+            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:6}}>
+              <span style={{fontSize:9.5,fontWeight:"bold",color:badge.c,background:badge.bg,border:"1px solid "+C.sep2,borderRadius:4,padding:"1px 6px"}}>{badge.t}</span>
+              <span style={{fontWeight:"bold",color:C.ink,fontSize:12.5}}>{m.folio}</span>
+              <span style={{color:C.slate,fontSize:12}}>{m.cliente}</span>
+              {m.producto&&<span style={{color:C.label,fontSize:11}}>· {m.producto}</span>}
+              <span style={{color:C.label,fontSize:11,marginLeft:"auto"}}>{m.polNombre} → {m.podNombre}</span>
+            </div>
+            <div style={{fontSize:11,color:C.slate,marginBottom:8}}>{(m.navieras||[]).map((nv,ni)=>{ const eqk=Object.keys(nv.precios||{}); const bases=eqk.map(k=>{const b=(nv.precios[k]||{}).base; return b?("$"+b):null;}).filter(Boolean); return <span key={ni} style={{display:"inline-block",marginRight:12}}><b>{nv.scac}</b>{bases.length?(" base "+bases.join("/")):""}{(nv.recargos&&nv.recargos.length)?(" · "+nv.recargos.length+" recargo(s)"):""}</span>; })}</div>
+            <div style={{display:"flex",justifyContent:"flex-end"}}><Btn kind="primary" small onClick={()=>importarSimilar(m)}>Importar a mi ruta</Btn></div>
+          </div>))}
+        </div>);
+        const hay=(sim.exactas&&sim.exactas.length)||(sim.aproximadas&&sim.aproximadas.length);
+        return (<div>
+          {render(sim.exactas,"Coincidencia exacta (mismo POL y POD)",{t:"EXACTA",c:"#0B7A3B",bg:"#E8F5EC"})}
+          {render(sim.aproximadas,"Coincidencia aproximada (puerto de nombre similar)",{t:"SIMILAR",c:"#1F6FB2",bg:"#E7F1FB"})}
+          {!hay&&<div style={{fontSize:12.5,color:C.label,padding:"12px 0"}}>No se encontraron rutas similares en otros borradores.</div>}
+        </div>); })()}
+        <div style={{display:"flex",justifyContent:"flex-end",marginTop:6}}><Btn kind="ghost" onClick={()=>setSim(null)}>Cerrar</Btn></div>
+      </div>
+    </div>}
     {prop&&<div onClick={()=>!prop.busy&&setProp(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
       <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,padding:20,width:"min(680px,94vw)",maxHeight:"88vh",overflow:"auto",boxShadow:"0 12px 44px rgba(0,0,0,0.28)"}}>
         <div style={{fontSize:15,fontWeight:"bold",color:C.ink,marginBottom:4}}>⇄ Propagar recargo a otros borradores</div>
