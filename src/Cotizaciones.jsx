@@ -104,7 +104,7 @@ export function Cotizaciones({ onOpen, onNew, role }){
                       <td style={{...td,fontSize:11,color:C.label,whiteSpace:"nowrap"}}>{r.tradelane||"—"}</td>
                       <td style={{...td,whiteSpace:"nowrap",fontSize:11.5,color:venc?C.label:C.slate}}>
                         {rangoVig(r.vigDesde,r.vigHasta)}
-                        {viv&&<span title="Vigente hoy" style={{marginLeft:6,fontSize:9.5,fontWeight:"bold",color:C.green,background:C.greenBg,border:"1px solid "+C.sep2,borderRadius:4,padding:"1px 5px"}}>vigente</span>}
+                        {viv&&r.estatus!=="borrador"&&<span title="Vigente hoy" style={{marginLeft:6,fontSize:9.5,fontWeight:"bold",color:C.green,background:C.greenBg,border:"1px solid "+C.sep2,borderRadius:4,padding:"1px 5px"}}>vigente</span>}
                       </td>
                       <td style={td}><EstChip e={r.estatus}/></td>
                       <td style={{...td,color:C.label,fontSize:11,whiteSpace:"nowrap"}}>{r.owner}</td>
