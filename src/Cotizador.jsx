@@ -206,9 +206,8 @@ export function Cotizador({ loadId, onDirty, role }){
   const [tradelane,setTradelane]=useState("");
   const [noAcuerdo,setNoAcuerdo]=useState("");
   const [amendment,setAmendment]=useState(1);
-  const [cambios,setCambios]=useState(null);
-  const [cambiosFecha,setCambiosFecha]=useState(null);
-  const [cambiosUser,setCambiosUser]=useState(null);
+  const [cambiosLog,setCambiosLog]=useState([]);
+  const [cambiosOpen,setCambiosOpen]=useState(false);
   const [commodityId,setCommodityId]=useState("");
   const [vigDesde,setVigDesde]=useState("");
   const [prevVigHasta,setPrevVigHasta]=useState("");
@@ -381,7 +380,7 @@ export function Cotizador({ loadId, onDirty, role }){
     loadVersion(loadId).then(st=>{
       setVersionId(st.versionId); setCodigo(st.codigo); setEstatus(st.estatus);
       setCliente(st.cliente||""); setModo(st.modo||"maritimo"); setDireccion(st.direccion||"I");
-      setTradelane(st.tradelane||""); setNoAcuerdo(st.no_acuerdo||""); setAmendment(st.amendment||1); setCambios(st.cambios||null); setCambiosFecha(st.updatedAt||null); setCambiosUser(st.updatedBy||null);
+      setTradelane(st.tradelane||""); setNoAcuerdo(st.no_acuerdo||""); setAmendment(st.amendment||1); setCambiosLog(st.cambiosLog||[]);
       setCommodityId(st.commodity_id||""); setVigDesde(st.vigDesde||""); setVigHasta(st.vigHasta||""); setNotas(st.notas||""); setNotasInternas(st.correcciones||""); setPrevVigHasta(st.prevVigHasta||"");
       setEquipos(st.equipos&&st.equipos.length?st.equipos:["20DV","40HC"]);
       setRutas(st.rutas&&st.rutas.length?st.rutas:[mkRuta()]);
@@ -426,7 +425,7 @@ export function Cotizador({ loadId, onDirty, role }){
     setSaving(true); setSaved(null);
     const res=await saveCotizacion(st);
     setSaving(false); setSaved(res);
-    if(res.versionId){ setVersionId(res.versionId); setCodigo(res.codigo); setEstatus("borrador"); if(res.cambios){ setCambios(res.cambios); setCambiosFecha(new Date().toISOString()); } }
+    if(res.versionId){ setVersionId(res.versionId); setCodigo(res.codigo); setEstatus("borrador"); if(res.cambiosLog) setCambiosLog(res.cambiosLog); }
     onDirtyRef.current&&onDirtyRef.current(false);
     if(res.errores.length) alert("⚠ Guardado con avisos ("+res.errores.length+"):\n\n• "+res.errores.slice(0,5).join("\n• ")+(res.errores.length>5?"\n\n…y "+(res.errores.length-5)+" más.":""));
     // Si se editó un precio fijo, recargar para mostrar el precio nuevo ya congelado y salir del modo edición.
@@ -466,7 +465,7 @@ export function Cotizador({ loadId, onDirty, role }){
       alert(r.sinCambios?"No hubo cambios que registrar.":"Corrección guardada. El cambio quedó en la nota (y en el registro interno).");
     }
   };
-  const nueva=async()=>{ if(!versionId) return; if(!confirm("¿Crear un nuevo Amendment (AM"+((amendment||1)+1)+")? Se copia el actual para que edites las diferencias; el AM anterior queda superseded.")) return; setSaving(true); const res=await nuevaVersion(versionId); setSaving(false); if(res.errores&&res.errores.length){ alert("Error: "+res.errores.join(" · ")); return; } if(res.versionId){ setVersionId(res.versionId); setCodigo(res.codigo); setAmendment(res.amendment||((amendment||1)+1)); if(res.vigDesde) setVigDesde(res.vigDesde); setCambios(null); setEstatus("borrador"); setSaved(res); } };
+  const nueva=async()=>{ if(!versionId) return; if(!confirm("¿Crear un nuevo Amendment (AM"+((amendment||1)+1)+")? Se copia el actual para que edites las diferencias; el AM anterior queda superseded.")) return; setSaving(true); const res=await nuevaVersion(versionId); setSaving(false); if(res.errores&&res.errores.length){ alert("Error: "+res.errores.join(" · ")); return; } if(res.versionId){ setVersionId(res.versionId); setCodigo(res.codigo); setAmendment(res.amendment||((amendment||1)+1)); if(res.vigDesde) setVigDesde(res.vigDesde); setCambiosLog([]); setEstatus("borrador"); setSaved(res); } };
   const stCotiz=()=>{ const cn=(clientes.find(c=>c.id===cliente)||{}).nombre; return {clienteNombre:cn,codigo:codigo||codigoPreview,no_acuerdo:noAcuerdo,tradelane,amendment,commodity:comLabel,direccion,equipos,rutas:derivarAnclaje(rutas),quoteNav,vigDesde,vigHasta,notas,correcciones:notasInternas||""}; };
   const generar=()=>{ const falt=faltanPOLPOD(); if(falt.length){ alert("Faltan datos obligatorios en las rutas (POL, POD, naviera y modo si hay ciudad):\n\n• "+falt.join("\n• ")); return; } if(!confirmProfit()) return; abrirCotizacion(stCotiz()); };
   const exportarXlsx=async(interno)=>{ const falt=faltanPOLPOD(); if(falt.length){ alert("Faltan datos obligatorios en las rutas (POL, POD, naviera y modo si hay ciudad):\n\n• "+falt.join("\n• ")); return; } if(!interno&&!confirmProfit()) return; try{ await exportarExcel(stCotiz(),{interno:!!interno}); }catch(ex){ alert("Error al exportar a Excel: "+ex.message); } };
@@ -492,7 +491,7 @@ export function Cotizador({ loadId, onDirty, role }){
       const st={versionId,codigo,cliente,clienteNombre:cn,modo,direccion,tradelane,commodity:comLabel,commodity_id:commodityId||null,vigDesde,vigHasta,notas,origen:"cero",equipos,rutas:locked,quoteNav};
       const res=await saveCotizacion(st);
       setEditarPropuesta(false);
-      const st2=await loadVersion(res.versionId||versionId); if(st2){ if(st2.rutas) setRutas(st2.rutas); if(st2.cambios) setCambios(st2.cambios); setCambiosFecha(st2.updatedAt||null); setCambiosUser(st2.updatedBy||null); }
+      const st2=await loadVersion(res.versionId||versionId); if(st2){ if(st2.rutas) setRutas(st2.rutas); setCambiosLog(st2.cambiosLog||[]); }
       let cnt=0; locked.forEach(r=>{ if(r.ventaAncla) cnt+=Object.keys(r.ventaAncla).length; });
       alert("Precio fijado en "+cnt+" línea(s).");
     }catch(ex){ alert("Error al fijar el precio: "+ex.message); }
@@ -508,13 +507,20 @@ export function Cotizador({ loadId, onDirty, role }){
       {corrigiendo&&<span style={{fontSize:11,fontWeight:"bold",color:"#C77800"}}>✎ Modo corrección (admin) — al guardar deberás poner una nota del cambio.</span>}
       {estatus==="enviada"&&isAdmin&&!corrigiendo&&<span style={{marginLeft:"auto"}}><Btn kind="ghost" small onClick={()=>{ if(confirm("¿Corregir este AM enviado?\n\nEsto es para arreglar errores nuestros SIN mandarle un nuevo Amendment al cliente. Al guardar se te pedirá una nota y el sistema registrará qué cambió. Conserva el mismo folio y vigencia.")) setCorrigiendo(true); }}>✎ Corregir enviada (admin)</Btn></span>}
     </div>)}
-    {cambios&&cambios.length>0&&(()=>{ const fh=cambiosFecha?(()=>{ const d=new Date(cambiosFecha); if(isNaN(d)) return null; const ms=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"]; return d.getDate()+"-"+ms[d.getMonth()]+"-"+d.getFullYear(); })():null; const us=cambiosUser?String(cambiosUser).split("@")[0]:null; return (<div style={{marginBottom:12,padding:"10px 14px",background:"#FFF9E9",border:"1px solid #EAD9A0",borderRadius:10}}>
-      <div style={{fontSize:12,fontWeight:"bold",color:"#8A6D1F",marginBottom:6}}>Control de cambios vs. amendment anterior ({cambios.length})</div>
-      <div style={{fontSize:11.5,color:C.slate}}>
-        {(fh||us)&&<div style={{fontWeight:"bold",color:"#8A6D1F",marginBottom:2}}>{fh||""}{fh&&us?" · ":""}{us?"por "+us:""}:</div>}
-        <ul style={{margin:0,paddingLeft:18,lineHeight:1.5}}>{cambios.slice(0,40).map((c,i)=><li key={i}>{c}</li>)}</ul>
-      </div>
-    </div>); })()}
+    {cambiosLog&&cambiosLog.length>0&&(()=>{ const fmtF=(f)=>{ if(!f) return ""; const d=new Date(f+"T00:00:00"); if(isNaN(d)) return f; const ms=["ene","feb","mar","abr","may","jun","jul","ago","sep","oct","nov","dic"]; return d.getDate()+"-"+ms[d.getMonth()]+"-"+d.getFullYear(); }; const total=cambiosLog.reduce((a,e)=>a+((e.items&&e.items.length)||0),0); const orden=[...cambiosLog].reverse(); return (
+      <div style={{marginBottom:12,background:"#FFF9E9",border:"1px solid #EAD9A0",borderRadius:10,overflow:"hidden"}}>
+        <div onClick={()=>setCambiosOpen(o=>!o)} style={{padding:"10px 14px",cursor:"pointer",display:"flex",alignItems:"center",gap:8}}>
+          <span style={{color:"#8A6D1F",fontSize:12}}>{cambiosOpen?"▾":"▸"}</span>
+          <span style={{fontSize:12,fontWeight:"bold",color:"#8A6D1F"}}>Control de cambios ({total})</span>
+          {!cambiosOpen&&<span style={{fontSize:11,color:C.label}}>· {cambiosLog.length} registro(s) · clic para ver</span>}
+        </div>
+        {cambiosOpen&&<div style={{padding:"0 14px 12px 14px"}}>{orden.map((e,ei)=>{ const us=e.usuario?String(e.usuario).split("@")[0]:"—"; const esProp=e.tipo==="propagacion"; return (
+          <div key={ei} style={{marginBottom:10}}>
+            <div style={{fontWeight:"bold",color:esProp?C.slate:"#8A6D1F",fontSize:11.5,marginBottom:2}}>{fmtF(e.fecha)}{esProp?(" · ↳ Propagación"+(e.origen?" desde "+e.origen:"")+" · por "+us):(" · por "+us)}:</div>
+            <ul style={{margin:0,paddingLeft:18,fontSize:11.5,color:C.slate,lineHeight:1.5}}>{(e.items||[]).slice(0,60).map((c,i)=><li key={i}>{c}</li>)}</ul>
+          </div>
+        ); })}</div>}
+      </div>); })()}
     {editarPropuesta&&(()=>{ const pm=lineasPropModificada(); return (<div style={{marginBottom:12,padding:"10px 14px",background:"#FFF3E0",border:"1px solid #F0C79A",borderRadius:10}}>
       <div style={{fontSize:12,fontWeight:"bold",color:"#C77800",marginBottom:pm.length?6:0}}>✎ Editando el precio al cliente — el precio ya no está congelado y puede cambiar al ajustar costos.{pm.length?" Cambios de precio ("+pm.length+"):":" (aún sin cambios de precio)"}</div>
       {pm.length>0&&<ul style={{margin:0,paddingLeft:18,fontSize:11.5,color:C.slate,lineHeight:1.5}}>{pm.slice(0,20).map((c,i)=><li key={i}>{c}</li>)}</ul>}

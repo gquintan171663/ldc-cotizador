@@ -224,27 +224,31 @@ export function resumenCambios(nuevo, previo){
   return out;
 }
 
-export async function saveCotizacion(state){
+export async function saveCotizacion(state, logInfo){
   const sum={versiones:0,lineas:0,opciones:0,surcharges:0,errores:[],codigo:null,versionId:null};
   const { versionId, cliente, clienteNombre, modo, direccion, commodity, commodity_id, origen, notas, tradelane, vigDesde, vigHasta } = state;
 
   if(versionId){
+    // Estado previo de ESTE borrador (antes de sobrescribir) para el historial de cambios
+    let prevSelfState=null; try{ prevSelfState=await loadVersion(versionId); }catch(_){}
     // EDITAR borrador existente: actualiza versión y reemplaza hijos
     await supabase.from("versiones").update({direccion,commodity:commodity||"",commodity_id:commodity_id||null,notas:notas||null,tradelane:tradelane||null,vig_desde:parseDate(vigDesde),vig_hasta:parseDate(vigHasta)}).eq("id",versionId);
     await supabase.from("lineas").delete().eq("version_id",versionId); // cascade -> opciones + recargos
     sum.versionId=versionId; sum.codigo=state.codigo;
     await insertChildren(versionId, state, sum);
-    // Control de cambios si es amendment (tiene reemplaza_a)
+    // Historial: registra los cambios de ESTA sesión (vs el guardado anterior) con fecha y usuario
     try{
-      const { data: vrow } = await supabase.from("versiones").select("reemplaza_a").eq("id",versionId).maybeSingle();
-      if(vrow && vrow.reemplaza_a){
-        const prev = await loadVersion(vrow.reemplaza_a);
-        const cambios = resumenCambios(state, prev||{});
-        await supabase.from("versiones").update({cambios}).eq("id",versionId);
-        sum.cambios=cambios;
-        sum.prevVigDesde=prev?.vigDesde||null; sum.prevVigHasta=prev?.vigHasta||null;
+      const items = prevSelfState ? resumenCambios(state, prevSelfState) : [];
+      const { data: vlog } = await supabase.from("versiones").select("cambios_log").eq("id",versionId).maybeSingle();
+      const log = Array.isArray(vlog&&vlog.cambios_log) ? vlog.cambios_log : [];
+      if(items && items.length){
+        let quien=""; try{ const { data:{ user } }=await supabase.auth.getUser(); quien=(user&&user.email)||""; }catch(_){}
+        const fecha=(()=>{ const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); })();
+        log.push({ fecha, usuario:quien, tipo:(logInfo&&logInfo.tipo)||"manual", origen:(logInfo&&logInfo.origen)||null, items });
+        await supabase.from("versiones").update({cambios_log:log}).eq("id",versionId);
       }
-    }catch(e){ /* el diff no debe romper el guardado */ }
+      sum.cambiosLog=log;
+    }catch(_){}
     return sum;
   }
 
@@ -355,10 +359,13 @@ export async function loadVersion(versionId){
     return {origen:l0.origen||"",precarriage_mode:l0.precarriage_mode||"",pol:l0.pol||"",pod:l0.pod||"",oncarriage_mode:l0.oncarriage_mode||"",destino:l0.destino||"",opciones:ops.length?ops:[{navScac:"",precios:{}}],elegida,elegidaEq:l0.elegida_eq||null,ventaAncla:Object.keys(ventaAncla).length?ventaAncla:null};
   });
   const anyL=(lineas||[])[0]||{};
+  let prevVigDesde=null, prevVigHasta=null;
+  if(ver.reemplaza_a){ try{ const { data:pv }=await supabase.from("versiones").select("vig_desde,vig_hasta").eq("id",ver.reemplaza_a).maybeSingle(); if(pv){ prevVigDesde=pv.vig_desde; prevVigHasta=pv.vig_hasta; } }catch(_){} }
   return {
     versionId, codigo:ver.codigo, estatus:ver.estatus, acuerdo_id:ver.acuerdos?.id,
     no_acuerdo:ver.acuerdos?.no_acuerdo||"", tradelane:ver.tradelane||"", amendment:ver.amendment||1,
-    cambios:ver.cambios||null, reemplaza_a:ver.reemplaza_a||null, updatedAt:ver.updated_at||null, updatedBy:ver.updated_by_email||null,
+    cambios:ver.cambios||null, cambiosLog:Array.isArray(ver.cambios_log)?ver.cambios_log:[], reemplaza_a:ver.reemplaza_a||null, updatedAt:ver.updated_at||null, updatedBy:ver.updated_by_email||null,
+    prevVigDesde, prevVigHasta,
     cliente:ver.acuerdos?.cliente_id, clienteNombre:ver.acuerdos?.clientes?.nombre,
     modo:ver.acuerdos?.modo||"maritimo", direccion:ver.direccion,
     commodity:ver.commodity, commodity_id:ver.commodity_id, notas:ver.notas||"", correcciones:ver.correcciones||"",
@@ -763,15 +770,7 @@ export async function aplicarRecargoEnBorradores({ targets, versionIds, scac, cl
       const surOfNew=mkSurOf(st);
       (st.rutas||[]).forEach((r,ri)=>{ (r.opciones||[]).forEach((o,oi)=>{ eqs.forEach(eqObj=>{ const pr=(o.precios||{})[eqObj.k]; if(!pr||pr.base==null||pr.base==="") return; const t=target[ri+"|"+oi+"|"+eqObj.k]; if(t==null) return; const nuevoProfit=t-n(pr.base)-adicPorCont(surOfNew(o.navScac,tlDe(r)),eqObj,dir); pr.profit=String(Math.round(nuevoProfit)); }); }); });
       const stState={ versionId:vid, codigo:st.codigo, cliente:st.cliente, clienteNombre:st.clienteNombre, modo:st.modo, direccion:dir, tradelane:st.tradelane, commodity:st.commodity, commodity_id:st.commodity_id||null, vigDesde:st.vigDesde, vigHasta:st.vigHasta, notas:st.notas, origen:"cero", equipos:st.equipos, rutas:st.rutas, quoteNav:st.quoteNav };
-      await saveCotizacion(stState);
-      // Marca de propagación en Notas internas del borrador destino (trazabilidad)
-      try{
-        const fecha=(()=>{ const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); })();
-        const montoTxt=(montosLimpio?("por tamaño: "+Object.entries(montosLimpio).map(([k,v])=>k+" $"+v).join(", ")):("$"+(nuevoMonto!=null?nuevoMonto:"")));
-        const sello="— Propagación "+fecha+": recargo "+clave+" "+scac+" = "+montoTxt+(origenFolio?(" (desde "+origenFolio+")"):"");
-        const prevCorr=st.correcciones||"";
-        await supabase.from("versiones").update({correcciones:(prevCorr?prevCorr+"\n":"")+sello}).eq("id",vid);
-      }catch(_){}
+      await saveCotizacion(stState, { tipo:"propagacion", origen:origenFolio||null });
       aplicados+= selRutas?selRutas.length:1;
     }catch(ex){ errores.push(vid+": "+ex.message); }
   }
