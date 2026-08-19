@@ -251,7 +251,7 @@ export function Cotizador({ loadId, onDirty, role }){
     const montosTxt=(prop.montos&&Object.values(prop.montos).some(v=>v!==""&&v!=null))?(" (por tamaño: "+Object.entries(prop.montos).filter(([k,v])=>v!==""&&v!=null).map(([k,v])=>k+" $"+v).join(", ")+")"):"";
     if(!confirm("¿Aplicar el recargo "+prop.clave+" = $"+(prop.monto||0)+montosTxt+" a "+targets.length+" ruta(s) en "+nBorr+" borrador(es)?\n\nSe conserva la tarifa al cliente (el profit absorbe el cambio de costo).")) return;
     setProp(p=>({...p,busy:true}));
-    try{ const res=await aplicarRecargoEnBorradores({ targets, scac:prop.scac, clave:prop.clave, nuevoMonto:prop.monto, nuevosMontos:prop.montos||null });
+    try{ const res=await aplicarRecargoEnBorradores({ targets, scac:prop.scac, clave:prop.clave, nuevoMonto:prop.monto, nuevosMontos:prop.montos||null, origenFolio:(codigo||codigoPreview) });
       setProp(null);
       alert("Aplicado a "+res.aplicados+" ruta(s)."+(res.errores&&res.errores.length?("\n\nAvisos:\n• "+res.errores.join("\n• ")):""));
     }catch(ex){ setProp(p=>({...p,busy:false})); alert("Error al aplicar: "+ex.message); }
@@ -611,7 +611,7 @@ export function Cotizador({ loadId, onDirty, role }){
         <Lbl>Notas <span style={{fontWeight:"normal",color:C.label,textTransform:"none"}}>· texto libre que aparece en el PDF (condiciones, comentarios, etc.)</span></Lbl>
         <textarea value={notas} onChange={e=>setNotas(e.target.value)} placeholder="Ej. Tarifas sujetas a disponibilidad de espacio y equipo. No incluye seguro de la mercancía…" rows={3} style={{...inS,marginTop:4,resize:"vertical",minHeight:64,fontFamily:F,lineHeight:1.45}}/>
         {notasInternas&&<div style={{marginTop:12}}>
-          <Lbl>Notas internas <span style={{fontWeight:"normal",color:C.label,textTransform:"none"}}>· registro de correcciones (uso interno, NO sale al cliente)</span></Lbl>
+          <Lbl>Notas internas <span style={{fontWeight:"normal",color:C.label,textTransform:"none"}}>· correcciones y propagaciones (uso interno, NO sale al cliente)</span></Lbl>
           <div style={{marginTop:4,padding:"8px 10px",background:"#FBF4E0",border:"1px solid #EAD9A0",borderRadius:8,fontSize:11.5,color:C.slate,whiteSpace:"pre-wrap",fontFamily:F,lineHeight:1.5}}>{notasInternas}</div>
         </div>}
       </div>

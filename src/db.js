@@ -92,33 +92,40 @@ export async function importRates(recs, onProgress=()=>{}){
 async function insertChildren(versionId, state, sum){
   const { vigDesde, vigHasta, equipos, rutas, quoteNav } = state;
   const surOf=(scac,tl)=>((quoteNav||[]).find(q=>q.scac===scac&&(q.tl||"")===(tl||""))||{}).surcharges||[];
-  for(const r of rutas){
-    for(const ek of equipos){
-      let { data: lin, error: le } = await supabase.from("lineas")
-        .insert({version_id:versionId,origen:r.origen||"",precarriage_mode:r.precarriage_mode||"",pol:r.pol||"",pod:r.pod||"",oncarriage_mode:r.oncarriage_mode||"",destino:r.destino||"",equipo:ek,validez_desde:vigDesde||null,validez_hasta:vigHasta||null,elegida_eq:r.elegidaEq||null,venta_anclada:(r.ventaAncla&&r.ventaAncla[ek]!=null)?r.ventaAncla[ek]:null})
-        .select("id").single();
-      if(le){ sum.errores.push("linea: "+le.message); continue; }
-      sum.lineas++;
-      let elegidaOpcionId=null;
-      for(let oi=0; oi<r.opciones.length; oi++){
-        const o=r.opciones[oi];
-        const pr=(o.precios&&o.precios[ek])||{};
-        let { data: opt, error: oe } = await supabase.from("opciones_costo")
-          .insert({linea_id:lin.id,naviera:o.navScac||"",costo_base:parseFloat(pr.base)||0,profit:parseFloat(pr.profit)||0,transito_dias:parseInt(o.transito)||null,sugerida:(r.elegida??0)===oi})
-          .select("id").single();
-        if(oe){ sum.errores.push("opcion: "+oe.message); continue; }
-        sum.opciones++;
-        if((r.elegida??0)===oi) elegidaOpcionId=opt.id;
-        const surs=surOf(o.navScac, tlDe(r));
-        if(surs.length){
-          const rows=surs.map((s,idx)=>({opcion_id:opt.id,clave:s.c||"",descripcion:s.d||"",monto:parseFloat(s.monto)||0,moneda:s.moneda||"USD",incluido:!!s.incluido,desplegar:s.desplegar!==false,pago:s.pago||"prepaid",basis:s.basis||"contenedor",montos:s.montos||null,orden:idx}));
-          let { error: se } = await supabase.from("opcion_surcharges").insert(rows);
-          if(se) sum.errores.push("surcharges: "+se.message); else sum.surcharges+=rows.length;
-        }
-      }
-      if(elegidaOpcionId) await supabase.from("lineas").update({opcion_elegida_id:elegidaOpcionId}).eq("id",lin.id);
-    }
-  }
+
+  // 1) LÍNEAS en un solo insert
+  const lineaRows=[], lineaMeta=[];
+  for(const r of (rutas||[])){ for(const ek of (equipos||[])){
+    lineaRows.push({version_id:versionId,origen:r.origen||"",precarriage_mode:r.precarriage_mode||"",pol:r.pol||"",pod:r.pod||"",oncarriage_mode:r.oncarriage_mode||"",destino:r.destino||"",equipo:ek,validez_desde:vigDesde||null,validez_hasta:vigHasta||null,elegida_eq:r.elegidaEq||null,venta_anclada:(r.ventaAncla&&r.ventaAncla[ek]!=null)?r.ventaAncla[ek]:null});
+    lineaMeta.push({r, ek});
+  }}
+  if(!lineaRows.length) return;
+  const { data: lins, error: le } = await supabase.from("lineas").insert(lineaRows).select("id");
+  if(le || !lins){ sum.errores.push("lineas: "+(le&&le.message)); return; }
+  sum.lineas+=lins.length;
+
+  // 2) OPCIONES en un solo insert
+  const opRows=[], opMeta=[];
+  lins.forEach((lin, li)=>{ const {r, ek}=lineaMeta[li];
+    (r.opciones||[]).forEach((o, oi)=>{ const pr=(o.precios&&o.precios[ek])||{};
+      opRows.push({linea_id:lin.id,naviera:o.navScac||"",costo_base:parseFloat(pr.base)||0,profit:parseFloat(pr.profit)||0,transito_dias:parseInt(o.transito)||null,sugerida:(r.elegida??0)===oi});
+      opMeta.push({lineaId:lin.id, r, oi, o});
+    });
+  });
+  let ops=[];
+  if(opRows.length){ const res=await supabase.from("opciones_costo").insert(opRows).select("id"); if(res.error){ sum.errores.push("opciones: "+res.error.message); } else { ops=res.data||[]; sum.opciones+=ops.length; } }
+
+  // 3) SURCHARGES en un solo insert
+  const surRows=[];
+  ops.forEach((op, k)=>{ const {r, o}=opMeta[k]; const surs=surOf(o.navScac, tlDe(r));
+    (surs||[]).forEach((s, idx)=>{ surRows.push({opcion_id:op.id,clave:s.c||"",descripcion:s.d||"",monto:parseFloat(s.monto)||0,moneda:s.moneda||"USD",incluido:!!s.incluido,desplegar:s.desplegar!==false,pago:s.pago||"prepaid",basis:s.basis||"contenedor",montos:s.montos||null,orden:idx}); });
+  });
+  if(surRows.length){ const res=await supabase.from("opcion_surcharges").insert(surRows); if(res.error) sum.errores.push("surcharges: "+res.error.message); else sum.surcharges+=surRows.length; }
+
+  // 4) opcion_elegida_id por línea (en paralelo, no secuencial)
+  const updates=[];
+  ops.forEach((op, k)=>{ const {lineaId, r, oi}=opMeta[k]; if((r.elegida??0)===oi){ updates.push(supabase.from("lineas").update({opcion_elegida_id:op.id}).eq("id",lineaId)); } });
+  if(updates.length) await Promise.all(updates);
 }
 
 // ===== Control de cambios: diff legible de un amendment vs la versión anterior =====
@@ -726,7 +733,7 @@ export async function buscarCoincidenciasRecargo({ scac, paisPol, paisPod, clave
 
 // Aplica el nuevo monto del recargo (clave) de la naviera scac en los borradores dados,
 // conservando TODAS las ventas de cada borrador (el profit absorbe el cambio de costo).
-export async function aplicarRecargoEnBorradores({ targets, versionIds, scac, clave, nuevoMonto, nuevosMontos }){
+export async function aplicarRecargoEnBorradores({ targets, versionIds, scac, clave, nuevoMonto, nuevosMontos, origenFolio }){
   const cl=String(clave||"").toUpperCase();
   // agrupar targets por versionId; cada target trae {versionId,pol,pod}. Compat: versionIds sueltos = todas sus rutas.
   const porVer={};
@@ -757,6 +764,14 @@ export async function aplicarRecargoEnBorradores({ targets, versionIds, scac, cl
       (st.rutas||[]).forEach((r,ri)=>{ (r.opciones||[]).forEach((o,oi)=>{ eqs.forEach(eqObj=>{ const pr=(o.precios||{})[eqObj.k]; if(!pr||pr.base==null||pr.base==="") return; const t=target[ri+"|"+oi+"|"+eqObj.k]; if(t==null) return; const nuevoProfit=t-n(pr.base)-adicPorCont(surOfNew(o.navScac,tlDe(r)),eqObj,dir); pr.profit=String(Math.round(nuevoProfit)); }); }); });
       const stState={ versionId:vid, codigo:st.codigo, cliente:st.cliente, clienteNombre:st.clienteNombre, modo:st.modo, direccion:dir, tradelane:st.tradelane, commodity:st.commodity, commodity_id:st.commodity_id||null, vigDesde:st.vigDesde, vigHasta:st.vigHasta, notas:st.notas, origen:"cero", equipos:st.equipos, rutas:st.rutas, quoteNav:st.quoteNav };
       await saveCotizacion(stState);
+      // Marca de propagación en Notas internas del borrador destino (trazabilidad)
+      try{
+        const fecha=(()=>{ const d=new Date(); return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10); })();
+        const montoTxt=(montosLimpio?("por tamaño: "+Object.entries(montosLimpio).map(([k,v])=>k+" $"+v).join(", ")):("$"+(nuevoMonto!=null?nuevoMonto:"")));
+        const sello="— Propagación "+fecha+": recargo "+clave+" "+scac+" = "+montoTxt+(origenFolio?(" (desde "+origenFolio+")"):"");
+        const prevCorr=st.correcciones||"";
+        await supabase.from("versiones").update({correcciones:(prevCorr?prevCorr+"\n":"")+sello}).eq("id",vid);
+      }catch(_){}
       aplicados+= selRutas?selRutas.length:1;
     }catch(ex){ errores.push(vid+": "+ex.message); }
   }
