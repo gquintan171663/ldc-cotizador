@@ -293,19 +293,23 @@ export function Cotizador({ loadId, onDirty, role }){
   const impWbRef=React.useRef(null);
   const impInputRef=React.useRef(null);
   const bajarPlantillaTarifario=async()=>{
-    const HDR=["Customer","Origen","Transp Mode Origen","POL","POD","Destination","Transp Mode Destino","T.T.","Tarifa Base 20'","Tarifa Base 40'/40HC","Carrier","Tradelane","Srvc. Mode"];
+    const HDR=["Customer","Origen","Estado origen","Transp Mode Origen","POL","POD","Destination","Estado destino","Transp Mode Destino","T.T.","Tarifa Base 20'","Tarifa Base 40'/40HC","Carrier","Tradelane","Srvc. Mode"];
     const MODO=["All Truck","Rail+Truck","Rail Ramp","Truck Ramp","Barge"], CARR=["CMA","Hapag","Maersk","MSC"], SRV=["CY-CY","DR-CY","CY-DR","DR-DR"];
     const TL=TRADELANES.map(t=>t.code);
     const wb=new ExcelJS.Workbook();
     const ws=wb.addWorksheet("Tarifario",{views:[{state:"frozen",ySplit:1}]});
-    ws.columns=HDR.map((h,i)=>({ header:h, width:[13,15,17,15,15,15,17,7,14,16,10,11,11][i]||14 }));
+    ws.columns=HDR.map((h,i)=>({ header:h, width:[13,15,14,17,15,15,15,14,17,7,14,16,10,11,11][i]||14 }));
     const hr=ws.getRow(1); hr.height=22;
     hr.eachCell((c)=>{ c.font={name:"Arial",bold:true,size:9,color:{argb:"FFFFFFFF"}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF1A1A1A"}}; c.alignment={horizontal:"center",vertical:"middle"}; });
-    const ej=["Deacero","EJEMPLO Guadalajara","All Truck","Manzanillo, MX","Ningbo","","","28","","1650","Maersk","TPWB","DR-CY"];
+    const ej=["Deacero","EJEMPLO Guadalajara","Jalisco","All Truck","Manzanillo","Ningbo","","","","28","","1650","Maersk","TPWB","DR-CY"];
     const er=ws.getRow(2); ej.forEach((v,i)=>{ er.getCell(i+1).value=v; });
     er.eachCell((c)=>{ c.font={name:"Arial",italic:true,size:9,color:{argb:"FF8A939C"}}; });
     const dv=(col,opts)=>{ for(let r=2;r<=400;r++){ ws.getCell(r,col).dataValidation={ type:"list", allowBlank:true, formulae:['"'+opts.join(",")+'"'] }; } };
-    dv(3,MODO); dv(7,MODO); dv(11,CARR); dv(12,TL); dv(13,SRV);
+    // Lista de estados (larga) va en hoja auxiliar por el límite de 255 caracteres de la validación en línea
+    const wsL=wb.addWorksheet("Listas",{state:"veryHidden"});
+    ESTADOS_MX.forEach((e,i)=>{ wsL.getCell(i+1,1).value=e; });
+    const dvRef=(col,ref)=>{ for(let r=2;r<=400;r++){ ws.getCell(r,col).dataValidation={ type:"list", allowBlank:true, formulae:[ref] }; } };
+    dvRef(3,"Listas!$A$1:$A$"+ESTADOS_MX.length); dv(4,MODO); dvRef(8,"Listas!$A$1:$A$"+ESTADOS_MX.length); dv(9,MODO); dv(13,CARR); dv(14,TL); dv(15,SRV);
     ws.autoFilter="A1:"+ws.getColumn(HDR.length).letter+"1";
     const buf=await wb.xlsx.writeBuffer();
     const blob=new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});

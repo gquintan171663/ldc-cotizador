@@ -387,11 +387,11 @@ export const codigoPuerto=(name)=>{
 const _CIUDALIAS={"mexico city":"Ciudad de México","mexico df":"Ciudad de México","cdmx":"Ciudad de México","ciudad de mexico":"Ciudad de México","monterrey nl":"Monterrey","guadalajara jal":"Guadalajara"};
 export const ciudadNorm=(name)=>{
   const raw=String(name||"").trim(); if(!raw) return "";
-  if(/,\s*[A-Za-z]{2}$/.test(raw)) return raw;                 // ya viene "Ciudad, CC"
-  const ali=_CIUDALIAS[raw.toLowerCase()]||raw;
+  const sinPais=raw.replace(/,\s*[A-Za-z]{2,4}\s*$/,"").trim();   // quita ", MX" / ", MEX" si viene
+  const ali=_CIUDALIAS[sinPais.toLowerCase()]||sinPais;
   const nu=_pnorm(ali);
   const c=CIUDADES.find(x=>_pnorm(x.city)===nu);
-  return c?(c.city+", "+c.country):raw;
+  return c?c.city:sinPais;                                        // solo el nombre de la ciudad
 };
 // Abreviaturas del tarifario para POL y modo (columna "Via" tipo "Mzo Truck", "Lazaro R+T")
 const _POLABBR={"mzo":"MXZLO","manzanillo":"MXZLO","lazaro":"MXLZC","lzc":"MXLZC","ler":"MXLZC","ver":"MXVER","veracruz":"MXVER","altamira":"MXATM","atm":"MXATM","tam":"MXTAM","tampico":"MXTAM"};
@@ -541,6 +541,7 @@ export function parseTarifario(rows){
     // Dos columnas de transp mode (origen/destino) con respaldo a una sola columna "Transp Mode"
     const idxTp=(fn)=>{ for(let i=0;i<H.length;i++){ if(fn(H[i].toLowerCase())) return i; } return -1; };
     const cTrOri=idxTp(h=>/transp/.test(h)&&/orig/.test(h)), cTrDest=idxTp(h=>/transp/.test(h)&&/dest/.test(h));
+    const cEstOri=idxTp(h=>/estado|state/.test(h)&&/orig/.test(h)), cEstDest=idxTp(h=>/estado|state/.test(h)&&/dest/.test(h));
     const trOriDe=(row)=> cTrOri>=0?String(row[cTrOri]||"").trim() : (cTr>=0?(String(row[cTr]||"").includes("/")?String(row[cTr]).split("/")[0]:String(row[cTr]||"")).trim():"");
     const trDestDe=(row)=> cTrDest>=0?String(row[cTrDest]||"").trim() : (cTr>=0?(String(row[cTr]||"").includes("/")?(String(row[cTr]).split("/")[1]||""):String(row[cTr]||"")).trim():"");
     const map=new Map();
@@ -555,8 +556,10 @@ export function parseTarifario(rows){
       const pol=codigoPuerto(polR), pod=codigoPuerto(podR);
       const origen=(cOri>=0&&srvc.startsWith("DR"))?ciudadNorm(String(row[cOri]||"").trim()):"";
       const destino=(cDest>=0&&srvc.endsWith("DR"))?ciudadNorm(String(row[cDest]||"").trim()):"";
+      const oEst=(cEstOri>=0&&srvc.startsWith("DR"))?String(row[cEstOri]||"").trim():"";
+      const dEst=(cEstDest>=0&&srvc.endsWith("DR"))?String(row[cEstDest]||"").trim():"";
       const key=origen+"|"+pol+"|"+pod;
-      if(!map.has(key)) map.set(key,{origen,precarriage_mode:pre,pol,pod,oncarriage_mode:on,destino,opciones:[],elegida:0});
+      if(!map.has(key)) map.set(key,{origen,origenEstado:oEst,precarriage_mode:pre,pol,pod,oncarriage_mode:on,destino,destinoEstado:dEst,opciones:[],elegida:0});
       const R=map.get(key);
       const scac=scacTarifario(String(row[cCarr]||"").trim()); if(!scac) continue;
       const b20=num(row[c20]), bhc=num(cHC>=0?row[cHC]:null), b40=num(c40>=0?row[c40]:null);
