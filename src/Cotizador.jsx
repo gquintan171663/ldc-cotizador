@@ -445,7 +445,6 @@ export function Cotizador({ loadId, onDirty, role }){
   const guardar=async()=>{
     if(!cliente){ alert("Elige un cliente."); return; }
     if(vigDesde&&vigHasta&&vigDesde>vigHasta){ alert("La vigencia está invertida: \"desde\" ("+vigDesde+") es posterior a \"hasta\" ("+vigHasta+"). Corrige las fechas antes de guardar."); return; }
-    const falt=faltanPOLPOD(); if(falt.length){ alert("Faltan datos obligatorios en las rutas (POL, POD, naviera y modo si hay ciudad):\n\n• "+falt.join("\n• ")); return; }
     const cn=(clientes.find(c=>c.id===cliente)||{}).nombre;
     const st={versionId,codigo,cliente,clienteNombre:cn,modo,direccion,tradelane,commodity:comLabel,commodity_id:commodityId||null,vigDesde,vigHasta,notas,origen:"cero",equipos,rutas:derivarAnclaje(rutas),quoteNav};
     // #5 Conflicto: misma ruta + misma vigencia con tarifa distinta
@@ -476,7 +475,7 @@ export function Cotizador({ loadId, onDirty, role }){
   const bajoProfit=()=>{ const eqObjs=EQUIPOS.filter(e=>equipos.includes(e.k)); const out=[]; (rutas||[]).forEach(r=>{ eqObjs.forEach(e=>{ const oi=opcionActivaEq(r,e.k,e,direccion,surOfMain); const o=(r.opciones||[])[oi]; if(!o) return; const pr=(o.precios||{})[e.k]||{}; if(pr.base==null||pr.base===""||n(pr.base)<=0) return; const prof=n(pr.profit); if(prof<250) out.push((r.pol||r.origen||"?")+"→"+(r.pod||r.destino||"?")+" "+e.t+" ("+(o.navScac||"—")+"): "+(prof>0?("$"+prof):"SIN PROFIT")); }); }); return out; };
   const confirmProfit=()=>{ const low=bajoProfit(); if(!low.length) return true; return confirm("⚠ Profit bajo o nulo (menor a $250 USD) en:\n\n• "+low.slice(0,12).join("\n• ")+"\n\n¿Continuar de todas formas?"); };
   const faltanPOLPOD=()=>{ const out=[]; (rutas||[]).forEach((r,i)=>{ const f=[]; if(!tx(r.pol))f.push("POL"); if(!tx(r.pod))f.push("POD"); if(!(r.opciones||[]).some(o=>tx(o.navScac)))f.push("naviera"); if(tx(r.origen)&&!tx(r.precarriage_mode))f.push("modo (origen)"); if(tx(r.destino)&&!tx(r.oncarriage_mode))f.push("modo (destino)"); if(f.length) out.push("R"+(i+1)+": falta "+f.join(", ")); }); return out; };
-  const enviar=async()=>{ if(!versionId) return; if(vigDesde&&vigHasta&&vigDesde>vigHasta){ alert("La vigencia está invertida: \"desde\" ("+vigDesde+") es posterior a \"hasta\" ("+vigHasta+"). Corrige las fechas antes de enviar."); return; } if(!confirmProfit()) return; await markEnviada(versionId); setEstatus("enviada"); };
+  const enviar=async()=>{ if(!versionId) return; if(vigDesde&&vigHasta&&vigDesde>vigHasta){ alert("La vigencia está invertida: \"desde\" ("+vigDesde+") es posterior a \"hasta\" ("+vigHasta+"). Corrige las fechas antes de enviar."); return; } const falt=faltanPOLPOD(); if(falt.length){ alert("No se puede marcar como enviada: faltan datos obligatorios en las rutas (POL, POD, naviera y modo si hay ciudad):\n\n• "+falt.join("\n• ")); return; } if(!confirmProfit()) return; await markEnviada(versionId); setEstatus("enviada"); };
   const guardarCorreccionUI=async()=>{
     if(!versionId) return;
     if(vigDesde&&vigHasta&&vigDesde>vigHasta){ alert("La vigencia está invertida. Corrige las fechas antes de guardar."); return; }
