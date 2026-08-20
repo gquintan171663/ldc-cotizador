@@ -346,13 +346,16 @@ const _nombreSimilar=(claveA, claveB)=>{
 };
 const _matchPuerto=(a,b)=> a===b || _nombreSimilar(a,b);
 
-export async function buscarRutasSimilares({ pol, pod, versionExcluir }){
-  if(!pol || !pod) return { exactas:[], aproximadas:[] };
+const _normCiudad=(s)=>String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g," ").replace(/\b(mx|mex|mexico)\b/g,"").replace(/\s+/g," ").trim();
+
+export async function buscarRutasSimilares({ pol, pod, origen, destino, versionExcluir }){
+  if(!pol || !pod) return { exactas:[], similares:[], aproximadas:[] };
   const { data: vers, error } = await supabase.from("versiones")
     .select("id,codigo,commodity,acuerdos(clientes(nombre))")
     .eq("estatus","borrador").limit(500);
-  if(error) return { exactas:[], aproximadas:[], error:error.message };
-  const exactas=[], aproximadas=[];
+  if(error) return { exactas:[], similares:[], aproximadas:[], error:error.message };
+  const ocSrc=_normCiudad(origen), dcSrc=_normCiudad(destino);
+  const exactas=[], similares=[], aproximadas=[];
   for(const v of (vers||[])){
     if(v.id===versionExcluir) continue;
     let st; try{ st=await loadVersion(v.id); }catch(_){ continue; }
@@ -361,7 +364,6 @@ export async function buscarRutasSimilares({ pol, pod, versionExcluir }){
     (st.rutas||[]).forEach(r=>{
       if(!r.pol || !r.pod) return;
       if(!(_matchPuerto(r.pol,pol) && _matchPuerto(r.pod,pod))) return;
-      const exacta = (r.pol===pol && r.pod===pod);
       const navieras=(r.opciones||[]).map(o=>({
         scac:o.navScac||"", transito:o.transito||"",
         precios:o.precios||{},
@@ -369,16 +371,21 @@ export async function buscarRutasSimilares({ pol, pod, versionExcluir }){
         tl:tlDe(r)
       })).filter(nv=>nv.scac);
       if(!navieras.length) return;
-      const _oc=r.origen||"", _dc=r.destino||"";
-      const rutaCompleta=(_oc?_oc+" › ":"")+_loc(r.pol)+" → "+_loc(r.pod)+(_dc?" › "+_dc:"");
+      const _oc=r.origen||"", _dc=r.destino||"", _om=r.precarriage_mode||"", _dm=r.oncarriage_mode||"";
+      const rutaCompleta=(_oc?(_oc+(_om?" ["+_om+"]":"")+" › "):"")+_loc(r.pol)+" → "+_loc(r.pod)+(_dc?(" › "+(_dm?"["+_dm+"] ":"")+_dc):"");
+      const polExact=(r.pol===pol), podExact=(r.pod===pod);
+      const ocIgual=(_normCiudad(_oc)===ocSrc), dcIgual=(_normCiudad(_dc)===dcSrc);
+      let nivel; // exacta = 4/4 ; similar = POL+POD por clave, ciudad difiere ; aproximada = puerto por nombre
+      if(polExact && podExact && ocIgual && dcIgual) nivel="exacta";
+      else if(polExact && podExact) nivel="similar";
+      else nivel="aproximada";
       const row={ versionId:v.id, cliente:v.acuerdos?.clientes?.nombre||st.clienteNombre||"", folio:v.codigo||st.codigo||"",
         producto:v.commodity||st.commodity||"", direccion:st.direccion||"E", pol:r.pol, pod:r.pod, polNombre:_loc(r.pol), podNombre:_loc(r.pod),
-        origen:_oc, destino:_dc, rutaCompleta,
-        exacta, navieras };
-      (exacta?exactas:aproximadas).push(row);
+        origen:_oc, destino:_dc, precarriage_mode:_om, oncarriage_mode:_dm, rutaCompleta, nivel, navieras };
+      (nivel==="exacta"?exactas:nivel==="similar"?similares:aproximadas).push(row);
     });
   }
-  return { exactas, aproximadas };
+  return { exactas, similares, aproximadas };
 }
 
 export async function loadVersion(versionId){
