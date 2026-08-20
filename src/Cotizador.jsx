@@ -670,32 +670,56 @@ export function Cotizador({ loadId, onDirty, role }){
         </div>
       </div>
     </>)}
-    {sim&&<div onClick={()=>!sim.busy&&setSim(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
-      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,padding:20,width:"min(760px,95vw)",maxHeight:"88vh",overflow:"auto",boxShadow:"0 12px 44px rgba(0,0,0,0.28)"}}>
-        <div style={{fontSize:15,fontWeight:"bold",color:C.ink,marginBottom:4}}>🔎 Tarifas de rutas similares</div>
-        <div style={{fontSize:11.5,color:C.label,marginBottom:12,lineHeight:1.45}}>Rutas en otros borradores con el mismo POL/POD (o puertos de nombre similar). Importa navieras + base + recargos + profit como base; se conserva tu POL/POD. Revisa los números antes de cotizar.</div>
-        {sim.busy&&<div style={{fontSize:12.5,color:C.label,padding:"14px 0"}}>Buscando…</div>}
-        {!sim.busy&&(()=>{ const render=(lista,titulo,badge)=> (lista&&lista.length>0)&&(<div style={{marginBottom:14}}>
-          <div style={{fontSize:12,fontWeight:"bold",color:C.slate,marginBottom:6}}>{titulo} ({lista.length})</div>
-          {lista.map((m,mi)=>(<div key={mi} style={{border:"1px solid "+C.sep2,borderRadius:8,padding:"9px 11px",marginBottom:8}}>
-            <div style={{display:"flex",alignItems:"center",gap:8,flexWrap:"wrap",marginBottom:6}}>
-              <span style={{fontSize:9.5,fontWeight:"bold",color:badge.c,background:badge.bg,border:"1px solid "+C.sep2,borderRadius:4,padding:"1px 6px"}}>{badge.t}</span>
-              <span style={{fontWeight:"bold",color:C.ink,fontSize:12.5}}>{m.folio}</span>
-              <span style={{color:C.slate,fontSize:12}}>{m.cliente}</span>
-              {m.producto&&<span style={{color:C.label,fontSize:11}}>· {m.producto}</span>}
-              <span style={{color:C.label,fontSize:11,marginLeft:"auto"}}>{m.polNombre} → {m.podNombre}</span>
-            </div>
-            <div style={{fontSize:11,color:C.slate,marginBottom:8}}>{(m.navieras||[]).map((nv,ni)=>{ const eqk=Object.keys(nv.precios||{}); const bases=eqk.map(k=>{const b=(nv.precios[k]||{}).base; return b?("$"+b):null;}).filter(Boolean); return <span key={ni} style={{display:"inline-block",marginRight:12}}><b>{nv.scac}</b>{bases.length?(" base "+bases.join("/")):""}{(nv.recargos&&nv.recargos.length)?(" · "+nv.recargos.length+" recargo(s)"):""}</span>; })}</div>
-            <div style={{display:"flex",justifyContent:"flex-end"}}><Btn kind="primary" small onClick={()=>importarSimilar(m)}>Importar a mi ruta</Btn></div>
-          </div>))}
-        </div>);
-        const hay=(sim.exactas&&sim.exactas.length)||(sim.aproximadas&&sim.aproximadas.length);
-        return (<div>
-          {render(sim.exactas,"Coincidencia exacta (mismo POL y POD)",{t:"EXACTA",c:"#0B7A3B",bg:"#E8F5EC"})}
-          {render(sim.aproximadas,"Coincidencia aproximada (puerto de nombre similar)",{t:"SIMILAR",c:"#1F6FB2",bg:"#E7F1FB"})}
-          {!hay&&<div style={{fontSize:12.5,color:C.label,padding:"12px 0"}}>No se encontraron rutas similares en otros borradores.</div>}
-        </div>); })()}
-        <div style={{display:"flex",justifyContent:"flex-end",marginTop:6}}><Btn kind="ghost" onClick={()=>setSim(null)}>Cerrar</Btn></div>
+    {sim&&<div onClick={()=>!sim.busy&&setSim(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.06)",display:"flex",justifyContent:"flex-end",zIndex:1000}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",width:"min(560px,96vw)",height:"100%",overflow:"auto",boxShadow:"-8px 0 32px rgba(0,0,0,0.22)",padding:20}}>
+        <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
+          <div style={{fontSize:15,fontWeight:"bold",color:C.ink}}>\U0001F50E Tarifas de rutas similares</div>
+          <span onClick={()=>setSim(null)} style={{cursor:"pointer",color:C.label,fontSize:18,lineHeight:1}}>\u2715</span>
+        </div>
+        <div style={{fontSize:11.5,color:C.label,marginBottom:12,lineHeight:1.45}}>Rutas en otros borradores con el mismo POL/POD (o puerto de nombre similar). Importa navieras + base + recargos + profit; se conserva tu POL/POD.</div>
+        {sim.busy&&<div style={{fontSize:12.5,color:C.label,padding:"14px 0"}}>Buscando\u2026</div>}
+        {!sim.busy&&(()=>{
+          const dirActual=direccion||"E";
+          const filaEq=(nv,dirRef)=>{ const eqk=Object.keys(nv.precios||{}).filter(k=>{const p=nv.precios[k]||{};return p.base!=null&&p.base!=="";}); return eqk.map(ek=>{ const eqObj=EQUIPOS.find(e=>e.k===ek); if(!eqObj) return null; const pr=nv.precios[ek]||{}; const base=n(pr.base); const rec=adicPorCont(nv.recargos||[],eqObj,dirRef); const prof=n(pr.profit); const venta=round10(base+rec+prof); return {ek,eqT:eqObj.t,base,recN:(nv.recargos||[]).length,rec,prof,venta}; }).filter(Boolean); };
+          const render=(lista,titulo,badge)=> (lista&&lista.length>0)&&(<div style={{marginBottom:16}}>
+            <div style={{fontSize:12,fontWeight:"bold",color:C.slate,marginBottom:6}}>{titulo} ({lista.length})</div>
+            {lista.map((m,mi)=>{ const dirRef=m.direccion||dirActual; return (<div key={mi} style={{border:"1px solid "+C.sep2,borderRadius:8,padding:"9px 11px",marginBottom:10}}>
+              <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap",marginBottom:2}}>
+                <span style={{fontSize:9.5,fontWeight:"bold",color:badge.c,background:badge.bg,border:"1px solid "+C.sep2,borderRadius:4,padding:"1px 6px"}}>{badge.t}</span>
+                <span style={{fontWeight:"bold",color:C.ink,fontSize:12.5}}>{m.folio}</span>
+                <span style={{color:C.slate,fontSize:12}}>{m.cliente}</span>
+                {m.producto&&<span style={{color:C.label,fontSize:11}}>\u00b7 {m.producto}</span>}
+              </div>
+              <div style={{fontSize:11,color:C.label,marginBottom:7}}>{m.polNombre} \u2192 {m.podNombre}</div>
+              <table style={{width:"100%",borderCollapse:"collapse",fontSize:11}}>
+                <thead><tr style={{color:C.label,textAlign:"right"}}>
+                  <th style={{textAlign:"left",fontWeight:"normal",padding:"2px 4px"}}>Equipo</th>
+                  <th style={{textAlign:"left",fontWeight:"normal",padding:"2px 4px"}}>Naviera</th>
+                  <th style={{fontWeight:"normal",padding:"2px 4px"}}>Base</th>
+                  <th style={{fontWeight:"normal",padding:"2px 4px"}}>Recargos</th>
+                  <th style={{fontWeight:"normal",padding:"2px 4px"}}>Profit</th>
+                  <th style={{fontWeight:"normal",padding:"2px 4px"}}>Tarifa cliente</th>
+                </tr></thead>
+                <tbody>{(m.navieras||[]).map((nv,ni)=> filaEq(nv,dirRef).map((ff,fi)=>(
+                  <tr key={ni+"-"+fi} style={{borderTop:"1px solid "+C.sep,textAlign:"right"}}>
+                    <td style={{textAlign:"left",padding:"3px 4px",color:C.slate}}>{ff.eqT}</td>
+                    <td style={{textAlign:"left",padding:"3px 4px",fontWeight:"bold",color:C.ink}}>{nv.scac}</td>
+                    <td style={{padding:"3px 4px"}}>${ff.base.toLocaleString()}</td>
+                    <td style={{padding:"3px 4px"}}>${ff.rec.toLocaleString()} <span style={{color:C.label}}>({ff.recN})</span></td>
+                    <td style={{padding:"3px 4px",color:ff.prof<250?C.red:C.slate}}>${ff.prof.toLocaleString()}</td>
+                    <td style={{padding:"3px 4px",fontWeight:"bold",color:C.ink}}>${ff.venta.toLocaleString()}</td>
+                  </tr>
+                )))}</tbody>
+              </table>
+              <div style={{display:"flex",justifyContent:"flex-end",marginTop:8}}><Btn kind="primary" small onClick={()=>importarSimilar(m)}>Importar a mi ruta</Btn></div>
+            </div>); })}
+          </div>);
+          const hay=(sim.exactas&&sim.exactas.length)||(sim.aproximadas&&sim.aproximadas.length);
+          return (<div>
+            {render(sim.exactas,"Coincidencia exacta (mismo POL y POD)",{t:"EXACTA",c:"#0B7A3B",bg:"#E8F5EC"})}
+            {render(sim.aproximadas,"Coincidencia aproximada (puerto de nombre similar)",{t:"SIMILAR",c:"#1F6FB2",bg:"#E7F1FB"})}
+            {!hay&&<div style={{fontSize:12.5,color:C.label,padding:"12px 0"}}>No se encontraron rutas similares en otros borradores.</div>}
+          </div>); })()}
       </div>
     </div>}
     {prop&&<div onClick={()=>!prop.busy&&setProp(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>

@@ -370,7 +370,7 @@ export async function buscarRutasSimilares({ pol, pod, versionExcluir }){
       })).filter(nv=>nv.scac);
       if(!navieras.length) return;
       const row={ versionId:v.id, cliente:v.acuerdos?.clientes?.nombre||st.clienteNombre||"", folio:v.codigo||st.codigo||"",
-        producto:v.commodity||st.commodity||"", pol:r.pol, pod:r.pod, polNombre:_loc(r.pol), podNombre:_loc(r.pod),
+        producto:v.commodity||st.commodity||"", direccion:st.direccion||"E", pol:r.pol, pod:r.pod, polNombre:_loc(r.pol), podNombre:_loc(r.pod),
         exacta, navieras };
       (exacta?exactas:aproximadas).push(row);
     });
