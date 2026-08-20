@@ -656,7 +656,7 @@ export function Cotizador({ loadId, onDirty, role }){
         {sim.busy&&<div style={{fontSize:12.5,color:C.label,padding:"14px 0"}}>Buscando…</div>}
         {!sim.busy&&(()=>{
           const dirActual=direccion||"E";
-          const filaEq=(nv,dirRef)=>{ const eqk=Object.keys(nv.precios||{}).filter(k=>{const p=nv.precios[k]||{}; return p.base!=null&&p.base!=="" && n(p.base)>0;}); return eqk.map(ek=>{ const eqObj=EQUIPOS.find(e=>e.k===ek); if(!eqObj) return null; const pr=nv.precios[ek]||{}; const base=n(pr.base); const rec=adicPorCont(nv.recargos||[],eqObj,dirRef); const prof=n(pr.profit); const venta=round10(base+rec+prof); return {ek,eqT:eqObj.t,base,recN:(nv.recargos||[]).length,rec,prof,venta}; }).filter(Boolean); };
+          const filaEq=(nv,dirRef)=>{ const eqk=Object.keys(nv.precios||{}).filter(k=>{const p=nv.precios[k]||{}; return p.base!=null&&p.base!=="" && n(p.base)>0;}).filter(k=>!sim.filtroEq||k===sim.filtroEq); return eqk.map(ek=>{ const eqObj=EQUIPOS.find(e=>e.k===ek); if(!eqObj) return null; const pr=nv.precios[ek]||{}; const base=n(pr.base); const rec=adicPorCont(nv.recargos||[],eqObj,dirRef); const prof=n(pr.profit); const venta=round10(base+rec+prof); return {ek,eqT:eqObj.t,base,recN:(nv.recargos||[]).length,rec,prof,venta}; }).filter(Boolean); };
           const selKey=(gm,ni,ek)=>gm+"|"+ni+"|"+ek;
           const grupos=[["ex",sim.exactas],["es",sim.estados],["si",sim.similares],["ap",sim.aproximadas]];
           // mapa (scac|ek) -> selKey marcado, para impedir duplicados (Opción B)
@@ -664,8 +664,8 @@ export function Cotizador({ loadId, onDirty, role }){
           grupos.forEach(([gr,lista])=>{ (lista||[]).forEach((m,mi)=>{ const gm=gr+"-"+mi; (m.navieras||[]).forEach((nv,ni)=>{ filaEq(nv,dirActual).forEach(ff=>{ const k=selKey(gm,ni,ff.ek); if(sim.sel&&sim.sel[k]){ const dk=(nv.scac||"")+"|"+ff.ek; if(!claimed[dk]) claimed[dk]=k; } }); }); }); });
           const nSel=Object.keys(sim.sel||{}).filter(k=>sim.sel[k]).length;
           // TU TARIFA ACTUAL (la ruta que editas) para comparar
-          const rAct=rutas[sim.ri]||{}; const filasAct=[]; (rAct.opciones||[]).forEach(o=>{ if(!o.navScac) return; const surs=surOfMain(o.navScac,tlDe(rAct)); (equipos||[]).forEach(ek=>{ const eqObj=EQUIPOS.find(e=>e.k===ek); const pr=(o.precios||{})[ek]; if(!eqObj||!pr||pr.base==null||pr.base==="") return; const base=n(pr.base); const rec=adicPorCont(surs,eqObj,dirActual); const prof=n(pr.profit); const ancla=rAct.ventaAncla&&rAct.ventaAncla[ek]!=null?Number(rAct.ventaAncla[ek]):null; const venta=ancla!=null?ancla:round10(base+rec+prof); filasAct.push({eqT:eqObj.t,scac:o.navScac,base,rec,recN:surs.length,prof:venta-base-rec,venta}); }); });
-          const tabla=(filas,conCheck)=> (<table style={{width:"100%",borderCollapse:"collapse",fontSize:11.5,marginTop:4}}>
+          const rAct=rutas[sim.ri]||{}; const filasAct=[]; (rAct.opciones||[]).forEach(o=>{ if(!o.navScac) return; const surs=surOfMain(o.navScac,tlDe(rAct)); (equipos||[]).forEach(ek=>{ const eqObj=EQUIPOS.find(e=>e.k===ek); const pr=(o.precios||{})[ek]; if(!eqObj||!pr||pr.base==null||pr.base==="") return; const base=n(pr.base); const rec=adicPorCont(surs,eqObj,dirActual); const prof=n(pr.profit); const ancla=rAct.ventaAncla&&rAct.ventaAncla[ek]!=null?Number(rAct.ventaAncla[ek]):null; const venta=ancla!=null?ancla:round10(base+rec+prof); filasAct.push({ek,eqT:eqObj.t,scac:o.navScac,base,rec,recN:surs.length,prof:venta-base-rec,venta}); }); });
+          const tabla=(filas,conCheck,clickEq)=> (<table style={{width:"100%",borderCollapse:"collapse",fontSize:11.5,marginTop:4}}>
             <thead><tr style={{color:C.label,textAlign:"right"}}>
               {conCheck&&<th style={{width:22}}></th>}
               <th style={{textAlign:"left",fontWeight:"normal",padding:"2px 4px"}}>Equipo</th>
@@ -675,10 +675,10 @@ export function Cotizador({ loadId, onDirty, role }){
               <th style={{fontWeight:"normal",padding:"2px 6px"}}>Profit</th>
               <th style={{fontWeight:"normal",padding:"2px 6px"}}>Tarifa cliente</th>
             </tr></thead>
-            <tbody>{filas.map((row,idx)=>{ const {k,eqT,scac,base,rec,recN,prof,venta,dup}=row; const on=conCheck&&!!(sim.sel&&sim.sel[k]); return (
-              <tr key={idx} style={{borderTop:"1px solid "+C.sep,textAlign:"right",opacity:conCheck?(dup?0.35:(on?1:0.55)):1}}>
+            <tbody>{filas.map((row,idx)=>{ const {k,ek,eqT,scac,base,rec,recN,prof,venta,dup}=row; const on=conCheck&&!!(sim.sel&&sim.sel[k]); const act=clickEq&&sim.filtroEq===ek; return (
+              <tr key={idx} onClick={clickEq?()=>clickEq(ek):undefined} title={clickEq?"Clic para ver solo "+eqT+" abajo":undefined} style={{borderTop:"1px solid "+C.sep,textAlign:"right",opacity:conCheck?(dup?0.35:(on?1:0.55)):1,cursor:clickEq?"pointer":undefined,background:act?"#E7F1FB":undefined}}>
                 {conCheck&&<td style={{textAlign:"center"}}><input type="checkbox" checked={on} disabled={dup} title={dup?"Ya seleccionaste "+scac+" "+eqT+" en otra coincidencia":""} onChange={e=>setSim(s2=>({...s2,sel:{...(s2.sel||{}),[k]:e.target.checked}}))}/></td>}
-                <td style={{textAlign:"left",padding:"3px 4px",color:C.slate}}>{eqT}</td>
+                <td style={{textAlign:"left",padding:"3px 4px",color:C.slate,fontWeight:act?"bold":"normal"}}>{clickEq&&(act?"◉ ":"○ ")}{eqT}</td>
                 <td style={{textAlign:"left",padding:"3px 4px",fontWeight:"bold",color:C.ink}}>{scac}</td>
                 <td style={{padding:"3px 6px"}}>${base.toLocaleString()}</td>
                 <td style={{padding:"3px 6px"}}>${rec.toLocaleString()} <span style={{color:C.label}}>({recN})</span></td>
@@ -709,8 +709,11 @@ export function Cotizador({ loadId, onDirty, role }){
           const hayAp=(sim.aproximadas||[]).some(m=>(m.navieras||[]).some(nv=>filaEq(nv,m.direccion||dirActual).length));
           return (<div>
             {filasAct.length>0&&<div style={{marginBottom:16,border:"1px dashed #C3DCF2",borderRadius:8,padding:"9px 11px",background:"#F7FBFF"}}>
-              <div style={{fontSize:12,fontWeight:"bold",color:"#1F6FB2",marginBottom:2}}>Tu tarifa actual (para comparar)</div>
-              {tabla(filasAct,false)}
+              <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2,flexWrap:"wrap"}}>
+                <div style={{fontSize:12,fontWeight:"bold",color:"#1F6FB2"}}>Tu tarifa actual (para comparar)</div>
+                {sim.filtroEq?<span onClick={()=>setSim(s2=>({...s2,filtroEq:null}))} style={{fontSize:10.5,fontWeight:"bold",color:"#1F6FB2",background:"#E7F1FB",border:"1px solid #C3DCF2",borderRadius:5,padding:"1px 7px",cursor:"pointer"}}>Filtrando: {(EQUIPOS.find(e=>e.k===sim.filtroEq)||{}).t} · ✕ ver todos</span>:<span style={{fontSize:10.5,color:C.label}}>Clic en un tamaño para filtrar las coincidencias</span>}
+              </div>
+              {tabla(filasAct,false,(ek)=>setSim(s2=>({...s2,filtroEq:s2.filtroEq===ek?null:ek})))}
             </div>}
             {render(sim.exactas,"ex","Coincidencia EXACTA (origen, POL, POD y destino iguales)",{t:"EXACTA",c:"#0B7A3B",bg:"#E8F5EC"})}
             {render(sim.estados,"es","MISMO ESTADO (misma zona; ciudad distinta)",{t:"MISMO EDO",c:"#0B7A3B",bg:"#E8F5EC"})}
