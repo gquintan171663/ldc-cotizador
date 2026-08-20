@@ -221,16 +221,16 @@ export function Cotizador({ loadId, onDirty, role }){
   const [hlRuta,setHlRuta]=useState(null);
   const abrirSimilares=async(ri)=>{
     const r=rutas[ri]; if(!r||!r.pol||!r.pod){ alert("Captura POL y POD en la ruta antes de buscar tarifas similares."); return; }
-    setSim({ ri, busy:true, exactas:null, estados:null, similares:null, aproximadas:null, sel:{} });
+    setSim({ ri, busy:true, mismoEstado:null, otroEstado:null, sel:{} });
     try{ const res=await buscarRutasSimilares({ pol:r.pol, pod:r.pod, origen:r.origen, destino:r.destino, origenEstado:r.origenEstado, destinoEstado:r.destinoEstado, versionExcluir:versionId });
-      setSim({ ri, busy:false, exactas:res.exactas||[], estados:res.estados||[], similares:res.similares||[], aproximadas:res.aproximadas||[], sel:{} });
-    }catch(ex){ setSim({ ri, busy:false, exactas:[], estados:[], similares:[], aproximadas:[], sel:{} }); alert("Error al buscar: "+ex.message); }
+      setSim({ ri, busy:false, mismoEstado:res.mismoEstado||[], otroEstado:res.otroEstado||[], sel:{} });
+    }catch(ex){ setSim({ ri, busy:false, mismoEstado:[], otroEstado:[], sel:{} }); alert("Error al buscar: "+ex.message); }
   };
   const irARuta=(ri)=>{ try{ const el=document.getElementById("tarifa-ruta-"+ri); if(el){ el.scrollIntoView({behavior:"smooth",block:"center"}); } }catch(_){} setHlRuta(ri); setTimeout(()=>setHlRuta(h=>h===ri?null:h),2200); };
   const importarTodo=()=>{
     if(!sim) return; const ri=sim.ri; const r=rutas[ri]; if(!r) return;
     const tlDest=tlDe(r);
-    const grupos=[["ex",sim.exactas],["es",sim.estados],["si",sim.similares],["ap",sim.aproximadas]];
+    const grupos=[["me",sim.mismoEstado],["oe",sim.otroEstado]];
     const nuevasOps=[...(r.opciones||[])];
     const nuevoQN=quoteNav.map(q=>({...q,surcharges:[...(q.surcharges||[])]}));
     const yaImportado={}; let addedEq=0, addedNav=0;
@@ -662,7 +662,7 @@ export function Cotizador({ loadId, onDirty, role }){
           const dirActual=direccion||"E";
           const filaEq=(nv,dirRef)=>{ const eqk=Object.keys(nv.precios||{}).filter(k=>{const p=nv.precios[k]||{}; return p.base!=null&&p.base!=="" && n(p.base)>0;}).filter(k=>!sim.filtroEq||k===sim.filtroEq); return eqk.map(ek=>{ const eqObj=EQUIPOS.find(e=>e.k===ek); if(!eqObj) return null; const pr=nv.precios[ek]||{}; const base=n(pr.base); const rec=adicPorCont(nv.recargos||[],eqObj,dirRef); const prof=n(pr.profit); const venta=round10(base+rec+prof); return {ek,eqT:eqObj.t,base,recN:(nv.recargos||[]).length,rec,prof,venta}; }).filter(Boolean); };
           const selKey=(gm,ni,ek)=>gm+"|"+ni+"|"+ek;
-          const grupos=[["ex",sim.exactas],["es",sim.estados],["si",sim.similares],["ap",sim.aproximadas]];
+          const grupos=[["me",sim.mismoEstado],["oe",sim.otroEstado]];
           // mapa (scac|ek) -> selKey marcado, para impedir duplicados (Opción B)
           const claimed={};
           grupos.forEach(([gr,lista])=>{ (lista||[]).forEach((m,mi)=>{ const gm=gr+"-"+mi; (m.navieras||[]).forEach((nv,ni)=>{ filaEq(nv,dirActual).forEach(ff=>{ const k=selKey(gm,ni,ff.ek); if(sim.sel&&sim.sel[k]){ const dk=(nv.scac||"")+"|"+ff.ek; if(!claimed[dk]) claimed[dk]=k; } }); }); }); });
@@ -691,11 +691,13 @@ export function Cotizador({ loadId, onDirty, role }){
               </tr>
             ); })}</tbody>
           </table>);
+          const tagPuerto=(t)=>{ const map={exacto:{t:"puerto exacto",c:"#0B7A3B",bg:"#E8F5EC"},alterno:{t:"puerto alterno",c:"#1F6FB2",bg:"#E7F1FB"},base:{t:"puerto base",c:"#7A5C00",bg:"#FBF4E0"},aprox:{t:"puerto aprox.",c:"#8A6D1F",bg:"#FBF4E0"}}; return map[t]||map.aprox; };
           const render=(lista,grupo,titulo,badge)=> (lista&&lista.length>0)&&(<div style={{marginBottom:16}}>
-            <div style={{fontSize:12,fontWeight:"bold",color:C.slate,marginBottom:6}}>{titulo} ({lista.length})</div>
-            {lista.map((m,mi)=>{ const dirRef=m.direccion||dirActual; const gm=grupo+"-"+mi; const filas=[]; (m.navieras||[]).forEach((nv,ni)=>{ filaEq(nv,dirRef).forEach(ff=>{ const k=selKey(gm,ni,ff.ek); const dk=(nv.scac||"")+"|"+ff.ek; const dup=claimed[dk]&&claimed[dk]!==k; filas.push({k,eqT:ff.eqT,scac:nv.scac,base:ff.base,rec:ff.rec,recN:ff.recN,prof:ff.prof,venta:ff.venta,dup}); }); }); if(!filas.length) return null; const selKeys=filas.filter(x=>!x.dup).map(x=>x.k); return (<div key={mi} style={{border:"1px solid "+C.sep2,borderRadius:8,padding:"9px 11px",marginBottom:10}}>
+            <div style={{fontSize:12.5,fontWeight:"bold",color:badge.c,background:badge.bg,borderRadius:6,padding:"4px 9px",marginBottom:8}}>{titulo} ({lista.length})</div>
+            {lista.map((m,mi)=>{ const dirRef=m.direccion||dirActual; const gm=grupo+"-"+mi; const pt=tagPuerto(m.puertoTag); const filas=[]; (m.navieras||[]).forEach((nv,ni)=>{ filaEq(nv,dirRef).forEach(ff=>{ const k=selKey(gm,ni,ff.ek); const dk=(nv.scac||"")+"|"+ff.ek; const dup=claimed[dk]&&claimed[dk]!==k; filas.push({k,eqT:ff.eqT,scac:nv.scac,base:ff.base,rec:ff.rec,recN:ff.recN,prof:ff.prof,venta:ff.venta,dup}); }); }); if(!filas.length) return null; const selKeys=filas.filter(x=>!x.dup).map(x=>x.k); return (<div key={mi} style={{border:"1px solid "+C.sep2,borderRadius:8,padding:"9px 11px",marginBottom:10}}>
               <div style={{display:"flex",alignItems:"center",gap:7,flexWrap:"wrap",marginBottom:2}}>
-                <span style={{fontSize:9.5,fontWeight:"bold",color:badge.c,background:badge.bg,border:"1px solid "+C.sep2,borderRadius:4,padding:"1px 6px"}}>{badge.t}</span>
+                {m.exactaTotal&&<span style={{fontSize:9,fontWeight:"bold",color:"#fff",background:"#0B7A3B",borderRadius:4,padding:"1px 6px"}}>EXACTA</span>}
+                <span style={{fontSize:9,fontWeight:"bold",color:pt.c,background:pt.bg,border:"1px solid "+C.sep2,borderRadius:4,padding:"1px 6px"}}>{pt.t}</span>
                 <span style={{fontWeight:"bold",color:C.ink,fontSize:12.5}}>{m.folio}</span>
                 <span style={{color:C.slate,fontSize:12}}>{m.cliente}</span>
                 {m.producto&&<span style={{color:C.label,fontSize:11}}>· {m.producto}</span>}
@@ -707,10 +709,8 @@ export function Cotizador({ loadId, onDirty, role }){
               </div>
             </div>); })}
           </div>);
-          const hayEx=(sim.exactas||[]).some(m=>(m.navieras||[]).some(nv=>filaEq(nv,m.direccion||dirActual).length));
-          const hayEst=(sim.estados||[]).some(m=>(m.navieras||[]).some(nv=>filaEq(nv,m.direccion||dirActual).length));
-          const haySim=(sim.similares||[]).some(m=>(m.navieras||[]).some(nv=>filaEq(nv,m.direccion||dirActual).length));
-          const hayAp=(sim.aproximadas||[]).some(m=>(m.navieras||[]).some(nv=>filaEq(nv,m.direccion||dirActual).length));
+          const hayEnSeccion=(lista)=>(lista||[]).some(m=>(m.navieras||[]).some(nv=>filaEq(nv,m.direccion||dirActual).length));
+          const hayME=hayEnSeccion(sim.mismoEstado), hayOE=hayEnSeccion(sim.otroEstado);
           return (<div>
             {filasAct.length>0&&<div style={{marginBottom:16,border:"1px dashed #C3DCF2",borderRadius:8,padding:"9px 11px",background:"#F7FBFF"}}>
               <div style={{display:"flex",alignItems:"center",gap:8,marginBottom:2,flexWrap:"wrap"}}>
@@ -719,12 +719,10 @@ export function Cotizador({ loadId, onDirty, role }){
               </div>
               {tabla(filasAct,false,(ek)=>setSim(s2=>({...s2,filtroEq:s2.filtroEq===ek?null:ek})))}
             </div>}
-            {render(sim.exactas,"ex","Coincidencia EXACTA (origen, POL, POD y destino iguales)",{t:"EXACTA",c:"#0B7A3B",bg:"#E8F5EC"})}
-            {render(sim.estados,"es","MISMO ESTADO (misma zona; ciudad distinta)",{t:"MISMO EDO",c:"#0B7A3B",bg:"#E8F5EC"})}
-            {render(sim.similares,"si","Coincidencia SIMILAR (mismo POL y POD; estado/ciudad distinto)",{t:"SIMILAR",c:"#1F6FB2",bg:"#E7F1FB"})}
-            {render(sim.aproximadas,"ap","Coincidencia APROXIMADA (puerto de nombre similar)",{t:"APROX",c:"#8A6D1F",bg:"#FBF4E0"})}
-            {!hayEx&&!hayEst&&!haySim&&!hayAp&&<div style={{fontSize:12.5,color:C.label,padding:"12px 0"}}>No se encontraron rutas similares con tarifas capturadas en otros borradores.</div>}
-            {(hayEx||hayEst||haySim||hayAp)&&<div style={{position:"sticky",bottom:0,background:"#fff",borderTop:"1px solid "+C.sep2,paddingTop:10,marginTop:4,display:"flex",justifyContent:"flex-end",gap:8}}>
+            {render(sim.mismoEstado,"me","MISMO ESTADO de origen/destino",{t:"MISMO EDO",c:"#0B7A3B",bg:"#E8F5EC"})}
+            {render(sim.otroEstado,"oe","OTRO ESTADO",{t:"OTRO EDO",c:"#1F6FB2",bg:"#E7F1FB"})}
+            {!hayME&&!hayOE&&<div style={{fontSize:12.5,color:C.label,padding:"12px 0"}}>No se encontraron rutas similares con tarifas capturadas en otros borradores.</div>}
+            {(hayME||hayOE)&&<div style={{position:"sticky",bottom:0,background:"#fff",borderTop:"1px solid "+C.sep2,paddingTop:10,marginTop:4,display:"flex",justifyContent:"flex-end",gap:8}}>
               <Btn kind="primary" onClick={()=>importarTodo()} disabled={!nSel}>Importar seleccionadas ({nSel})</Btn>
             </div>}
           </div>); })()}
