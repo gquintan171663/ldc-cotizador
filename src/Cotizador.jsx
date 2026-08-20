@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { supabase } from "./supabaseClient.js";
-import { C, F, EQUIPOS, EQUIPO_CATS, NAVIERAS, navName, CATALOG, COMMODITY_INDUSTRIAS, tx, scopeFull, serviceMode, transportMode, n, round10, adicPorCont, cargosBL, inclPorCont, inclBL, subjectTo, enPrecio, esSubjectTo, money, MONEDAS, optPuertos, optCiudades, puertoNombre, paisOrigen, paisDestino, rutaPaisLabel, tlDe, tlLabel, TRADELANES, tradeLabel, rutaEnTradelane, opcionActivaEq, mejorOpcionEq, ordenOpciones, ordenRecargos, ovRazon, PLANTILLA_RECARGOS, parseTarifario, ordenarRutas } from "./lib.js";
+import { C, F, EQUIPOS, EQUIPO_CATS, NAVIERAS, navName, CATALOG, COMMODITY_INDUSTRIAS, tx, scopeFull, serviceMode, transportMode, n, round10, adicPorCont, cargosBL, inclPorCont, inclBL, subjectTo, enPrecio, esSubjectTo, money, MONEDAS, optPuertos, optCiudades, puertoNombre, paisDe, paisOrigen, paisDestino, rutaPaisLabel, tlDe, tlLabel, TRADELANES, tradeLabel, rutaEnTradelane, opcionActivaEq, mejorOpcionEq, ordenOpciones, ordenRecargos, ovRazon, PLANTILLA_RECARGOS, parseTarifario, ordenarRutas } from "./lib.js";
 import { inS, Lbl, Field, TI, Sel, Chip, Btn, ClaveAutocomplete, ComboBox } from "./ui.jsx";
 import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges, recargosDeRutaSimilar, recargosDeRutaSimilarPorNaviera, recargosDeNaviera, anclarVenta, checkConflictoTarifa, guardarCorreccion, buscarCoincidenciasRecargo, aplicarRecargoEnBorradores, buscarRutasSimilares } from "./db.js";
 import { abrirCotizacion } from "./quote.js";
@@ -650,7 +650,7 @@ export function Cotizador({ loadId, onDirty, role }){
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
           <div style={{display:"flex",alignItems:"baseline",gap:10,flexWrap:"wrap"}}>
             <div style={{fontSize:14.5,fontWeight:"bold",color:C.ink}}>🔎 Tarifas de rutas similares</div>
-            {(()=>{ const r=rutas[sim.ri]||{}; const oc=r.origen||"", dc=r.destino||"", om=r.precarriage_mode||"", dm=r.oncarriage_mode||""; const pn=puertoNombre(r.pol)||r.pol||"?", pd=puertoNombre(r.pod)||r.pod||"?"; const modo=(om||dm)?(" · "+(om||"—")+"/"+(dm||"—")):""; const lbl=(oc?oc+" › ":"")+pn+" → "+pd+(dc?" › "+dc:"")+modo+(comLabel?" · "+comLabel:""); return <div style={{fontSize:11.5,fontWeight:"bold",color:"#1F6FB2",background:"#E7F1FB",border:"1px solid #C3DCF2",borderRadius:6,padding:"3px 9px"}}>{lbl}</div>; })()}
+            {(()=>{ const r=rutas[sim.ri]||{}; const oc=r.origen||"", dc=r.destino||"", om=r.precarriage_mode||"", dm=r.oncarriage_mode||""; const _lc=(v)=>{ const nm=puertoNombre(v)||String(v||"?"); const pais=paisDe(v); return nm+(pais&&!/\(\s*[A-Z]{2}\s*\)\s*$/.test(nm)?" ("+pais+")":""); }; const lbl=(oc?(oc+(om?" ["+om+"]":"")+" › "):"")+_lc(r.pol)+" → "+_lc(r.pod)+(dc?(" › "+(dm?"["+dm+"] ":"")+dc):"")+(comLabel?" · "+comLabel:""); return <div style={{fontSize:11.5,fontWeight:"bold",color:"#1F6FB2",background:"#E7F1FB",border:"1px solid #C3DCF2",borderRadius:6,padding:"3px 9px"}}>{lbl}</div>; })()}
           </div>
           <span onClick={()=>setSim(null)} style={{cursor:"pointer",color:C.label,fontSize:18,lineHeight:1}}>✕</span>
         </div>
