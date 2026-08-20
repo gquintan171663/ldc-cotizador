@@ -220,15 +220,15 @@ export function Cotizador({ loadId, onDirty, role }){
   const [sim,setSim]=useState(null); // {ri, busy, exactas, aproximadas}
   const abrirSimilares=async(ri)=>{
     const r=rutas[ri]; if(!r||!r.pol||!r.pod){ alert("Captura POL y POD en la ruta antes de buscar tarifas similares."); return; }
-    setSim({ ri, busy:true, exactas:null, aproximadas:null });
-    try{ const res=await buscarRutasSimilares({ pol:r.pol, pod:r.pod, versionExcluir:versionId });
-      setSim({ ri, busy:false, exactas:res.exactas||[], aproximadas:res.aproximadas||[] });
-    }catch(ex){ setSim({ ri, busy:false, exactas:[], aproximadas:[] }); alert("Error al buscar: "+ex.message); }
+    setSim({ ri, busy:true, exactas:null, similares:null, aproximadas:null, sel:{} });
+    try{ const res=await buscarRutasSimilares({ pol:r.pol, pod:r.pod, origen:r.origen, destino:r.destino, versionExcluir:versionId });
+      setSim({ ri, busy:false, exactas:res.exactas||[], similares:res.similares||[], aproximadas:res.aproximadas||[], sel:{} });
+    }catch(ex){ setSim({ ri, busy:false, exactas:[], similares:[], aproximadas:[], sel:{} }); alert("Error al buscar: "+ex.message); }
   };
   const importarSimilar=(match,gm)=>{
     if(!sim) return; const ri=sim.ri; const r=rutas[ri]; if(!r) return;
     const tlDest=tlDe(r);
-    const selOf=(ni,ek)=>{ const k=gm+"|"+ni+"|"+ek; return sim.sel?sim.sel[k]!==false:true; };
+    const selOf=(ni,ek)=>{ const k=gm+"|"+ni+"|"+ek; return !!(sim.sel&&sim.sel[k]); };
     const nuevasOps=[...(r.opciones||[])];
     const nuevoQN=quoteNav.map(q=>({...q,surcharges:[...(q.surcharges||[])]}));
     let addedNav=0, addedEq=0;
@@ -648,7 +648,10 @@ export function Cotizador({ loadId, onDirty, role }){
       </fieldset>
       {sim&&<div style={{background:"#fff",border:"2px solid #1F6FB2",borderRadius:12,padding:16,marginTop:12}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
-          <div style={{fontSize:14.5,fontWeight:"bold",color:C.ink}}>🔎 Tarifas de rutas similares</div>
+          <div style={{display:"flex",alignItems:"baseline",gap:10,flexWrap:"wrap"}}>
+            <div style={{fontSize:14.5,fontWeight:"bold",color:C.ink}}>🔎 Tarifas de rutas similares</div>
+            {(()=>{ const r=rutas[sim.ri]||{}; const oc=r.origen||"", dc=r.destino||"", om=r.precarriage_mode||"", dm=r.oncarriage_mode||""; const pn=puertoNombre(r.pol)||r.pol||"?", pd=puertoNombre(r.pod)||r.pod||"?"; const modo=(om||dm)?(" · "+(om||"—")+"/"+(dm||"—")):""; const lbl=(oc?oc+" › ":"")+pn+" → "+pd+(dc?" › "+dc:"")+modo+(comLabel?" · "+comLabel:""); return <div style={{fontSize:11.5,fontWeight:"bold",color:"#1F6FB2",background:"#E7F1FB",border:"1px solid #C3DCF2",borderRadius:6,padding:"3px 9px"}}>{lbl}</div>; })()}
+          </div>
           <span onClick={()=>setSim(null)} style={{cursor:"pointer",color:C.label,fontSize:18,lineHeight:1}}>✕</span>
         </div>
         <div style={{fontSize:11,color:C.label,marginBottom:12,lineHeight:1.45}}>Rutas en otros borradores con el mismo POL/POD (o puerto de nombre similar). Marca los equipos a importar; se traen navieras + base + recargos + profit y se conserva tu POL/POD.</div>
@@ -677,7 +680,7 @@ export function Cotizador({ loadId, onDirty, role }){
                   <th style={{fontWeight:"normal",padding:"2px 6px"}}>Profit</th>
                   <th style={{fontWeight:"normal",padding:"2px 6px"}}>Tarifa cliente</th>
                 </tr></thead>
-                <tbody>{filas.map(({nv,ni,ff},idx)=>{ const k=selKey(gm,ni,ff.ek); const on=sim.sel?sim.sel[k]!==false:true; return (
+                <tbody>{filas.map(({nv,ni,ff},idx)=>{ const k=selKey(gm,ni,ff.ek); const on=!!(sim.sel&&sim.sel[k]); return (
                   <tr key={idx} style={{borderTop:"1px solid "+C.sep,textAlign:"right",opacity:on?1:0.4}}>
                     <td style={{textAlign:"center"}}><input type="checkbox" checked={on} onChange={e=>setSim(s2=>({...s2,sel:{...(s2.sel||{}),[k]:e.target.checked}}))}/></td>
                     <td style={{textAlign:"left",padding:"3px 4px",color:C.slate}}>{ff.eqT}</td>
@@ -689,15 +692,20 @@ export function Cotizador({ loadId, onDirty, role }){
                   </tr>
                 ); })}</tbody>
               </table>
-              <div style={{display:"flex",justifyContent:"flex-end",marginTop:8}}><Btn kind="primary" small onClick={()=>importarSimilar(m,gm)}>Importar seleccionados</Btn></div>
+              <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginTop:8}}>
+                <span onClick={()=>{ const keys=filas.map(({ni,ff})=>selKey(gm,ni,ff.ek)); const all=keys.every(k=>sim.sel&&sim.sel[k]); setSim(s2=>{ const nx={...(s2.sel||{})}; keys.forEach(k=>nx[k]=!all); return {...s2,sel:nx}; }); }} style={{fontSize:11,color:C.red,cursor:"pointer"}}>{filas.every(({ni,ff})=>sim.sel&&sim.sel[selKey(gm,ni,ff.ek)])?"Quitar todos":"Seleccionar todos"}</span>
+                <Btn kind="primary" small onClick={()=>importarSimilar(m,gm)}>Importar seleccionados</Btn>
+              </div>
             </div>); })}
           </div>);
           const hayEx=(sim.exactas||[]).some(m=>(m.navieras||[]).some(nv=>filaEq(nv,m.direccion||dirActual).length));
+          const haySim=(sim.similares||[]).some(m=>(m.navieras||[]).some(nv=>filaEq(nv,m.direccion||dirActual).length));
           const hayAp=(sim.aproximadas||[]).some(m=>(m.navieras||[]).some(nv=>filaEq(nv,m.direccion||dirActual).length));
           return (<div>
-            {render(sim.exactas,"ex","Coincidencia exacta (mismo POL y POD)",{t:"EXACTA",c:"#0B7A3B",bg:"#E8F5EC"})}
-            {render(sim.aproximadas,"ap","Coincidencia aproximada (puerto de nombre similar)",{t:"SIMILAR",c:"#1F6FB2",bg:"#E7F1FB"})}
-            {!hayEx&&!hayAp&&<div style={{fontSize:12.5,color:C.label,padding:"12px 0"}}>No se encontraron rutas similares con tarifas capturadas en otros borradores.</div>}
+            {render(sim.exactas,"ex","Coincidencia EXACTA (origen, POL, POD y destino iguales)",{t:"EXACTA",c:"#0B7A3B",bg:"#E8F5EC"})}
+            {render(sim.similares,"si","Coincidencia SIMILAR (mismo POL y POD; origen/destino distinto)",{t:"SIMILAR",c:"#1F6FB2",bg:"#E7F1FB"})}
+            {render(sim.aproximadas,"ap","Coincidencia APROXIMADA (puerto de nombre similar)",{t:"APROX",c:"#8A6D1F",bg:"#FBF4E0"})}
+            {!hayEx&&!haySim&&!hayAp&&<div style={{fontSize:12.5,color:C.label,padding:"12px 0"}}>No se encontraron rutas similares con tarifas capturadas en otros borradores.</div>}
           </div>); })()}
       </div>}
       <div style={{background:"#fff",border:"1px solid "+C.sep2,borderRadius:12,padding:14,marginTop:14,opacity:editable?1:.7,pointerEvents:editable?"auto":"none"}}>
