@@ -7,6 +7,8 @@ export { CATALOG };
 
 // ====== Equipos con factor TEU (cat:Dry/Reefer/Special) ======
 export const ESTADOS_MX=["Aguascalientes","Baja California","Baja California Sur","Campeche","Chiapas","Chihuahua","Ciudad de México","Coahuila","Colima","Durango","Estado de México","Guanajuato","Guerrero","Hidalgo","Jalisco","Michoacán","Morelos","Nayarit","Nuevo León","Oaxaca","Puebla","Querétaro","Quintana Roo","San Luis Potosí","Sinaloa","Sonora","Tabasco","Tamaulipas","Tlaxcala","Veracruz","Yucatán","Zacatecas"];
+export const ESTADOS_MX_ABBR={"Aguascalientes":"AGS","Baja California":"BC","Baja California Sur":"BCS","Campeche":"CAMP","Chiapas":"CHIS","Chihuahua":"CHIH","Ciudad de México":"CDMX","Coahuila":"COAH","Colima":"COL","Durango":"DGO","Estado de México":"MEX","Guanajuato":"GTO","Guerrero":"GRO","Hidalgo":"HGO","Jalisco":"JAL","Michoacán":"MICH","Morelos":"MOR","Nayarit":"NAY","Nuevo León":"NL","Oaxaca":"OAX","Puebla":"PUE","Querétaro":"QRO","Quintana Roo":"QROO","San Luis Potosí":"SLP","Sinaloa":"SIN","Sonora":"SON","Tabasco":"TAB","Tamaulipas":"TAMPS","Tlaxcala":"TLAX","Veracruz":"VER","Yucatán":"YUC","Zacatecas":"ZAC"};
+export const abrevEstado=(e)=> e ? (ESTADOS_MX_ABBR[e]||e) : "";
 export const EQUIPOS=[
   {k:"20DV",t:"20' DV",teu:1,cat:"Dry"},{k:"40DV",t:"40' DV",teu:2,cat:"Dry"},{k:"40HC",t:"40' HC",teu:2,cat:"Dry"},
   {k:"45HC",t:"45' HC",teu:2,cat:"Dry"},

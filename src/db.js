@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient.js";
-import { matchCommodity, paisDe, tlDe, n, adicPorCont, tx, eqMeta, prefijoCliente, numeroAcuerdo, hayCambioCosto, ventaEq, mkSurOf, round10, opcionActivaEq, puertoNombre } from "./lib.js";
+import { matchCommodity, paisDe, tlDe, n, adicPorCont, tx, eqMeta, prefijoCliente, numeroAcuerdo, hayCambioCosto, ventaEq, mkSurOf, round10, opcionActivaEq, puertoNombre, abrevEstado } from "./lib.js";
 
 // Mapa commodity(lower) -> id desde el catálogo
 async function commodityMap(){
@@ -374,7 +374,7 @@ export async function buscarRutasSimilares({ pol, pod, origen, destino, origenEs
       if(!navieras.length) return;
       const _oc=r.origen||"", _dc=r.destino||"", _om=r.precarriage_mode||"", _dm=r.oncarriage_mode||"", _oe=r.origenEstado||"", _de=r.destinoEstado||"";
       const _est=(oc,dc,oe,de)=>{ const parts=[]; if(oc) parts.push(oc+(oe?" ["+oe+"]":"")); return parts; };
-      const rutaCompleta=(_oc?(_oc+(_oe?", "+_oe:"")+(_om?" ["+_om+"]":"")+" › "):"")+_loc(r.pol)+" → "+_loc(r.pod)+(_dc?(" › "+(_dm?"["+_dm+"] ":"")+_dc+(_de?", "+_de:"")):"");
+      const rutaCompleta=(_oc?(_oc+(_oe?", "+abrevEstado(_oe):"")+(_om?" ["+_om+"]":"")+" › "):"")+_loc(r.pol)+" → "+_loc(r.pod)+(_dc?(" › "+(_dm?"["+_dm+"] ":"")+_dc+(_de?", "+abrevEstado(_de):"")):"");
       const polExact=(r.pol===pol), podExact=(r.pod===pod);
       const ocIgual=(_normCiudad(_oc)===ocSrc), dcIgual=(_normCiudad(_dc)===dcSrc);
       // estado igual: ambos lados que tengan ciudad deben coincidir de estado (si el origen/destino de referencia no tiene ciudad, ese lado no exige)
