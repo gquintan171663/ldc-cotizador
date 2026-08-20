@@ -7,6 +7,59 @@ export { CATALOG };
 
 // ====== Equipos con factor TEU (cat:Dry/Reefer/Special) ======
 export const ESTADOS_MX=["Aguascalientes","Baja California","Baja California Sur","Campeche","Chiapas","Chihuahua","Ciudad de México","Coahuila","Colima","Durango","Estado de México","Guanajuato","Guerrero","Hidalgo","Jalisco","Michoacán","Morelos","Nayarit","Nuevo León","Oaxaca","Puebla","Querétaro","Quintana Roo","San Luis Potosí","Sinaloa","Sonora","Tabasco","Tamaulipas","Tlaxcala","Veracruz","Yucatán","Zacatecas"];
+
+// ---- Puertos alternos / base ports (para sugerencias de rutas similares) ----
+// Mapa CODE -> nombre canónico (cubre variantes de clave del mismo puerto)
+const _PUERTO_CANON_CODE={
+  // MX
+  MXZLO:"Manzanillo", MXLZC:"Lazaro Cardenas", MXVER:"Veracruz", MXATM:"Altamira",
+  // China - Shanghai
+  CNSHA:"Shanghai", CNSGH:"Shanghai", CNSHG:"Shanghai", CNPDG:"Shanghai",
+  // Ningbo
+  CNNBO:"Ningbo", CNNBG:"Ningbo", CNBEI:"Ningbo", CNBLG:"Ningbo",
+  // Qingdao
+  CNTAO:"Qingdao", CNQIN:"Qingdao", CNQDG:"Qingdao",
+  // Tianjin / Xingang
+  CNTSN:"Tianjin", CNTNJ:"Tianjin", CNTNG:"Tianjin", CNTBS:"Tianjin", CNTXG:"Tianjin", CNXGA:"Tianjin",
+  // Dalian
+  CNDLC:"Dalian", CNDAL:"Dalian", CNDAG:"Dalian",
+  // Shenzhen area
+  CNYTN:"Yantian", CNSHK:"Shekou", CNNSA:"Nansha",
+  // Xiamen
+  CNXMN:"Xiamen", CNXAM:"Xiamen", CNHHT:"Xiamen", CNXAN:"Xiamen",
+  // Fuzhou
+  CNFOC:"Fuzhou", CNFZH:"Fuzhou", CNFZG:"Fuzhou", CNFZX:"Fuzhou",
+  // otros
+  CNLYG:"Lianyungang", CNTAC:"Taicang", CNNKG:"Nanjing", CNNJI:"Nanjing", CNNJG:"Nanjing",
+  CNZUH:"Zhuhai", CNQSN:"Zhuhai", CNSWA:"Shantou", CNSTG:"Shantou",
+  CNHAK:"Haikou", CNHKO:"Haikou", CNHIG:"Haikou", CNHXG:"Haikou"
+};
+const _CANON_ALIAS={ "xingang":"Tianjin", "beilun":"Ningbo", "pudong":"Shanghai", "lazaro":"Lazaro Cardenas" };
+const _CANON_LIST=["Manzanillo","Lazaro Cardenas","Veracruz","Altamira","Shanghai","Ningbo","Qingdao","Tianjin","Dalian","Yantian","Shekou","Nansha","Xiamen","Fuzhou","Lianyungang","Taicang","Nanjing","Zhuhai","Shantou","Haikou"];
+const _canonNorm=(s)=>String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g," ").trim();
+export const puertoCanon=(code)=>{
+  if(!code) return "";
+  if(_PUERTO_CANON_CODE[code]) return _PUERTO_CANON_CODE[code];
+  const nm=_canonNorm(puertoNombre(code)||code); if(!nm) return "";
+  for(const a in _CANON_ALIAS){ if(nm.includes(a)) return _CANON_ALIAS[a]; }
+  for(const c of _CANON_LIST){ const cn=_canonNorm(c); if(nm===cn||nm.includes(cn)||cn.includes(nm)) return c; }
+  return "";
+};
+// Alternos (dirigido; se consulta en ambos sentidos)
+const _ALTERNOS={
+  "Manzanillo":["Lazaro Cardenas"], "Lazaro Cardenas":["Manzanillo"],
+  "Veracruz":["Altamira"], "Altamira":["Veracruz"],
+  "Shanghai":["Ningbo","Lianyungang","Taicang","Nanjing"], "Ningbo":["Shanghai","Taicang","Nanjing"],
+  "Qingdao":["Tianjin","Lianyungang","Dalian"], "Tianjin":["Qingdao","Dalian"], "Dalian":["Tianjin","Qingdao"],
+  "Yantian":["Shekou","Nansha"], "Shekou":["Yantian","Nansha"], "Nansha":["Yantian","Shekou"],
+  "Xiamen":["Fuzhou"], "Fuzhou":["Xiamen"],
+  "Lianyungang":["Qingdao","Shanghai"], "Taicang":["Shanghai","Ningbo"], "Nanjing":["Shanghai","Ningbo"],
+  "Zhuhai":["Nansha","Yantian","Shekou"], "Shantou":["Xiamen","Yantian"], "Haikou":["Nansha","Yantian"]
+};
+const _BASE_CHINA=new Set(["Shanghai","Ningbo","Qingdao","Tianjin","Dalian","Yantian","Shekou","Nansha","Xiamen"]);
+export const sonPuertosAlternos=(a,b)=>{ if(!a||!b||a===b) return a===b; if(paisDe(a)!==paisDe(b)) return false; const ca=puertoCanon(a),cb=puertoCanon(b); if(!ca||!cb) return false; if(ca===cb) return true; return (_ALTERNOS[ca]||[]).includes(cb)||(_ALTERNOS[cb]||[]).includes(ca); };
+export const sonPuertosBase=(a,b)=>{ if(!a||!b) return false; if(paisDe(a)!=="CN"||paisDe(b)!=="CN") return false; const ca=puertoCanon(a),cb=puertoCanon(b); return !!ca&&!!cb&&_BASE_CHINA.has(ca)&&_BASE_CHINA.has(cb); };
+
 export const ESTADOS_MX_ABBR={"Aguascalientes":"AGS","Baja California":"BC","Baja California Sur":"BCS","Campeche":"CAMP","Chiapas":"CHIS","Chihuahua":"CHIH","Ciudad de México":"CDMX","Coahuila":"COAH","Colima":"COL","Durango":"DGO","Estado de México":"MEX","Guanajuato":"GTO","Guerrero":"GRO","Hidalgo":"HGO","Jalisco":"JAL","Michoacán":"MICH","Morelos":"MOR","Nayarit":"NAY","Nuevo León":"NL","Oaxaca":"OAX","Puebla":"PUE","Querétaro":"QRO","Quintana Roo":"QROO","San Luis Potosí":"SLP","Sinaloa":"SIN","Sonora":"SON","Tabasco":"TAB","Tamaulipas":"TAMPS","Tlaxcala":"TLAX","Veracruz":"VER","Yucatán":"YUC","Zacatecas":"ZAC"};
 export const abrevEstado=(e)=> e ? (ESTADOS_MX_ABBR[e]||e) : "";
 export const EQUIPOS=[
