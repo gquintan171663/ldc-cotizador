@@ -225,7 +225,7 @@ export const CIUDADES=[
 // Helpers de búsqueda (devuelven opciones {v,label,sub})
 const _up=(s)=>String(s||"").toUpperCase();
 export const optPuertos=()=>PUERTOS.map(p=>({v:p.code,label:p.code+" · "+p.name,sub:(PAIS_NOMBRE[p.country]||p.country)}));
-export const optCiudades=()=>CIUDADES.map(c=>({v:c.city+", "+c.country,label:c.city,sub:(PAIS_NOMBRE[c.country]||c.country)}));
+export const optCiudades=()=>CIUDADES.map(c=>({v:c.city,label:c.city,sub:(PAIS_NOMBRE[c.country]||c.country)}));
 export const puertoLabel=(code)=>{const p=PUERTOS.find(x=>x.code===_up(code));return p?(p.code+" · "+p.name):code;};
 export const puertoNombre=(code)=>{const p=PUERTOS.find(x=>x.code===_up(code));return p?p.name:String(code||"");};
 
