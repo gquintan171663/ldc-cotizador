@@ -265,11 +265,12 @@ export const regionNombre=(cc)=>{ const r=_REG[String(cc||"").toUpperCase()]; re
 export const ordenarRutas=(rts,dir="E")=>[...(rts||[])].sort((a,b)=>{
   const exp=dir!=="I";
   const k=(r)=>{
+    const oEstado=exp?String(r.origenEstado||""):String(r.destinoEstado||"");
     const oCity=exp?String(r.origen||""):String(r.destino||"");
     const nearCC=exp?(paisDe(r.pol)||paisDe(r.origen)||""):(paisDe(r.pod)||paisDe(r.destino)||"");
     const farCC=exp?(paisDe(r.pod)||paisDe(r.destino)||""):(paisDe(r.pol)||paisDe(r.origen)||"");
     const farPort=exp?String(r.pod||r.destino||""):String(r.pol||r.origen||"");
-    return [oCity.toUpperCase().trim(), nearCC||"ZZ", regionIdx(farCC), farCC||"ZZ", farPort.toUpperCase()];
+    return [(oEstado.toUpperCase().trim()||"ZZZ"), oCity.toUpperCase().trim(), nearCC||"ZZ", regionIdx(farCC), farCC||"ZZ", farPort.toUpperCase()];
   };
   const ka=k(a),kb=k(b);
   for(let i=0;i<ka.length;i++){ if(ka[i]<kb[i]) return -1; if(ka[i]>kb[i]) return 1; }
