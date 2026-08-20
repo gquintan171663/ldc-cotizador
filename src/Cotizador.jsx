@@ -666,7 +666,7 @@ export function Cotizador({ loadId, onDirty, role }){
                 <span style={{fontWeight:"bold",color:C.ink,fontSize:12.5}}>{m.folio}</span>
                 <span style={{color:C.slate,fontSize:12}}>{m.cliente}</span>
                 {m.producto&&<span style={{color:C.label,fontSize:11}}>· {m.producto}</span>}
-                <span style={{color:C.label,fontSize:11,marginLeft:"auto"}}>{m.polNombre} → {m.podNombre}</span>
+                <span style={{color:C.slate,fontSize:11,marginLeft:"auto",textAlign:"right"}}>{m.rutaCompleta||(m.polNombre+" → "+m.podNombre)}</span>
               </div>
               <table style={{width:"100%",borderCollapse:"collapse",fontSize:11.5,marginTop:4}}>
                 <thead><tr style={{color:C.label,textAlign:"right"}}>

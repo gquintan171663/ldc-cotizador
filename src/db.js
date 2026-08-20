@@ -369,8 +369,11 @@ export async function buscarRutasSimilares({ pol, pod, versionExcluir }){
         tl:tlDe(r)
       })).filter(nv=>nv.scac);
       if(!navieras.length) return;
+      const _oc=r.origen||"", _dc=r.destino||"";
+      const rutaCompleta=(_oc?_oc+" › ":"")+_loc(r.pol)+" → "+_loc(r.pod)+(_dc?" › "+_dc:"");
       const row={ versionId:v.id, cliente:v.acuerdos?.clientes?.nombre||st.clienteNombre||"", folio:v.codigo||st.codigo||"",
         producto:v.commodity||st.commodity||"", direccion:st.direccion||"E", pol:r.pol, pod:r.pod, polNombre:_loc(r.pol), podNombre:_loc(r.pod),
+        origen:_oc, destino:_dc, rutaCompleta,
         exacta, navieras };
       (exacta?exactas:aproximadas).push(row);
     });
