@@ -348,14 +348,15 @@ const _matchPuerto=(a,b)=> a===b || _nombreSimilar(a,b);
 
 const _normCiudad=(s)=>String(s||"").toLowerCase().normalize("NFD").replace(/[\u0300-\u036f]/g,"").replace(/[^a-z0-9]+/g," ").replace(/\b(mx|mex|mexico)\b/g,"").replace(/\s+/g," ").trim();
 
-export async function buscarRutasSimilares({ pol, pod, origen, destino, versionExcluir }){
-  if(!pol || !pod) return { exactas:[], similares:[], aproximadas:[] };
+export async function buscarRutasSimilares({ pol, pod, origen, destino, origenEstado, destinoEstado, versionExcluir }){
+  if(!pol || !pod) return { exactas:[], estados:[], similares:[], aproximadas:[] };
   const { data: vers, error } = await supabase.from("versiones")
     .select("id,codigo,commodity,acuerdos(clientes(nombre))")
     .eq("estatus","borrador").limit(500);
-  if(error) return { exactas:[], similares:[], aproximadas:[], error:error.message };
+  if(error) return { exactas:[], estados:[], similares:[], aproximadas:[], error:error.message };
   const ocSrc=_normCiudad(origen), dcSrc=_normCiudad(destino);
-  const exactas=[], similares=[], aproximadas=[];
+  const oeSrc=(origenEstado||"").trim().toLowerCase(), deSrc=(destinoEstado||"").trim().toLowerCase();
+  const exactas=[], estados=[], similares=[], aproximadas=[];
   for(const v of (vers||[])){
     if(v.id===versionExcluir) continue;
     let st; try{ st=await loadVersion(v.id); }catch(_){ continue; }
@@ -371,21 +372,26 @@ export async function buscarRutasSimilares({ pol, pod, origen, destino, versionE
         tl:tlDe(r)
       })).filter(nv=>nv.scac);
       if(!navieras.length) return;
-      const _oc=r.origen||"", _dc=r.destino||"", _om=r.precarriage_mode||"", _dm=r.oncarriage_mode||"";
-      const rutaCompleta=(_oc?(_oc+(_om?" ["+_om+"]":"")+" › "):"")+_loc(r.pol)+" → "+_loc(r.pod)+(_dc?(" › "+(_dm?"["+_dm+"] ":"")+_dc):"");
+      const _oc=r.origen||"", _dc=r.destino||"", _om=r.precarriage_mode||"", _dm=r.oncarriage_mode||"", _oe=r.origenEstado||"", _de=r.destinoEstado||"";
+      const _est=(oc,dc,oe,de)=>{ const parts=[]; if(oc) parts.push(oc+(oe?" ["+oe+"]":"")); return parts; };
+      const rutaCompleta=(_oc?(_oc+(_oe?", "+_oe:"")+(_om?" ["+_om+"]":"")+" › "):"")+_loc(r.pol)+" → "+_loc(r.pod)+(_dc?(" › "+(_dm?"["+_dm+"] ":"")+_dc+(_de?", "+_de:"")):"");
       const polExact=(r.pol===pol), podExact=(r.pod===pod);
       const ocIgual=(_normCiudad(_oc)===ocSrc), dcIgual=(_normCiudad(_dc)===dcSrc);
-      let nivel; // exacta = 4/4 ; similar = POL+POD por clave, ciudad difiere ; aproximada = puerto por nombre
+      // estado igual: ambos lados que tengan ciudad deben coincidir de estado (si el origen/destino de referencia no tiene ciudad, ese lado no exige)
+      const oeIgual = !ocSrc ? true : (_oe.trim().toLowerCase()===oeSrc && oeSrc!=="");
+      const deIgual = !dcSrc ? true : (_de.trim().toLowerCase()===deSrc && deSrc!=="");
+      let nivel;
       if(polExact && podExact && ocIgual && dcIgual) nivel="exacta";
+      else if(polExact && podExact && oeIgual && deIgual && (oeSrc||deSrc)) nivel="estado";  // mismo estado (ciudad distinta)
       else if(polExact && podExact) nivel="similar";
       else nivel="aproximada";
       const row={ versionId:v.id, cliente:v.acuerdos?.clientes?.nombre||st.clienteNombre||"", folio:v.codigo||st.codigo||"",
         producto:v.commodity||st.commodity||"", direccion:st.direccion||"E", pol:r.pol, pod:r.pod, polNombre:_loc(r.pol), podNombre:_loc(r.pod),
-        origen:_oc, destino:_dc, precarriage_mode:_om, oncarriage_mode:_dm, rutaCompleta, nivel, navieras };
-      (nivel==="exacta"?exactas:nivel==="similar"?similares:aproximadas).push(row);
+        origen:_oc, destino:_dc, origenEstado:_oe, destinoEstado:_de, precarriage_mode:_om, oncarriage_mode:_dm, rutaCompleta, nivel, navieras };
+      (nivel==="exacta"?exactas:nivel==="estado"?estados:nivel==="similar"?similares:aproximadas).push(row);
     });
   }
-  return { exactas, similares, aproximadas };
+  return { exactas, estados, similares, aproximadas };
 }
 
 export async function loadVersion(versionId){

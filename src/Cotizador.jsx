@@ -220,10 +220,10 @@ export function Cotizador({ loadId, onDirty, role }){
   const [sim,setSim]=useState(null); // {ri, busy, exactas, aproximadas}
   const abrirSimilares=async(ri)=>{
     const r=rutas[ri]; if(!r||!r.pol||!r.pod){ alert("Captura POL y POD en la ruta antes de buscar tarifas similares."); return; }
-    setSim({ ri, busy:true, exactas:null, similares:null, aproximadas:null, sel:{} });
-    try{ const res=await buscarRutasSimilares({ pol:r.pol, pod:r.pod, origen:r.origen, destino:r.destino, versionExcluir:versionId });
-      setSim({ ri, busy:false, exactas:res.exactas||[], similares:res.similares||[], aproximadas:res.aproximadas||[], sel:{} });
-    }catch(ex){ setSim({ ri, busy:false, exactas:[], similares:[], aproximadas:[], sel:{} }); alert("Error al buscar: "+ex.message); }
+    setSim({ ri, busy:true, exactas:null, estados:null, similares:null, aproximadas:null, sel:{} });
+    try{ const res=await buscarRutasSimilares({ pol:r.pol, pod:r.pod, origen:r.origen, destino:r.destino, origenEstado:r.origenEstado, destinoEstado:r.destinoEstado, versionExcluir:versionId });
+      setSim({ ri, busy:false, exactas:res.exactas||[], estados:res.estados||[], similares:res.similares||[], aproximadas:res.aproximadas||[], sel:{} });
+    }catch(ex){ setSim({ ri, busy:false, exactas:[], estados:[], similares:[], aproximadas:[], sel:{} }); alert("Error al buscar: "+ex.message); }
   };
   const importarSimilar=(match,gm)=>{
     if(!sim) return; const ri=sim.ri; const r=rutas[ri]; if(!r) return;
@@ -701,13 +701,15 @@ export function Cotizador({ loadId, onDirty, role }){
             </div>); })}
           </div>);
           const hayEx=(sim.exactas||[]).some(m=>(m.navieras||[]).some(nv=>filaEq(nv,m.direccion||dirActual).length));
+          const hayEst=(sim.estados||[]).some(m=>(m.navieras||[]).some(nv=>filaEq(nv,m.direccion||dirActual).length));
           const haySim=(sim.similares||[]).some(m=>(m.navieras||[]).some(nv=>filaEq(nv,m.direccion||dirActual).length));
           const hayAp=(sim.aproximadas||[]).some(m=>(m.navieras||[]).some(nv=>filaEq(nv,m.direccion||dirActual).length));
           return (<div>
             {render(sim.exactas,"ex","Coincidencia EXACTA (origen, POL, POD y destino iguales)",{t:"EXACTA",c:"#0B7A3B",bg:"#E8F5EC"})}
-            {render(sim.similares,"si","Coincidencia SIMILAR (mismo POL y POD; origen/destino distinto)",{t:"SIMILAR",c:"#1F6FB2",bg:"#E7F1FB"})}
+            {render(sim.estados,"es","MISMO ESTADO (misma zona; ciudad distinta)",{t:"MISMO EDO",c:"#0B7A3B",bg:"#E8F5EC"})}
+            {render(sim.similares,"si","Coincidencia SIMILAR (mismo POL y POD; estado/ciudad distinto)",{t:"SIMILAR",c:"#1F6FB2",bg:"#E7F1FB"})}
             {render(sim.aproximadas,"ap","Coincidencia APROXIMADA (puerto de nombre similar)",{t:"APROX",c:"#8A6D1F",bg:"#FBF4E0"})}
-            {!hayEx&&!haySim&&!hayAp&&<div style={{fontSize:12.5,color:C.label,padding:"12px 0"}}>No se encontraron rutas similares con tarifas capturadas en otros borradores.</div>}
+            {!hayEx&&!hayEst&&!haySim&&!hayAp&&<div style={{fontSize:12.5,color:C.label,padding:"12px 0"}}>No se encontraron rutas similares con tarifas capturadas en otros borradores.</div>}
           </div>); })()}
       </div>}
       <div style={{background:"#fff",border:"1px solid "+C.sep2,borderRadius:12,padding:14,marginTop:14,opacity:editable?1:.7,pointerEvents:editable?"auto":"none"}}>
