@@ -566,7 +566,9 @@ export function parseTarifario(rows){
       if(ex){ Object.assign(ex.precios,precios); if(tt&&!ex.transito) ex.transito=tt; }
       else R.opciones.push({navScac:scac,transito:tt,precios});
     }
-    return [...map.values()];
+    const arr=[...map.values()];
+    arr.forEach(R=>{ if(!R.opciones.length) R.opciones.push({navScac:"",transito:"",precios:{}}); });  // ruta sin naviera: fila editable vacía
+    return arr;
   }
 
   const out=[];
@@ -586,6 +588,7 @@ export function parseTarifario(rows){
       const vp=_parseVia(viaVal); pol=vp.pol; pre=vp.mode;
     }
     if(!pol&&!pod&&!opciones.length) continue;
+    if(!opciones.length) opciones.push({navScac:"",transito:"",precios:{}});   // ruta sin naviera: fila editable vacía
     out.push({origen,precarriage_mode:pre,pol,pod,oncarriage_mode:on,destino,opciones,elegida:0});
   }
   return out;
