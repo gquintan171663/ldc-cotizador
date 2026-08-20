@@ -6,6 +6,7 @@ const CATALOG = [{"c": "BAF", "d": "Bunker Adjustment Factor", "n": ["CMA", "Hap
 export { CATALOG };
 
 // ====== Equipos con factor TEU (cat:Dry/Reefer/Special) ======
+export const ESTADOS_MX=["Aguascalientes","Baja California","Baja California Sur","Campeche","Chiapas","Chihuahua","Ciudad de México","Coahuila","Colima","Durango","Estado de México","Guanajuato","Guerrero","Hidalgo","Jalisco","Michoacán","Morelos","Nayarit","Nuevo León","Oaxaca","Puebla","Querétaro","Quintana Roo","San Luis Potosí","Sinaloa","Sonora","Tabasco","Tamaulipas","Tlaxcala","Veracruz","Yucatán","Zacatecas"];
 export const EQUIPOS=[
   {k:"20DV",t:"20' DV",teu:1,cat:"Dry"},{k:"40DV",t:"40' DV",teu:2,cat:"Dry"},{k:"40HC",t:"40' HC",teu:2,cat:"Dry"},
   {k:"45HC",t:"45' HC",teu:2,cat:"Dry"},

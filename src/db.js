@@ -96,7 +96,7 @@ async function insertChildren(versionId, state, sum){
   // 1) LÍNEAS en un solo insert
   const lineaRows=[], lineaMeta=[];
   for(const r of (rutas||[])){ for(const ek of (equipos||[])){
-    lineaRows.push({version_id:versionId,origen:r.origen||"",precarriage_mode:r.precarriage_mode||"",pol:r.pol||"",pod:r.pod||"",oncarriage_mode:r.oncarriage_mode||"",destino:r.destino||"",equipo:ek,validez_desde:vigDesde||null,validez_hasta:vigHasta||null,elegida_eq:r.elegidaEq||null,venta_anclada:(r.ventaAncla&&r.ventaAncla[ek]!=null)?r.ventaAncla[ek]:null});
+    lineaRows.push({version_id:versionId,origen:r.origen||"",origen_estado:r.origenEstado||null,precarriage_mode:r.precarriage_mode||"",pol:r.pol||"",pod:r.pod||"",oncarriage_mode:r.oncarriage_mode||"",destino:r.destino||"",destino_estado:r.destinoEstado||null,equipo:ek,validez_desde:vigDesde||null,validez_hasta:vigHasta||null,elegida_eq:r.elegidaEq||null,venta_anclada:(r.ventaAncla&&r.ventaAncla[ek]!=null)?r.ventaAncla[ek]:null});
     lineaMeta.push({r, ek});
   }}
   if(!lineaRows.length) return;
@@ -417,7 +417,7 @@ export async function loadVersion(versionId){
     const ops=navSet.map(nav=>{ const precios={}; let transito=""; Object.entries(rm.equipos).forEach(([eq,l])=>{ const op=(opByLinea[l.id]||[]).find(o=>o.naviera===nav); if(op){ precios[eq]={base:String(op.costo_base??""),profit:String(op.profit??"")}; if(op.transito_dias!=null) transito=String(op.transito_dias); } }); return {navScac:nav,transito,precios}; });
     let elegida=0; Object.values(rm.equipos).forEach(l=>{ if(l.opcion_elegida_id){ const op=(opByLinea[l.id]||[]).find(o=>o.id===l.opcion_elegida_id); if(op){ const idx=navSet.indexOf(op.naviera); if(idx>=0) elegida=idx; } } });
     const ventaAncla={}; Object.entries(rm.equipos).forEach(([ek,l])=>{ if(l.venta_anclada!=null&&l.venta_anclada!=="") ventaAncla[ek]=Number(l.venta_anclada); });
-    return {origen:l0.origen||"",precarriage_mode:l0.precarriage_mode||"",pol:l0.pol||"",pod:l0.pod||"",oncarriage_mode:l0.oncarriage_mode||"",destino:l0.destino||"",opciones:ops.length?ops:[{navScac:"",precios:{}}],elegida,elegidaEq:l0.elegida_eq||null,ventaAncla:Object.keys(ventaAncla).length?ventaAncla:null};
+    return {origen:l0.origen||"",origenEstado:l0.origen_estado||"",precarriage_mode:l0.precarriage_mode||"",pol:l0.pol||"",pod:l0.pod||"",oncarriage_mode:l0.oncarriage_mode||"",destino:l0.destino||"",destinoEstado:l0.destino_estado||"",opciones:ops.length?ops:[{navScac:"",precios:{}}],elegida,elegidaEq:l0.elegida_eq||null,ventaAncla:Object.keys(ventaAncla).length?ventaAncla:null};
   });
   const anyL=(lineas||[])[0]||{};
   let prevVigDesde=null, prevVigHasta=null;
