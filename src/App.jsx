@@ -1,7 +1,7 @@
 import React, { useState } from "react";
 import { C, F } from "./lib.js";
 import { Btn } from "./ui.jsx";
-import { useAuth, LoginGate } from "./Auth.jsx";
+import { useAuth, LoginGate, SetPassword } from "./Auth.jsx";
 import { Cotizador } from "./Cotizador.jsx";
 import { Cotizaciones } from "./Cotizaciones.jsx";
 import { Importador } from "./Importador.jsx";
@@ -9,12 +9,13 @@ import { FletesBase } from "./FletesBase.jsx";
 import { TarifasVigentes } from "./TarifasVigentes.jsx";
 
 export default function App(){
-  const { session, role, ready, signOut } = useAuth();
+  const { session, role, ready, recovery, endRecovery, signOut } = useAuth();
   const [tab,setTab]=useState("lista");
   const [openId,setOpenId]=useState(null);
   const [cotizKey,setCotizKey]=useState(0); // fuerza remount del cotizador
 
   if(!ready) return null;
+  if(recovery) return <SetPassword email={session?.user?.email} onDone={endRecovery} />;
   if(!session) return <LoginGate role={role} />;
 
   const canQuote = role==="admin" || role==="pricing";
