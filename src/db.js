@@ -258,7 +258,7 @@ export async function saveCotizacion(state, logInfo){
   if(acu) acuerdo_id=acu.id;
   else{
     const { no_acuerdo, prefijo, vig_desde, vig_hasta } = await nuevoNoAcuerdo(clienteNombre||cliente);
-    let { data: ai, error } = await supabase.from("acuerdos").insert({no_acuerdo,prefijo,vig_desde,vig_hasta,cliente_id:cliente,modo}).select("id").single();
+    let { data: ai, error } = await supabase.from("acuerdos").insert({no_acuerdo,prefijo,vig_desde,vig_hasta,cliente_id:cliente,modo,sales_rep_email:state.salesRep||null}).select("id").single();
     if(error){ sum.errores.push("acuerdo: "+error.message); return sum; }
     acuerdo_id=ai.id;
   }
@@ -399,7 +399,7 @@ export async function buscarRutasSimilares({ pol, pod, origen, destino, origenEs
 }
 
 export async function loadVersion(versionId){
-  const { data: ver } = await supabase.from("versiones").select("*, acuerdos(id,no_acuerdo,modo,cliente_id,clientes(nombre))").eq("id",versionId).single();
+  const { data: ver } = await supabase.from("versiones").select("*, acuerdos(id,no_acuerdo,modo,cliente_id,sales_rep_email,clientes(nombre))").eq("id",versionId).single();
   const lineas = await selectAllEq("lineas","*","version_id",versionId,"created_at");
   const lids=(lineas||[]).map(l=>l.id);
   const opciones = lids.length ? await selectAllIn("opciones_costo","*","linea_id",lids) : [];
@@ -437,7 +437,7 @@ export async function loadVersion(versionId){
     no_acuerdo:ver.acuerdos?.no_acuerdo||"", tradelane:ver.tradelane||"", amendment:ver.amendment||1,
     cambios:ver.cambios||null, cambiosLog:Array.isArray(ver.cambios_log)?ver.cambios_log:[], reemplaza_a:ver.reemplaza_a||null, updatedAt:ver.updated_at||null, updatedBy:ver.updated_by_email||null,
     prevVigDesde, prevVigHasta,
-    cliente:ver.acuerdos?.cliente_id, clienteNombre:ver.acuerdos?.clientes?.nombre,
+    cliente:ver.acuerdos?.cliente_id, clienteNombre:ver.acuerdos?.clientes?.nombre, acuerdoId:ver.acuerdo_id||null, salesRep:ver.acuerdos?.sales_rep_email||"",
     modo:ver.acuerdos?.modo||"maritimo", direccion:ver.direccion,
     commodity:ver.commodity, commodity_id:ver.commodity_id, notas:ver.notas||"", correcciones:ver.correcciones||"",
     vigDesde:anyL.validez_desde||"", vigHasta:anyL.validez_hasta||"",
@@ -661,6 +661,18 @@ export async function deleteVersion(versionId){
 // Borra un contrato macro completo (acuerdo + amendments + rutas + costos + recargos).
 // Usa una función en la BD (delete_acuerdo) que EXIGE admin y borra todo en una transacción.
 // El CLIENTE no se borra (puede tener otros acuerdos de distinto modo).
+// ===== Usuarios (para asignar sales rep) y asignación =====
+export async function listUsuarios(){
+  const { data, error } = await supabase.from("allowed_users").select("email,name,role").order("role").order("email");
+  if(error) return { rows:[], error:error.message };
+  return { rows:(data||[]) };
+}
+export async function asignarSalesRep(acuerdoId, email){
+  if(!acuerdoId) return { error:"Falta el acuerdo." };
+  const { error } = await supabase.from("acuerdos").update({ sales_rep_email: email||null }).eq("id", acuerdoId);
+  return { error: error?error.message:null };
+}
+
 export async function deleteAcuerdo(acuerdoId){
   if(!acuerdoId) return { error:"Falta el identificador del acuerdo." };
   const { error } = await supabase.rpc("delete_acuerdo", { p_acuerdo: acuerdoId });

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { supabase } from "./supabaseClient.js";
 import { C, F, EQUIPOS, EQUIPO_CATS, NAVIERAS, navName, CATALOG, COMMODITY_INDUSTRIAS, tx, scopeFull, serviceMode, transportMode, n, round10, adicPorCont, cargosBL, inclPorCont, inclBL, subjectTo, enPrecio, esSubjectTo, money, MONEDAS, optPuertos, optCiudades, puertoNombre, paisDe, paisOrigen, paisDestino, rutaPaisLabel, tlDe, tlLabel, TRADELANES, tradeLabel, rutaEnTradelane, opcionActivaEq, mejorOpcionEq, ordenOpciones, ordenRecargos, ovRazon, PLANTILLA_RECARGOS, parseTarifario, ordenarRutas, ESTADOS_MX, ESTADOS_TODOS, optEstados, abrevEstado } from "./lib.js";
 import { inS, Lbl, Field, TI, Sel, Chip, Btn, ClaveAutocomplete, ComboBox } from "./ui.jsx";
-import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges, recargosDeRutaSimilar, recargosDeRutaSimilarPorNaviera, recargosDeNaviera, anclarVenta, checkConflictoTarifa, guardarCorreccion, buscarCoincidenciasRecargo, aplicarRecargoEnBorradores, buscarRutasSimilares } from "./db.js";
+import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges, recargosDeRutaSimilar, recargosDeRutaSimilarPorNaviera, recargosDeNaviera, anclarVenta, checkConflictoTarifa, guardarCorreccion, buscarCoincidenciasRecargo, aplicarRecargoEnBorradores, buscarRutasSimilares, listUsuarios, asignarSalesRep } from "./db.js";
 import { abrirCotizacion } from "./quote.js";
 import { exportarExcel } from "./quoteExcel.js";
 import * as XLSX from "xlsx";
@@ -197,10 +197,14 @@ function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir,onFoco,editarProp,filt
 
 export function Cotizador({ loadId, onDirty, role }){
   const isAdmin = role==="admin";
+  const canAsignar = role==="admin" || role==="pricing";
   const [corrigiendo,setCorrigiendo]=useState(false);
   const [clientes,setClientes]=useState([]);
   const [comms,setComms]=useState([]);
   const [cliente,setCliente]=useState("");
+  const [salesRep,setSalesRep]=useState("");
+  const [usuarios,setUsuarios]=useState([]);
+  const [acuerdoId,setAcuerdoId]=useState(null);
   const [modo,setModo]=useState("maritimo");
   const [direccion,setDireccion]=useState("I");
   const [tradelane,setTradelane]=useState("");
@@ -337,6 +341,7 @@ export function Cotizador({ loadId, onDirty, role }){
 
   const mergedCat=useMemo(()=>{const have=new Set(CATALOG.map(x=>x.c.toUpperCase()));return [...CATALOG,...extraCat.filter(x=>!have.has((x.c||"").toUpperCase()))];},[extraCat]);
   useEffect(()=>{ listSurcharges().then(setExtraCat); },[]);
+  useEffect(()=>{ listUsuarios().then(r=>setUsuarios(r.rows||[])); },[]);
 
   const recargarClientes=()=>supabase.from("clientes").select("id,no_cliente,nombre,tipo").order("nombre").then(({data})=>setClientes(data||[]));
   const guardarNuevoCliente=async()=>{
@@ -414,7 +419,7 @@ export function Cotizador({ loadId, onDirty, role }){
     if(!loadId) return; setLoading(true); hydrating.current=true;
     loadVersion(loadId).then(st=>{
       setVersionId(st.versionId); setCodigo(st.codigo); setEstatus(st.estatus);
-      setCliente(st.cliente||""); setModo(st.modo||"maritimo"); setDireccion(st.direccion||"I");
+      setCliente(st.cliente||""); setSalesRep(st.salesRep||""); setAcuerdoId(st.acuerdoId||null); setModo(st.modo||"maritimo"); setDireccion(st.direccion||"I");
       setTradelane(st.tradelane||""); setNoAcuerdo(st.no_acuerdo||""); setAmendment(st.amendment||1); setCambiosLog(st.cambiosLog||[]);
       setCommodityId(st.commodity_id||""); setVigDesde(st.vigDesde||""); setVigHasta(st.vigHasta||""); setNotas(st.notas||""); setNotasInternas(st.correcciones||""); setPrevVigHasta(st.prevVigHasta||"");
       setEquipos(st.equipos&&st.equipos.length?st.equipos:["20DV","40HC"]);
@@ -499,7 +504,7 @@ export function Cotizador({ loadId, onDirty, role }){
     }
   };
   const nueva=async()=>{ if(!versionId) return; if(!confirm("¿Crear un nuevo Amendment (AM"+((amendment||1)+1)+")? Se copia el actual para que edites las diferencias; el AM anterior queda superseded.")) return; setSaving(true); const res=await nuevaVersion(versionId); setSaving(false); if(res.errores&&res.errores.length){ alert("Error: "+res.errores.join(" · ")); return; } if(res.versionId){ setVersionId(res.versionId); setCodigo(res.codigo); setAmendment(res.amendment||((amendment||1)+1)); if(res.vigDesde) setVigDesde(res.vigDesde); setCambiosLog([]); setEstatus("borrador"); setSaved(res); } };
-  const stCotiz=()=>{ const cn=(clientes.find(c=>c.id===cliente)||{}).nombre; return {clienteNombre:cn,codigo:codigo||codigoPreview,no_acuerdo:noAcuerdo,tradelane,amendment,commodity:comLabel,direccion,equipos,rutas:derivarAnclaje(rutas),quoteNav,vigDesde,vigHasta,notas,correcciones:notasInternas||""}; };
+  const stCotiz=()=>{ const cn=(clientes.find(c=>c.id===cliente)||{}).nombre; return {clienteNombre:cn,codigo:codigo||codigoPreview,no_acuerdo:noAcuerdo,tradelane,amendment,commodity:comLabel,direccion,equipos,rutas:derivarAnclaje(rutas),quoteNav,vigDesde,vigHasta,notas,correcciones:notasInternas||"",salesRep:salesRep||""}; };
   const generar=()=>{ const falt=faltanPOLPOD(); if(falt.length){ if(estatus==="borrador"){ if(!confirm("Este borrador tiene rutas incompletas; el PDF saldrá con renglones sin naviera/tarifa:\n\n• "+falt.join("\n• ")+"\n\n¿Descargar de todas formas?")) return; } else { alert("Faltan datos obligatorios en las rutas (POL, POD, naviera y modo si hay ciudad):\n\n• "+falt.join("\n• ")); return; } } if(!confirmProfit()) return; abrirCotizacion(stCotiz()); };
   const exportarXlsx=async(interno)=>{ const falt=faltanPOLPOD(); if(falt.length){ if(estatus==="borrador"){ if(!confirm("Este borrador tiene rutas incompletas; el Excel saldrá con renglones sin naviera/tarifa:\n\n• "+falt.join("\n• ")+"\n\n¿Descargar de todas formas?")) return; } else { alert("Faltan datos obligatorios en las rutas (POL, POD, naviera y modo si hay ciudad):\n\n• "+falt.join("\n• ")); return; } } if(!interno&&!confirmProfit()) return; try{ await exportarExcel(stCotiz(),{interno:!!interno}); }catch(ex){ alert("Error al exportar a Excel: "+ex.message); } };
   const toggleEditProp=()=>{ const next=!editarPropuesta;
@@ -583,6 +588,12 @@ export function Cotizador({ loadId, onDirty, role }){
         </Field>
         <Field label="Vigencia desde"><TI type="date" value={vigDesde} onChange={e=>setVigDesde(e.target.value)}/></Field>
         <Field label="Vigencia hasta"><TI type="date" value={vigHasta} onChange={e=>setVigHasta(e.target.value)}/></Field>
+        <Field label="Sales rep" w={1.5}>
+          {canAsignar
+            ? <Sel value={salesRep} onChange={async e=>{ const v=e.target.value; setSalesRep(v); if(acuerdoId){ const r=await asignarSalesRep(acuerdoId,v); if(r.error) alert("No se pudo asignar el sales rep: "+r.error); } }} options={[{v:"",t:"— sin asignar —"},...usuarios.map(u=>({v:u.email,t:(u.name||u.email)+(u.role?" ("+u.role+")":"")}))]}/>
+            : <div style={{...inS,display:"flex",alignItems:"center",color:C.slate,background:"#F5F6F8"}}>{(usuarios.find(u=>u.email===salesRep)||{}).name||salesRep||"— sin asignar —"}</div>}
+          {!canAsignar&&<span style={{fontSize:10,color:C.label}}>Asignado por Pricing</span>}
+        </Field>
       </div>
       {traslapeVig&&<div style={{fontSize:11.5,color:"#8A6D1F",background:"#FBF4E0",border:"1px solid #EAD9A0",borderRadius:8,padding:"7px 10px",marginBottom:10}}>ℹ {traslapeVig}</div>}
       {avisoVig&&<div style={{fontSize:11.5,color:"#8A6D1F",background:"#FBF4E0",border:"1px solid #EAD9A0",borderRadius:8,padding:"7px 10px",marginBottom:10}}>⚠ {avisoVig.txt} Es solo un aviso, no bloquea.</div>}
