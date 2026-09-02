@@ -18,7 +18,8 @@ export default function App(){
   if(recovery) return <SetPassword email={session?.user?.email} onDone={endRecovery} />;
   if(!session) return <LoginGate role={role} />;
 
-  const canQuote = role==="admin" || role==="pricing";
+  const canQuote = role==="admin" || role==="pricing" || role==="sales";   // ver/editar cotizaciones (RLS acota a lo suyo para sales)
+  const canPricing = role==="admin" || role==="pricing";                    // herramientas de pricing (fletes/vigentes)
   const openVersion=(id)=>{ setOpenId(id); setCotizKey(k=>k+1); setTab("cotizador"); };
   const nuevaCotiz=()=>{ setOpenId(null); setCotizKey(k=>k+1); setTab("cotizador"); };
 
@@ -29,8 +30,8 @@ export default function App(){
       {canQuote&&(<div style={{display:"flex",gap:6,marginLeft:12}}>
         <Btn kind={tab==="lista"?"dark":"ghost"} small onClick={()=>setTab("lista")}>Mis cotizaciones</Btn>
         <Btn kind={tab==="cotizador"?"dark":"ghost"} small onClick={()=>setTab("cotizador")}>Cotizador</Btn>
-        <Btn kind={tab==="fletes"?"dark":"ghost"} small onClick={()=>setTab("fletes")}>Fletes base</Btn>
-        <Btn kind={tab==="vigentes"?"dark":"ghost"} small onClick={()=>setTab("vigentes")}>Tarifas vigentes</Btn>
+        {canPricing&&<Btn kind={tab==="fletes"?"dark":"ghost"} small onClick={()=>setTab("fletes")}>Fletes base</Btn>}
+        {canPricing&&<Btn kind={tab==="vigentes"?"dark":"ghost"} small onClick={()=>setTab("vigentes")}>Tarifas vigentes</Btn>}
       </div>)}
       <div style={{marginLeft:"auto",display:"flex",alignItems:"center",gap:12}}>
         <span style={{fontSize:12,color:C.label}}>{session.user?.email} · <b style={{color:C.slate}}>{role||"…"}</b></span>
@@ -38,11 +39,11 @@ export default function App(){
       </div>
     </div>
     <div style={{padding:20}}>
-      {!canQuote&&(<div style={{maxWidth:560,margin:"60px auto",textAlign:"center",color:C.label,fontSize:14}}>Este módulo es de Pricing. Tu rol ({role||"sin rol"}) no tiene acceso a cotizaciones.</div>)}
+      {!canQuote&&(<div style={{maxWidth:560,margin:"60px auto",textAlign:"center",color:C.label,fontSize:14}}>Tu rol ({role||"sin rol"}) no tiene acceso a este módulo. Contacta al administrador.</div>)}
       {canQuote&&tab==="lista" && <Cotizaciones onOpen={openVersion} onNew={nuevaCotiz} role={role} />}
       {canQuote&&tab==="cotizador" && <Cotizador key={cotizKey} loadId={openId} role={role} />}
-      {canQuote&&tab==="fletes" && <FletesBase role={role} />}
-      {canQuote&&tab==="vigentes" && <TarifasVigentes />}
+      {canPricing&&tab==="fletes" && <FletesBase role={role} />}
+      {canPricing&&tab==="vigentes" && <TarifasVigentes />}
     </div>
   </div>);
 }
