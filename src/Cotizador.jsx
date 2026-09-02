@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { supabase } from "./supabaseClient.js";
-import { C, F, EQUIPOS, EQUIPO_CATS, NAVIERAS, navName, CATALOG, COMMODITY_INDUSTRIAS, tx, scopeFull, serviceMode, transportMode, n, round10, adicPorCont, cargosBL, inclPorCont, inclBL, subjectTo, enPrecio, esSubjectTo, money, MONEDAS, optPuertos, optCiudades, puertoNombre, paisDe, paisOrigen, paisDestino, rutaPaisLabel, tlDe, tlLabel, TRADELANES, tradeLabel, rutaEnTradelane, opcionActivaEq, mejorOpcionEq, ordenOpciones, ordenRecargos, ovRazon, PLANTILLA_RECARGOS, parseTarifario, ordenarRutas, ESTADOS_MX, abrevEstado } from "./lib.js";
+import { C, F, EQUIPOS, EQUIPO_CATS, NAVIERAS, navName, CATALOG, COMMODITY_INDUSTRIAS, tx, scopeFull, serviceMode, transportMode, n, round10, adicPorCont, cargosBL, inclPorCont, inclBL, subjectTo, enPrecio, esSubjectTo, money, MONEDAS, optPuertos, optCiudades, puertoNombre, paisDe, paisOrigen, paisDestino, rutaPaisLabel, tlDe, tlLabel, TRADELANES, tradeLabel, rutaEnTradelane, opcionActivaEq, mejorOpcionEq, ordenOpciones, ordenRecargos, ovRazon, PLANTILLA_RECARGOS, parseTarifario, ordenarRutas, ESTADOS_MX, ESTADOS_TODOS, optEstados, abrevEstado } from "./lib.js";
 import { inS, Lbl, Field, TI, Sel, Chip, Btn, ClaveAutocomplete, ComboBox } from "./ui.jsx";
 import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges, recargosDeRutaSimilar, recargosDeRutaSimilarPorNaviera, recargosDeNaviera, anclarVenta, checkConflictoTarifa, guardarCorreccion, buscarCoincidenciasRecargo, aplicarRecargoEnBorradores, buscarRutasSimilares } from "./db.js";
 import { abrirCotizacion } from "./quote.js";
@@ -307,9 +307,9 @@ export function Cotizador({ loadId, onDirty, role }){
     const dv=(col,opts)=>{ for(let r=2;r<=400;r++){ ws.getCell(r,col).dataValidation={ type:"list", allowBlank:true, formulae:['"'+opts.join(",")+'"'] }; } };
     // Lista de estados (larga) va en hoja auxiliar por el límite de 255 caracteres de la validación en línea
     const wsL=wb.addWorksheet("Listas",{state:"veryHidden"});
-    ESTADOS_MX.forEach((e,i)=>{ wsL.getCell(i+1,1).value=e; });
+    ESTADOS_TODOS.forEach((e,i)=>{ wsL.getCell(i+1,1).value=e; });
     const dvRef=(col,ref)=>{ for(let r=2;r<=400;r++){ ws.getCell(r,col).dataValidation={ type:"list", allowBlank:true, formulae:[ref] }; } };
-    dvRef(3,"Listas!$A$1:$A$"+ESTADOS_MX.length); dv(4,MODO); dvRef(8,"Listas!$A$1:$A$"+ESTADOS_MX.length); dv(9,MODO); dv(13,CARR); dv(14,TL); dv(15,SRV);
+    dvRef(3,"Listas!$A$1:$A$"+ESTADOS_TODOS.length); dv(4,MODO); dvRef(8,"Listas!$A$1:$A$"+ESTADOS_TODOS.length); dv(9,MODO); dv(13,CARR); dv(14,TL); dv(15,SRV);
     ws.autoFilter="A1:"+ws.getColumn(HDR.length).letter+"1";
     const buf=await wb.xlsx.writeBuffer();
     const blob=new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
@@ -635,13 +635,13 @@ export function Cotizador({ loadId, onDirty, role }){
         {rutas.map((r,ri)=>{if(!matchTar(r)) return null;return (<div key={ri} style={{display:"flex",gap:8,alignItems:"flex-end",marginBottom:8,paddingBottom:8,borderBottom:ri<rutas.length-1?"1px solid "+C.sep:"none"}}>
           <span style={{fontSize:11,fontWeight:"bold",color:"#fff",background:C.ink,borderRadius:5,padding:"3px 8px",marginBottom:4}}>R{ri+1}</span>
           <Field label="Origen (ciudad)"><ComboBox value={r.origen} items={optCiudades()} placeholder="Ciudad…" onChange={(v)=>setRutas(rutas.map((x,i)=>i===ri?{...x,origen:v}:x))}/></Field>
-          {tx(r.origen)&&<Field label="Estado" w={1}><Sel value={r.origenEstado||""} onChange={e=>setRutas(rutas.map((x,i)=>i===ri?{...x,origenEstado:e.target.value}:x))} options={["",...ESTADOS_MX]}/></Field>}
+          {tx(r.origen)&&<Field label="Estado" w={1}><Sel value={r.origenEstado||""} onChange={e=>setRutas(rutas.map((x,i)=>i===ri?{...x,origenEstado:e.target.value}:x))} options={optEstados()}/></Field>}
           <Field label="Modo" w={.8}><Sel value={r.precarriage_mode} onChange={e=>setRutas(rutas.map((x,i)=>i===ri?{...x,precarriage_mode:e.target.value}:x))} options={["","All Truck","Rail+Truck","Rail Ramp","Truck Ramp","Barge"]}/></Field>
           <Field label="POL"><ComboBox value={r.pol} items={optPuertos()} placeholder="Puerto / UNLOCODE…" onChange={(v)=>setRutas(rutas.map((x,i)=>i===ri?{...x,pol:v}:x))}/>{tx(r.pol)&&<div style={{fontSize:10,color:C.label,marginTop:2,lineHeight:1.2}} title={puertoNombre(r.pol)}>{puertoNombre(r.pol)}</div>}</Field>
           <Field label="POD"><ComboBox value={r.pod} items={optPuertos()} placeholder="Puerto / UNLOCODE…" onChange={(v)=>setRutas(rutas.map((x,i)=>i===ri?{...x,pod:v}:x))}/>{tx(r.pod)&&<div style={{fontSize:10,color:C.label,marginTop:2,lineHeight:1.2}} title={puertoNombre(r.pod)}>{puertoNombre(r.pod)}</div>}</Field>
           <Field label="Modo" w={.8}><Sel value={r.oncarriage_mode} onChange={e=>setRutas(rutas.map((x,i)=>i===ri?{...x,oncarriage_mode:e.target.value}:x))} options={["","All Truck","Rail+Truck","Rail Ramp","Truck Ramp","Barge"]}/></Field>
           <Field label="Destino (ciudad)"><ComboBox value={r.destino} items={optCiudades()} placeholder="Ciudad…" onChange={(v)=>setRutas(rutas.map((x,i)=>i===ri?{...x,destino:v}:x))}/></Field>
-          {tx(r.destino)&&<Field label="Estado" w={1}><Sel value={r.destinoEstado||""} onChange={e=>setRutas(rutas.map((x,i)=>i===ri?{...x,destinoEstado:e.target.value}:x))} options={["",...ESTADOS_MX]}/></Field>}
+          {tx(r.destino)&&<Field label="Estado" w={1}><Sel value={r.destinoEstado||""} onChange={e=>setRutas(rutas.map((x,i)=>i===ri?{...x,destinoEstado:e.target.value}:x))} options={optEstados()}/></Field>}
           <Chip>{serviceMode(r)}</Chip>{transportMode(r)&&<span style={{fontSize:10,color:C.label,fontWeight:"bold",marginLeft:6}}>{transportMode(r)}</span>}
           <span onClick={()=>setRutas(rutas.filter((_,i)=>i!==ri))} style={{cursor:"pointer",color:C.label,fontSize:11,marginBottom:6}}>✕</span>
         </div>);})}
