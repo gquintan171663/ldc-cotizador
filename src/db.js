@@ -673,6 +673,13 @@ export async function asignarSalesRep(acuerdoId, email){
   return { error: error?error.message:null };
 }
 
+export async function vendedorDeCliente(clienteId){
+  if(!clienteId) return { email:null };
+  const { data, error } = await supabase.rpc("vendedor_asignado_cliente", { cid: clienteId });
+  if(error) return { email:null, error:error.message };
+  return { email: data||null };
+}
+
 export async function deleteAcuerdo(acuerdoId){
   if(!acuerdoId) return { error:"Falta el identificador del acuerdo." };
   const { error } = await supabase.rpc("delete_acuerdo", { p_acuerdo: acuerdoId });

@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { supabase } from "./supabaseClient.js";
 import { C, F, EQUIPOS, EQUIPO_CATS, NAVIERAS, navName, CATALOG, COMMODITY_INDUSTRIAS, tx, scopeFull, serviceMode, transportMode, n, round10, adicPorCont, cargosBL, inclPorCont, inclBL, subjectTo, enPrecio, esSubjectTo, money, MONEDAS, optPuertos, optCiudades, puertoNombre, paisDe, paisOrigen, paisDestino, rutaPaisLabel, tlDe, tlLabel, TRADELANES, tradeLabel, rutaEnTradelane, opcionActivaEq, mejorOpcionEq, ordenOpciones, ordenRecargos, ovRazon, PLANTILLA_RECARGOS, parseTarifario, ordenarRutas, ESTADOS_MX, ESTADOS_TODOS, optEstados, abrevEstado } from "./lib.js";
 import { inS, Lbl, Field, TI, Sel, Chip, Btn, ClaveAutocomplete, ComboBox } from "./ui.jsx";
-import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges, recargosDeRutaSimilar, recargosDeRutaSimilarPorNaviera, recargosDeNaviera, anclarVenta, checkConflictoTarifa, guardarCorreccion, buscarCoincidenciasRecargo, aplicarRecargoEnBorradores, buscarRutasSimilares, listUsuarios, asignarSalesRep } from "./db.js";
+import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges, recargosDeRutaSimilar, recargosDeRutaSimilarPorNaviera, recargosDeNaviera, anclarVenta, checkConflictoTarifa, guardarCorreccion, buscarCoincidenciasRecargo, aplicarRecargoEnBorradores, buscarRutasSimilares, listUsuarios, asignarSalesRep, vendedorDeCliente } from "./db.js";
 import { abrirCotizacion } from "./quote.js";
 import { exportarExcel } from "./quoteExcel.js";
 import * as XLSX from "xlsx";
@@ -205,6 +205,8 @@ export function Cotizador({ loadId, onDirty, role }){
   const [salesRep,setSalesRep]=useState("");
   const [usuarios,setUsuarios]=useState([]);
   const [acuerdoId,setAcuerdoId]=useState(null);
+  const [myEmail,setMyEmail]=useState("");
+  const [avisoVendedor,setAvisoVendedor]=useState("");
   const [modo,setModo]=useState("maritimo");
   const [direccion,setDireccion]=useState("I");
   const [tradelane,setTradelane]=useState("");
@@ -342,6 +344,7 @@ export function Cotizador({ loadId, onDirty, role }){
   const mergedCat=useMemo(()=>{const have=new Set(CATALOG.map(x=>x.c.toUpperCase()));return [...CATALOG,...extraCat.filter(x=>!have.has((x.c||"").toUpperCase()))];},[extraCat]);
   useEffect(()=>{ listSurcharges().then(setExtraCat); },[]);
   useEffect(()=>{ listUsuarios().then(r=>setUsuarios(r.rows||[])); },[]);
+  useEffect(()=>{ supabase.auth.getUser().then(({data})=>setMyEmail((data?.user?.email||"").toLowerCase())); },[]);
 
   const recargarClientes=()=>supabase.from("clientes").select("id,no_cliente,nombre,tipo").order("nombre").then(({data})=>setClientes(data||[]));
   const guardarNuevoCliente=async()=>{
@@ -570,8 +573,9 @@ export function Cotizador({ loadId, onDirty, role }){
           <ComboBox value={cliente} display={(clientes.find(c=>c.id===cliente)||{}).nombre||""} allowFree={false}
             placeholder="Buscar cliente o prospecto…"
             items={clientes.map(c=>({v:c.id,label:c.no_cliente+" · "+c.nombre,sub:c.tipo}))}
-            onChange={(v)=>setCliente(v)}/>
+            onChange={async (v)=>{ setCliente(v); setAvisoVendedor(""); if(v && role==="sales"){ const r=await vendedorDeCliente(v); const asignado=(r.email||"").toLowerCase(); if(asignado && asignado!==myEmail){ const nom=(usuarios.find(u=>(u.email||"").toLowerCase()===asignado)||{}).name||r.email; setAvisoVendedor("Esta cuenta ya tiene un vendedor asignado ("+nom+"). Revísalo con Administración antes de cotizar."); alert("Esta cuenta ya tiene un vendedor asignado ("+nom+").\n\nRevísalo con Administración antes de crear una cotización."); } } }}/>
           <span onClick={()=>setNuevoOpen(!nuevoOpen)} style={{cursor:"pointer",color:C.red,fontSize:11,fontWeight:"bold",marginTop:3,display:"inline-block"}}>{nuevoOpen?"Cancelar":"＋ Nuevo cliente / prospecto"}</span>
+          {avisoVendedor&&<div style={{marginTop:5,fontSize:11,fontWeight:"bold",color:"#8A1C1C",background:"#FCE9E9",border:"1px solid #F1B9B9",borderRadius:6,padding:"5px 8px"}}>⚠ {avisoVendedor}</div>}
         </Field>
         <Field label="Modo"><Sel value={modo} onChange={e=>setModo(e.target.value)} options={[{v:"maritimo",t:"Marítimo"},{v:"terrestre",t:"Terrestre"},{v:"aereo",t:"Aéreo"}]}/></Field>
         <Field label="Dirección" w={.9}><Sel value={direccion} onChange={e=>setDireccion(e.target.value)} options={[{v:"E",t:"Exportación"},{v:"I",t:"Importación"}]}/></Field>
