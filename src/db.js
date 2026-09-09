@@ -252,15 +252,21 @@ export async function saveCotizacion(state, logInfo){
     return sum;
   }
 
-  // NUEVA cotización
+  // NUEVA cotización — buscar-o-crear acuerdo vía función segura (respeta RLS + reglas de vendedor)
   let acuerdo_id;
-  let { data: acu } = await supabase.from("acuerdos").select("id").eq("cliente_id",cliente).eq("modo",modo).maybeSingle();
-  if(acu) acuerdo_id=acu.id;
-  else{
+  {
     const { no_acuerdo, prefijo, vig_desde, vig_hasta } = await nuevoNoAcuerdo(clienteNombre||cliente);
-    let { data: ai, error } = await supabase.from("acuerdos").insert({no_acuerdo,prefijo,vig_desde,vig_hasta,cliente_id:cliente,modo,sales_rep_email:state.salesRep||null}).select("id").single();
-    if(error){ sum.errores.push("acuerdo: "+error.message); return sum; }
-    acuerdo_id=ai.id;
+    const { data: aid, error } = await supabase.rpc("asegurar_acuerdo", {
+      p_cliente_id: cliente, p_modo: modo, p_no_acuerdo: no_acuerdo, p_prefijo: prefijo,
+      p_vig_desde: vig_desde, p_vig_hasta: vig_hasta, p_sales_rep: state.salesRep||null
+    });
+    if(error){
+      if(String(error.message||"").includes("CLIENTE_OTRO_VENDEDOR"))
+        sum.errores.push("Este cliente ya tiene otro vendedor asignado. Revísalo con Administración.");
+      else sum.errores.push("acuerdo: "+error.message);
+      return sum;
+    }
+    acuerdo_id=aid;
   }
   let { data: ver, error: ve } = await supabase.from("versiones")
     .insert({acuerdo_id,direccion,origen:origen==="rr"?"desde_rate_request":"desde_cero",commodity:commodity||"",commodity_id:commodity_id||null,notas:notas||null,tradelane:tradelane||null,vig_desde:parseDate(vigDesde),vig_hasta:parseDate(vigHasta),estatus:"borrador"})
