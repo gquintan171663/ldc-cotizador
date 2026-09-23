@@ -1,5 +1,5 @@
 import { supabase } from "./supabaseClient.js";
-import { matchCommodity, paisDe, tlDe, n, adicPorCont, tx, eqMeta, prefijoCliente, numeroAcuerdo, hayCambioCosto, ventaEq, mkSurOf, round10, opcionActivaEq, puertoNombre, abrevEstado, sonPuertosAlternos, sonPuertosBase } from "./lib.js";
+import { matchCommodity, paisDe, tlDe, n, adicPorCont, tx, eqMeta, prefijoCliente, numeroAcuerdo, hayCambioCosto, ventaEq, mkSurOf, round10, opcionActivaEq, puertoNombre, abrevEstado, sonPuertosAlternos, sonPuertosBase, surAplican } from "./lib.js";
 
 // Mapa commodity(lower) -> id desde el catálogo
 async function commodityMap(){
@@ -818,13 +818,20 @@ export async function matchFletesBase(claves){
 // aprobación manual) copiarles el nuevo monto. Solo borradores; nunca enviados.
 // Al aplicar, se conserva la tarifa al cliente: el profit absorbe el cambio de costo.
 // ===========================================================================
-export async function buscarCoincidenciasRecargo({ scac, paisPol, paisPod, clave, versionExcluir }){
+// Normaliza un mapa de montos por tamaño a un objeto comparable (ignora vacíos).
+function _normMontos(m){ const o={}; Object.keys(m||{}).forEach(k=>{ const v=m[k]; if(v!==""&&v!=null) o[k]=String(n(v)); }); return o; }
+export async function buscarCoincidenciasRecargo({ scac, paisPol, paisPod, clave, agente, agencia, monto, montos, versionExcluir }){
   if(!scac || !clave) return { rows:[] };
   const { data: vers, error } = await supabase.from("versiones")
     .select("id,codigo,amendment,estatus,acuerdos(no_acuerdo,clientes(nombre))")
     .eq("estatus","borrador").limit(2000);
   if(error) return { rows:[], error:error.message };
   const cl=String(clave).toUpperCase();
+  const ag=String(agente||"");                 // combinación destino: "" = Directo-Naviera
+  const esAgencia=!!agencia;                    // agency surcharge → sólo esa combinación Agente-Naviera
+  const nuevoMon=String(n(monto));
+  const nuevoMontosN=_normMontos(montos);
+  const nuevoTieneSizes=Object.keys(nuevoMontosN).length>0;
   const out=[];
   for(const v of (vers||[])){
     if(v.id===versionExcluir) continue;
@@ -832,13 +839,21 @@ export async function buscarCoincidenciasRecargo({ scac, paisPol, paisPod, clave
     if(!st) continue;
     const surOf=mkSurOf(st);
     (st.rutas||[]).forEach(r=>{
-      if(!((r.opciones||[]).some(o=>o.navScac===scac))) return;        // usa esa naviera
+      // Debe usar la MISMA combinación: misma naviera y, si es agency, mismo agente (no mezclar canales).
+      const usaCombo=(r.opciones||[]).some(o=> o.navScac===scac && (esAgencia ? String(o.agente||"")===ag : true));
+      if(!usaCombo) return;
       if(paisDe(r.pol)!==paisPol || paisDe(r.pod)!==paisPod) return;   // mismos países
-      const s=(surOf(scac,tlDe(r))||[]).find(x=>String(x.c||"").toUpperCase()===cl);
+      // Recargo con esa clave que corresponda a la combinación (agency+agente ó normal).
+      const s=(surOf(scac,tlDe(r))||[]).find(x=>String(x.c||"").toUpperCase()===cl && (esAgencia ? (!!x.agencia && String(x.agente||"")===ag) : !x.agencia));
       if(!s) return;                                                    // tiene esa clave
       const tieneSizes=s.montos&&Object.values(s.montos).some(x=>x!==""&&x!=null);
+      // ¿La tarifa actual del destino difiere de la que se va a copiar?
+      const difiere = (tieneSizes||nuevoTieneSizes)
+        ? JSON.stringify(_normMontos(s.montos))!==JSON.stringify(nuevoMontosN)
+        : String(n(s.monto))!==nuevoMon;
       out.push({ versionId:v.id, cliente:v.acuerdos?.clientes?.nombre||st.clienteNombre||"", folio:v.codigo||st.codigo||"",
-        pol:r.pol, pod:r.pod, rutaLabel:_loc(r.pol)+" → "+_loc(r.pod), montoActual:tieneSizes?("por tamaño"):(s.monto!=null?s.monto:""), clave:s.c||clave });
+        pol:r.pol, pod:r.pod, rutaLabel:_loc(r.pol)+" → "+_loc(r.pod), montoActual:tieneSizes?("por tamaño"):(s.monto!=null?s.monto:""),
+        difiere, agencia:esAgencia, agente:ag, clave:s.c||clave });
     });
   }
   return { rows:out };
@@ -846,8 +861,9 @@ export async function buscarCoincidenciasRecargo({ scac, paisPol, paisPod, clave
 
 // Aplica el nuevo monto del recargo (clave) de la naviera scac en los borradores dados,
 // conservando TODAS las ventas de cada borrador (el profit absorbe el cambio de costo).
-export async function aplicarRecargoEnBorradores({ targets, versionIds, scac, clave, nuevoMonto, nuevosMontos, origenFolio }){
+export async function aplicarRecargoEnBorradores({ targets, versionIds, scac, clave, agente, agencia, nuevoMonto, nuevosMontos, origenFolio }){
   const cl=String(clave||"").toUpperCase();
+  const ag=String(agente||""); const esAgencia=!!agencia;
   // agrupar targets por versionId; cada target trae {versionId,pol,pod}. Compat: versionIds sueltos = todas sus rutas.
   const porVer={};
   (targets||[]).forEach(t=>{ (porVer[t.versionId]=porVer[t.versionId]||[]).push(t); });
@@ -867,14 +883,15 @@ export async function aplicarRecargoEnBorradores({ targets, versionIds, scac, cl
       const surOfOld=mkSurOf(st);
       const eqs=(st.equipos&&st.equipos.length?st.equipos:["20DV"]).map(k=>eqMeta(k)).filter(Boolean);
       const target={};
-      (st.rutas||[]).forEach((r,ri)=>{ (r.opciones||[]).forEach((o,oi)=>{ eqs.forEach(eqObj=>{ const pr=(o.precios||{})[eqObj.k]||{}; if(pr.base==null||pr.base==="") return; const venta=n(pr.base)+adicPorCont(surOfOld(o.navScac,tlDe(r)),eqObj,dir)+n(pr.profit); target[ri+"|"+oi+"|"+eqObj.k]=venta; }); }); });
-      // 2) cambiar el recargo (clave) en los bloques scac×tl permitidos
+      (st.rutas||[]).forEach((r,ri)=>{ (r.opciones||[]).forEach((o,oi)=>{ eqs.forEach(eqObj=>{ const pr=(o.precios||{})[eqObj.k]||{}; if(pr.base==null||pr.base==="") return; const venta=n(pr.base)+adicPorCont(surAplican(surOfOld(o.navScac,tlDe(r)),o.agente),eqObj,dir)+n(pr.profit); target[ri+"|"+oi+"|"+eqObj.k]=venta; }); }); });
+      // 2) cambiar el recargo (clave) en los bloques scac×tl permitidos, SOLO en la combinación correcta
+      //    (agency surcharge → sólo la fila con ese agente; normal → sólo filas no-agency).
       let toco=false;
-      (st.quoteNav||[]).forEach(q=>{ if(q.scac!==scac) return; if(tlsPermitidos && !tlsPermitidos.has(q.tl||"")) return; (q.surcharges||[]).forEach(s=>{ if(String(s.c||"").toUpperCase()===cl){ s.monto=String(nuevoMonto!=null?nuevoMonto:s.monto); if(montosLimpio) s.montos={...montosLimpio}; else if(nuevosMontos!==undefined) s.montos=null; toco=true; } }); });
+      (st.quoteNav||[]).forEach(q=>{ if(q.scac!==scac) return; if(tlsPermitidos && !tlsPermitidos.has(q.tl||"")) return; (q.surcharges||[]).forEach(s=>{ if(String(s.c||"").toUpperCase()!==cl) return; if(esAgencia){ if(!s.agencia || String(s.agente||"")!==ag) return; } else { if(s.agencia) return; } s.monto=String(nuevoMonto!=null?nuevoMonto:s.monto); if(montosLimpio) s.montos={...montosLimpio}; else if(nuevosMontos!==undefined) s.montos=null; toco=true; }); });
       if(!toco){ errores.push((st.codigo||vid)+": sin esa clave"); continue; }
       // 3) reajustar profit para conservar cada venta
       const surOfNew=mkSurOf(st);
-      (st.rutas||[]).forEach((r,ri)=>{ (r.opciones||[]).forEach((o,oi)=>{ eqs.forEach(eqObj=>{ const pr=(o.precios||{})[eqObj.k]; if(!pr||pr.base==null||pr.base==="") return; const t=target[ri+"|"+oi+"|"+eqObj.k]; if(t==null) return; const nuevoProfit=t-n(pr.base)-adicPorCont(surOfNew(o.navScac,tlDe(r)),eqObj,dir); pr.profit=String(Math.round(nuevoProfit)); }); }); });
+      (st.rutas||[]).forEach((r,ri)=>{ (r.opciones||[]).forEach((o,oi)=>{ eqs.forEach(eqObj=>{ const pr=(o.precios||{})[eqObj.k]; if(!pr||pr.base==null||pr.base==="") return; const t=target[ri+"|"+oi+"|"+eqObj.k]; if(t==null) return; const nuevoProfit=t-n(pr.base)-adicPorCont(surAplican(surOfNew(o.navScac,tlDe(r)),o.agente),eqObj,dir); pr.profit=String(Math.round(nuevoProfit)); }); }); });
       const stState={ versionId:vid, codigo:st.codigo, cliente:st.cliente, clienteNombre:st.clienteNombre, modo:st.modo, direccion:dir, tradelane:st.tradelane, commodity:st.commodity, commodity_id:st.commodity_id||null, vigDesde:st.vigDesde, vigHasta:st.vigHasta, notas:st.notas, origen:"cero", equipos:st.equipos, rutas:st.rutas, quoteNav:st.quoteNav };
       await saveCotizacion(stState, { tipo:"propagacion", origen:origenFolio||null });
       aplicados+= selRutas?selRutas.length:1;

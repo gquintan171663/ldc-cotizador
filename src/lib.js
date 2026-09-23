@@ -592,6 +592,7 @@ export function parseTarifario(rows){
   // ---- Formato LARGO: una fila por (ruta × naviera), con columna "Carrier" y tarifas base ----
   // Customer | Origen | POL | POD | Destination | T.T. | Tarifa Base 20' | Tarifa Base 40'/40HC | Carrier | Tradelane | Srvc. Mode | Transp Mode
   const cCarr=idx(["carrier","naviera"]);
+  const cAg=idx(["agente","agent"]);   // Agente (vacío = Directo-Naviera)
   if(cCarr>=0 && !blocks.length && cPol>=0 && cPod>=0){
     let c20=-1,c40=-1,cHC=-1;
     H.forEach((h,i)=>{ const t=h.toLowerCase(); if(!/tarifa|base|rate/.test(t)) return;
@@ -629,9 +630,10 @@ export function parseTarifario(rows){
       if(b20!=null)  precios["20DV"]={base:String(b20),profit:""};
       if(bfin!=null) precios["40HC"]={base:String(bfin),profit:""};
       const tt=cTT>=0?String(row[cTT]==null?"":row[cTT]).trim():"";
-      const ex=R.opciones.find(o=>o.navScac===scac);
+      const ag=cAg>=0?String(row[cAg]||"").trim():"";   // combinación = naviera + agente
+      const ex=R.opciones.find(o=>o.navScac===scac && String(o.agente||"")===ag);
       if(ex){ Object.assign(ex.precios,precios); if(tt&&!ex.transito) ex.transito=tt; }
-      else R.opciones.push({navScac:scac,transito:tt,precios});
+      else R.opciones.push({navScac:scac,agente:ag,transito:tt,precios});
     }
     const arr=[...map.values()];
     arr.forEach(R=>{ if(!R.opciones.length) R.opciones.push({navScac:"",transito:"",precios:{}}); });  // ruta sin naviera: fila editable vacía
