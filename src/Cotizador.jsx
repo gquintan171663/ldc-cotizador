@@ -577,8 +577,7 @@ export function Cotizador({ loadId, onDirty, role }){
           <span onClick={()=>setNuevoOpen(!nuevoOpen)} style={{cursor:"pointer",color:C.red,fontSize:11,fontWeight:"bold",marginTop:3,display:"inline-block"}}>{nuevoOpen?"Cancelar":"＋ Nuevo cliente / prospecto"}</span>
           {avisoVendedor&&<div style={{marginTop:5,fontSize:11,fontWeight:"bold",color:"#8A1C1C",background:"#FCE9E9",border:"1px solid #F1B9B9",borderRadius:6,padding:"5px 8px"}}>⚠ {avisoVendedor}</div>}
         </Field>
-        <Field label="Modo"><Sel value={modo} onChange={e=>setModo(e.target.value)} options={[{v:"maritimo",t:"Marítimo"},{v:"terrestre",t:"Terrestre"},{v:"aereo",t:"Aéreo"}]}/></Field>
-        <Field label="Dirección" w={.9}><Sel value={direccion} onChange={e=>setDireccion(e.target.value)} options={[{v:"E",t:"Exportación"},{v:"I",t:"Importación"}]}/></Field>
+        <Field label="Tráfico" w={1.7}><Sel value={modo+"|"+direccion} onChange={e=>{const [m,d]=e.target.value.split("|"); setModo(m); setDireccion(d);}} options={[{v:"maritimo|I",t:"Marítimo · Importación"},{v:"maritimo|E",t:"Marítimo · Exportación"},{v:"terrestre|I",t:"Terrestre · Importación"},{v:"terrestre|E",t:"Terrestre · Exportación"},{v:"aereo|I",t:"Aéreo · Importación"},{v:"aereo|E",t:"Aéreo · Exportación"}]}/></Field>
         <Field label="Tradelane" w={1.3}><Sel value={tradelane} onChange={e=>setTradelane(e.target.value)} options={[{v:"",t:"— tradelane —"},...TRADELANES.map(t=>({v:t.code,t:t.code+" · "+t.name}))]}/></Field>
         <Field label="Commodity" w={1.4}>
           <select value={commodityId} onChange={e=>setCommodityId(e.target.value)} style={inS}>

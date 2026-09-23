@@ -43,6 +43,7 @@ export function Cotizaciones({ onOpen, onNew, role }){
     });
     const arr=[...m.values()];
     arr.forEach(g=>g.rows.sort((a,b)=>(a.amendment||0)-(b.amendment||0)||String(a.codigo||"").localeCompare(String(b.codigo||""))));
+    arr.forEach(g=>{ const c={E:0,I:0}; g.rows.forEach(r=>{ if(r.direccion==="E")c.E++; else if(r.direccion==="I")c.I++; }); g.dir=(c.I===0&&c.E===0)?"":(c.I>=c.E?"I":"E"); });
     arr.sort((a,b)=>String(a.cliente||"").localeCompare(String(b.cliente||""),"es"));
     return arr;
   },[filtered]);
@@ -53,6 +54,9 @@ export function Cotizaciones({ onOpen, onNew, role }){
   const fechaHora=(s)=>{ if(!s) return ""; try{const d=new Date(s);return d.toLocaleDateString("es-MX",{day:"2-digit",month:"short",year:"2-digit"})+" "+d.toLocaleTimeString("es-MX",{hour:"2-digit",minute:"2-digit"});}catch{return fecha(s);} };
   const correoCorto=(e)=>String(e||"").split("@")[0];
   const rangoVig=(a,b)=>(!a&&!b)?"—":(fecha(a)+" – "+(b?fecha(b):"…"));
+  const modoTxt=(m)=>m==="maritimo"?"marítima":m==="terrestre"?"terrestre":m==="aereo"?"aérea":(m||"otros");
+  const secDe=(g)=>{ const dt=g.dir==="E"?"Exportación":g.dir==="I"?"Importación":""; const mt=modoTxt(g.modo); const label=dt?(dt+" "+mt):(mt.charAt(0).toUpperCase()+mt.slice(1)); const ord=(g.modo==="maritimo"?0:g.modo==="terrestre"?10:g.modo==="aereo"?20:30)+(g.dir==="I"?0:g.dir==="E"?1:2); const key=(g.modo||"otros")+"|"+(g.dir||""); return {key,label,ord}; };
+  const secciones=useMemo(()=>{ const mm=new Map(); grupos.forEach(g=>{ const sc=secDe(g); if(!mm.has(sc.key)) mm.set(sc.key,{...sc,groups:[]}); mm.get(sc.key).groups.push(g); }); return [...mm.values()].sort((a,b)=>a.ord-b.ord); },[grupos]);
 
   return (<div style={{maxWidth:1160,margin:"0 auto"}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:14}}>
@@ -66,12 +70,21 @@ export function Cotizaciones({ onOpen, onNew, role }){
 
     {rows===null?<div style={{color:C.label,fontSize:13,padding:20}}>Cargando…</div>:
      grupos.length===0?<div style={{border:"1px solid "+C.sep2,borderRadius:10,background:"#fff",padding:28,textAlign:"center",color:C.label,fontSize:13}}>{q?"Sin resultados para esa búsqueda.":"Sin cotizaciones todavía."}</div>:(
-      <div style={{display:"flex",flexDirection:"column",gap:16}}>
-        {grupos.map((g,gi)=>{ const exp=q?true:!!abierto[gi]; const ue=ultimoEnviado(g); const ueVenc=ue&&ue.vigHasta&&ue.vigHasta<hoyISO(); const hayBorr=(g.rows||[]).some(r=>r.estatus==="borrador"); return (
-          <div key={gi} style={{border:"1px solid "+C.sep2,borderRadius:10,background:"#fff",overflow:"hidden"}}>
+      <div style={{display:"flex",flexDirection:"column",gap:26}}>
+        {secciones.map((sec)=>(
+        <div key={sec.key}>
+          <div style={{display:"flex",alignItems:"center",gap:10,margin:"2px 2px 12px"}}>
+            <div style={{height:16,width:4,background:C.slate,borderRadius:2}}/>
+            <div style={{fontSize:13.5,fontWeight:"bold",color:C.ink,textTransform:"uppercase",letterSpacing:.5}}>{sec.label}</div>
+            <div style={{flex:1,height:1,background:C.sep2}}/>
+            <span style={{fontSize:11,color:C.label}}>{sec.groups.length} {sec.groups.length===1?"cliente":"clientes"}</span>
+          </div>
+          <div style={{display:"flex",flexDirection:"column",gap:16}}>
+        {sec.groups.map((g)=>{ const gk=g.acuerdoId||("sin:"+g.cliente); const exp=q?true:!!abierto[gk]; const ue=ultimoEnviado(g); const ueVenc=ue&&ue.vigHasta&&ue.vigHasta<hoyISO(); const hayBorr=(g.rows||[]).some(r=>r.estatus==="borrador"); return (
+          <div key={gk} style={{border:"1px solid "+C.sep2,borderRadius:10,background:"#fff",overflow:"hidden"}}>
 
             {/* Encabezado del cliente + contrato macro */}
-            <div onClick={()=>setAbierto(a=>({...a,[gi]:!(q?true:!!a[gi])}))} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:C.soft,borderBottom:exp?"1px solid "+C.sep2:"none",cursor:"pointer"}}>
+            <div onClick={()=>setAbierto(a=>({...a,[gk]:!(q?true:!!a[gk])}))} style={{display:"flex",alignItems:"center",gap:12,padding:"12px 14px",background:C.soft,borderBottom:exp?"1px solid "+C.sep2:"none",cursor:"pointer"}}>
               <span style={{color:C.label,fontSize:12,flex:"none"}}>{exp?"▾":"▸"}</span>
               <div style={{height:26,width:4,background:C.red,borderRadius:2,flex:"none"}}/>
               <div style={{minWidth:0}}>
@@ -118,6 +131,9 @@ export function Cotizaciones({ onOpen, onNew, role }){
 
           </div>
         );})}
+          </div>
+        </div>
+        ))}
       </div>
     )}
   </div>);
