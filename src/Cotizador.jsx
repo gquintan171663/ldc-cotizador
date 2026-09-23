@@ -337,14 +337,19 @@ export function Cotizador({ loadId, onDirty, role }){
   const bajarBorradorExcel=async()=>{
     const eqs=(equipos&&equipos.length?equipos:["20DV","40HC"]);
     const eqLbl=(k)=>{const e=EQUIPOS.find(x=>x.k===k);return e?e.t:k;};
-    const HDR=["Ruta #","Origen","Estado origen","POL","POD","Destino","Estado destino","Naviera","Agente",...eqs.map(k=>"Base "+eqLbl(k))];
+    const AGL=(agentes||[]).map(a=>a.nombre).filter(Boolean);          // catálogo de agentes; vacío = Directo
+    const HDR=["Ruta #","Origen","Estado origen","POL","POD","Destino","Estado destino","Naviera","Agente",...eqs.map(k=>"Base "+eqLbl(k)),"__k"];
+    const KCOL=HDR.length;                                             // columna clave oculta (última)
     const wb=new ExcelJS.Workbook();
     const ws=wb.addWorksheet("Borrador",{views:[{state:"frozen",ySplit:1}]});
-    const baseW=[7,15,13,13,13,15,13,11,16]; ws.columns=HDR.map((h,i)=>({header:h,width:baseW[i]||13}));
+    const baseW=[7,15,13,13,13,15,13,11,18]; ws.columns=HDR.map((h,i)=>({header:h,width:(i===KCOL-1?8:(baseW[i]||13))}));
     const hr=ws.getRow(1); hr.height=22;
     hr.eachCell((c)=>{ c.font={name:"Arial",bold:true,size:9,color:{argb:"FFFFFFFF"}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF1A1A1A"}}; c.alignment={horizontal:"center",vertical:"middle"}; });
+    // catálogo de agentes en hoja oculta para el dropdown (límite de 255 caracteres en validación en línea)
+    const wsL=wb.addWorksheet("Listas",{state:"veryHidden"});
+    AGL.forEach((a,i)=>{ wsL.getCell(i+1,1).value=a; });
     let rr=2, filas=0;
-    (rutas||[]).forEach((r,ri)=>{ (r.opciones||[]).forEach(o=>{
+    (rutas||[]).forEach((r,ri)=>{ (r.opciones||[]).forEach((o,oi)=>{
       if(!o.navScac) return;
       const tieneBase=eqs.some(k=>{const pr=(o.precios||{})[k];return pr&&pr.base!=null&&pr.base!=="";});   // sólo con tarifa capturada
       if(!tieneBase) return;
@@ -355,11 +360,15 @@ export function Cotizador({ loadId, onDirty, role }){
       row.getCell(6).value=r.destino||""; row.getCell(7).value=r.destinoEstado?abrevEstado(r.destinoEstado):"";
       row.getCell(8).value=o.navScac||""; row.getCell(9).value=o.agente||"";
       eqs.forEach((k,i)=>{ const pr=(o.precios||{})[k]||{}; const v=pr.base; row.getCell(10+i).value=(v!=null&&v!=="")?Number(v):null; });
+      row.getCell(KCOL).value=ri+"|"+oi;                               // clave estable (ruta|opción)
       filas++;
     }); });
     if(!filas){ alert("Este borrador no tiene tarifas base capturadas para bajar."); return; }
-    for(let r=2;r<rr;r++){ for(let c=1;c<=9;c++){ ws.getCell(r,c).font={name:"Arial",size:9,color:{argb:"FF6B7280"}}; } }   // identidad en gris = no editar
-    ws.autoFilter="A1:"+ws.getColumn(HDR.length).letter+"1";
+    for(let r=2;r<rr;r++){ for(let c=1;c<=8;c++){ ws.getCell(r,c).font={name:"Arial",size:9,color:{argb:"FF6B7280"}}; } }   // identidad en gris = no editar (Agente sí es editable)
+    // dropdown de agentes en la columna Agente (col 9); vacío = Directo
+    if(AGL.length){ for(let r=2;r<=Math.max(rr-1,400);r++){ ws.getCell(r,9).dataValidation={type:"list",allowBlank:true,formulae:["Listas!$A$1:$A$"+AGL.length]}; } }
+    ws.getColumn(KCOL).hidden=true;                                    // clave oculta: no la borres
+    ws.autoFilter="A1:"+ws.getColumn(KCOL-1).letter+"1";
     const buf=await wb.xlsx.writeBuffer();
     const blob=new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
     const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download="Borrador_tarifas_base.xlsx"; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
@@ -371,33 +380,49 @@ export function Cotizador({ loadId, onDirty, role }){
     if(!rows||rows.length<2){ alert("El archivo está vacío."); return; }
     const H=(rows[0]||[]).map(x=>String(x==null?"":x).trim().toLowerCase());
     const col=(names)=>{ for(let i=0;i<H.length;i++){ if(names.some(n2=>H[i]===n2||H[i].startsWith(n2))) return i; } return -1; };
-    const cPol=col(["pol"]),cPod=col(["pod"]),cOri=col(["origen"]),cDes=col(["destino","destination"]),cNav=col(["naviera","carrier"]),cAg=col(["agente","agent"]);
+    const cPol=col(["pol"]),cPod=col(["pod"]),cOri=col(["origen"]),cDes=col(["destino","destination"]),cNav=col(["naviera","carrier"]),cAg=col(["agente","agent"]),cK=col(["__k"]);
     const eqs=(equipos&&equipos.length?equipos:["20DV","40HC"]);
     const eqLbl=(k)=>{const e=EQUIPOS.find(x=>x.k===k);return (e?e.t:k).toLowerCase();};
     const baseCols=eqs.map(k=>{ const lbl="base "+eqLbl(k); let idx=H.findIndex(h=>h===lbl); if(idx<0) idx=H.findIndex(h=>h.startsWith("base")&&h.includes(eqLbl(k))); return {k,idx}; });
     const num=(v)=>{ if(v==null) return null; const s=String(v).trim(); if(s==="") return null; const x=parseFloat(s.replace(/[,$\s]/g,"")); return isNaN(x)?null:x; };
     const norm=(s)=>String(s||"").trim().toUpperCase();
     const next=rutas.map(r=>({...r,opciones:(r.opciones||[]).map(o=>({...o,precios:{...(o.precios||{})}}))}));
-    let cambios=0, sinMatch=0;
+    // venta actual de una opción×equipo (para conservarla al cambiar base y/o agente)
+    const ventaDe=(rt,o,eqObj,agente)=>{ const pr=(o.precios||{})[eqObj.k]||{}; return n(pr.base)+adicPorCont(surAplican(surOfMain(o.navScac,tlDe(rt)),agente),eqObj,direccion)+n(pr.profit); };
+    let cambios=0, sinMatch=0, reasig=0;
     for(let ri=1;ri<rows.length;ri++){ const row=rows[ri]||[];
-      const pol=norm(cPol>=0?row[cPol]:""), pod=norm(cPod>=0?row[cPod]:""), ori=norm(cOri>=0?row[cOri]:""), des=norm(cDes>=0?row[cDes]:"");
-      const scac=norm(cNav>=0?row[cNav]:""), ag=String((cAg>=0?row[cAg]:"")||"").trim();
-      if(!scac&&!pol&&!pod) continue;
-      const rt=next.find(r=>norm(r.pol)===pol&&norm(r.pod)===pod&&norm(r.origen)===ori&&norm(r.destino)===des);
-      if(!rt){ sinMatch++; continue; }
-      const op=(rt.opciones||[]).find(o=>norm(o.navScac)===scac&&String(o.agente||"")===ag);
-      if(!op){ sinMatch++; continue; }
+      const key=cK>=0?String(row[cK]||"").trim():"";
+      const scac=norm(cNav>=0?row[cNav]:""), agNew=String((cAg>=0?row[cAg]:"")||"").trim();
+      let rt=null, op=null;
+      if(key && /^\d+\|\d+$/.test(key)){                              // emparejar por clave oculta (robusto ante cambio de agente)
+        const [a,b]=key.split("|").map(Number); rt=next[a]; op=rt&&(rt.opciones||[])[b];
+      }
+      if(!op){                                                        // respaldo: por ruta + naviera + agente
+        const pol=norm(cPol>=0?row[cPol]:""), pod=norm(cPod>=0?row[cPod]:""), ori=norm(cOri>=0?row[cOri]:""), des=norm(cDes>=0?row[cDes]:"");
+        if(!scac&&!pol&&!pod) continue;
+        rt=next.find(r=>norm(r.pol)===pol&&norm(r.pod)===pod&&norm(r.origen)===ori&&norm(r.destino)===des);
+        op=rt&&(rt.opciones||[]).find(o=>norm(o.navScac)===scac&&String(o.agente||"")===agNew);
+      }
+      if(!rt||!op){ sinMatch++; continue; }
+      const agOld=String(op.agente||"");
+      // 1) capturar venta con el agente ACTUAL (antes de tocar nada)
+      const ventas={}; eqs.forEach(k=>{ const eqObj=EQUIPOS.find(x=>x.k===k); if(eqObj) ventas[k]=ventaDe(rt,op,eqObj,agOld); });
+      // 2) cambio de agente (si el Excel lo modificó)
+      if(cAg>=0 && agNew!==agOld){ op.agente=agNew; reasig++; cambios++; }
+      // 3) nuevas bases + reajuste de profit para conservar la venta (considera el agente ya nuevo)
       baseCols.forEach(({k,idx})=>{ if(idx<0) return; const nv=num(row[idx]); if(nv==null) return;
+        const eqObj=EQUIPOS.find(x=>x.k===k); if(!eqObj) return;
         const pr=op.precios[k]||{}; const oldBase=n(pr.base);
-        if(oldBase===nv) return;
-        const nuevoProfit=n(pr.profit)+(oldBase-nv);   // conservar venta: el profit absorbe el cambio de costo
-        op.precios[k]={...pr,base:String(nv),profit:String(Math.round(nuevoProfit))};
-        cambios++;
+        const vBase=(ventas[k]!=null?ventas[k]:(nv+n(pr.profit)));
+        const adicNew=adicPorCont(surAplican(surOfMain(op.navScac,tlDe(rt)),op.agente),eqObj,direccion);
+        const nuevoProfit=vBase-nv-adicNew;                           // conservar venta
+        if(oldBase!==nv){ op.precios[k]={...pr,base:String(nv),profit:String(Math.round(nuevoProfit))}; cambios++; }
+        else if(agNew!==agOld){ op.precios[k]={...pr,profit:String(Math.round(nuevoProfit))}; }   // agente cambió: re-cuadra profit aunque la base sea igual
       });
     }
-    if(!cambios){ alert("No hubo cambios de tarifa base"+(sinMatch?(" · "+sinMatch+" fila(s) no coincidieron con el borrador"):"")+"."); return; }
+    if(!cambios){ alert("No hubo cambios"+(sinMatch?(" · "+sinMatch+" fila(s) no coincidieron con el borrador"):"")+"."); return; }
     setRutas(next);
-    alert("Actualicé "+cambios+" tarifa(s) base"+(sinMatch?(" · "+sinMatch+" fila(s) sin coincidencia"):"")+".\nSe conservó la tarifa al cliente (el profit absorbió el cambio).\n\nRevisa y guarda el borrador.");
+    alert("Actualicé "+cambios+" dato(s)"+(reasig?(" · "+reasig+" cambio(s) de agente"):"")+(sinMatch?(" · "+sinMatch+" fila(s) sin coincidencia"):"")+".\nSe conservó la tarifa al cliente (el profit absorbió el cambio).\n\nRevisa y guarda el borrador.");
   };
   const [started,setStarted]=useState(false);
   const [rutas,setRutas]=useState([]);
