@@ -108,7 +108,7 @@ async function insertChildren(versionId, state, sum){
   const opRows=[], opMeta=[];
   lins.forEach((lin, li)=>{ const {r, ek}=lineaMeta[li];
     (r.opciones||[]).forEach((o, oi)=>{ const pr=(o.precios&&o.precios[ek])||{};
-      opRows.push({linea_id:lin.id,naviera:o.navScac||"",costo_base:parseFloat(pr.base)||0,profit:parseFloat(pr.profit)||0,transito_dias:parseInt(o.transito)||null,sugerida:(r.elegida??0)===oi});
+      opRows.push({linea_id:lin.id,naviera:o.navScac||"",agente:o.agente||null,costo_base:parseFloat(pr.base)||0,profit:parseFloat(pr.profit)||0,transito_dias:parseInt(o.transito)||null,sugerida:(r.elegida??0)===oi});
       opMeta.push({lineaId:lin.id, r, oi, o});
     });
   });
@@ -427,13 +427,14 @@ export async function loadVersion(versionId){
     if(!ex){ quoteNavMap[key]={scac:o.naviera,tl,surcharges:surs}; }
     else if((!ex.surcharges||!ex.surcharges.length) && surs.length){ ex.surcharges=surs; } });
 
+  const SEP=String.fromCharCode(1);   // identidad de opción = naviera + agente
   const rutas=Object.values(rutasMap).map(rm=>{
     const l0=rm.l; const navSet=[];
-    Object.values(rm.equipos).forEach(l=>{ (opByLinea[l.id]||[]).forEach(o=>{ if(!navSet.includes(o.naviera)) navSet.push(o.naviera); }); });
-    const ops=navSet.map(nav=>{ const precios={}; let transito=""; Object.entries(rm.equipos).forEach(([eq,l])=>{ const op=(opByLinea[l.id]||[]).find(o=>o.naviera===nav); if(op){ precios[eq]={base:String(op.costo_base??""),profit:String(op.profit??"")}; if(op.transito_dias!=null) transito=String(op.transito_dias); } }); return {navScac:nav,transito,precios}; });
-    let elegida=0; Object.values(rm.equipos).forEach(l=>{ if(l.opcion_elegida_id){ const op=(opByLinea[l.id]||[]).find(o=>o.id===l.opcion_elegida_id); if(op){ const idx=navSet.indexOf(op.naviera); if(idx>=0) elegida=idx; } } });
+    Object.values(rm.equipos).forEach(l=>{ (opByLinea[l.id]||[]).forEach(o=>{ const k=(o.naviera||"")+SEP+(o.agente||""); if(!navSet.includes(k)) navSet.push(k); }); });
+    const ops=navSet.map(k=>{ const parts=k.split(SEP); const nav=parts[0], agente=parts[1]||""; const precios={}; let transito=""; Object.entries(rm.equipos).forEach(([eq,l])=>{ const op=(opByLinea[l.id]||[]).find(o=>(o.naviera||"")===nav&&(o.agente||"")===agente); if(op){ precios[eq]={base:String(op.costo_base??""),profit:String(op.profit??"")}; if(op.transito_dias!=null) transito=String(op.transito_dias); } }); return {navScac:nav,agente,transito,precios}; });
+    let elegida=0; Object.values(rm.equipos).forEach(l=>{ if(l.opcion_elegida_id){ const op=(opByLinea[l.id]||[]).find(o=>o.id===l.opcion_elegida_id); if(op){ const k=(op.naviera||"")+SEP+(op.agente||""); const idx=navSet.indexOf(k); if(idx>=0) elegida=idx; } } });
     const ventaAncla={}; Object.entries(rm.equipos).forEach(([ek,l])=>{ if(l.venta_anclada!=null&&l.venta_anclada!=="") ventaAncla[ek]=Number(l.venta_anclada); });
-    return {origen:l0.origen||"",origenEstado:l0.origen_estado||"",precarriage_mode:l0.precarriage_mode||"",pol:l0.pol||"",pod:l0.pod||"",oncarriage_mode:l0.oncarriage_mode||"",destino:l0.destino||"",destinoEstado:l0.destino_estado||"",opciones:ops.length?ops:[{navScac:"",precios:{}}],elegida,elegidaEq:l0.elegida_eq||null,ventaAncla:Object.keys(ventaAncla).length?ventaAncla:null};
+    return {origen:l0.origen||"",origenEstado:l0.origen_estado||"",precarriage_mode:l0.precarriage_mode||"",pol:l0.pol||"",pod:l0.pod||"",oncarriage_mode:l0.oncarriage_mode||"",destino:l0.destino||"",destinoEstado:l0.destino_estado||"",opciones:ops.length?ops:[{navScac:"",agente:"",precios:{}}],elegida,elegidaEq:l0.elegida_eq||null,ventaAncla:Object.keys(ventaAncla).length?ventaAncla:null};
   });
   const anyL=(lineas||[])[0]||{};
   let prevVigDesde=null, prevVigHasta=null;
@@ -684,6 +685,12 @@ export async function vendedorDeCliente(clienteId){
   const { data, error } = await supabase.rpc("vendedor_asignado_cliente", { cid: clienteId });
   if(error) return { email:null, error:error.message };
   return { email: data||null };
+}
+
+export async function listAgentes(){
+  const { data, error } = await supabase.from("agentes").select("nombre,pais").eq("activo",true).order("nombre");
+  if(error) return { rows:[], error:error.message };
+  return { rows:(data||[]) };
 }
 
 export async function deleteAcuerdo(acuerdoId){

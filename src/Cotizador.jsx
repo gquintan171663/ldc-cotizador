@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { supabase } from "./supabaseClient.js";
 import { C, F, EQUIPOS, EQUIPO_CATS, NAVIERAS, navName, CATALOG, COMMODITY_INDUSTRIAS, tx, scopeFull, serviceMode, transportMode, n, round10, adicPorCont, cargosBL, inclPorCont, inclBL, subjectTo, enPrecio, esSubjectTo, money, MONEDAS, optPuertos, optCiudades, puertoNombre, paisDe, paisOrigen, paisDestino, rutaPaisLabel, tlDe, tlLabel, TRADELANES, tradeLabel, rutaEnTradelane, opcionActivaEq, mejorOpcionEq, ordenOpciones, ordenRecargos, ovRazon, PLANTILLA_RECARGOS, parseTarifario, ordenarRutas, ESTADOS_MX, ESTADOS_TODOS, optEstados, abrevEstado } from "./lib.js";
 import { inS, Lbl, Field, TI, Sel, Chip, Btn, ClaveAutocomplete, ComboBox } from "./ui.jsx";
-import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges, recargosDeRutaSimilar, recargosDeRutaSimilarPorNaviera, recargosDeNaviera, anclarVenta, checkConflictoTarifa, guardarCorreccion, buscarCoincidenciasRecargo, aplicarRecargoEnBorradores, buscarRutasSimilares, listUsuarios, asignarSalesRep, vendedorDeCliente } from "./db.js";
+import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges, recargosDeRutaSimilar, recargosDeRutaSimilarPorNaviera, recargosDeNaviera, anclarVenta, checkConflictoTarifa, guardarCorreccion, buscarCoincidenciasRecargo, aplicarRecargoEnBorradores, buscarRutasSimilares, listUsuarios, asignarSalesRep, vendedorDeCliente, listAgentes } from "./db.js";
 import { abrirCotizacion } from "./quote.js";
 import { exportarExcel } from "./quoteExcel.js";
 import * as XLSX from "xlsx";
@@ -133,7 +133,7 @@ function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,
 
 // id del ancla de tarifas por lane (para regresar desde el bloque de recargos)
 export const eidTarifa=(tl)=>"trf_"+String(tl||"nl").replace(/[^A-Za-z0-9]/g,"_");
-function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir,onFoco,editarProp,filtro,editable=true,onPropagar,onSimilares,hlRuta}){
+function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir,onFoco,editarProp,filtro,editable=true,onPropagar,onSimilares,hlRuta,agentes}){
   // primera ruta de cada lane: ahí ponemos el ancla
   const tlAnchor={}; (rutas||[]).forEach((r,ri)=>{ const t=tlDe(r); if(tlAnchor[t]==null) tlAnchor[t]=ri; });
   const navOpts=[{v:"",t:"— naviera —"},...NAVIERAS.map(x=>({v:x.scac,t:x.scac+" · "+x.nombre}))];
@@ -166,7 +166,7 @@ function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir,onFoco,editarProp,filt
             return (<tr key={ri+"-"+oi} id={(first&&_anc)?eidTarifa(_tl):undefined} style={{background:(first&&hlRuta===ri)?"#FFF6D6":(first?"#fff":C.soft),boxShadow:(first&&hlRuta===ri)?"inset 3px 0 0 "+C.red:undefined,transition:"background .3s"}}>
               <td style={{...td,borderTop:first?"2px solid "+C.sep2:"none"}}>{first?<div id={"tarifa-ruta-"+ri} style={{fontSize:12.5}}><b style={{color:C.slate}}>{r.pol}</b><span style={{color:"#C0C7CE",margin:"0 4px"}}>›</span><b style={{color:C.slate}}>{r.pod}</b><div style={{fontSize:10.5,color:C.label,marginTop:1,lineHeight:1.25}}>{r.origen?(r.origen+(r.origenEstado?", "+abrevEstado(r.origenEstado):"")+" › "):""}{puertoNombre(r.pol)} › {puertoNombre(r.pod)}{r.destino?(" › "+r.destino+(r.destinoEstado?", "+abrevEstado(r.destinoEstado):"")):""}</div></div>:<span style={{fontSize:11,color:C.label}}>↳ alt.</span>}</td>
               <td style={{...td,textAlign:"center",borderTop:first?"2px solid "+C.sep2:"none"}}>{first&&<span><Chip>{serviceMode(r)}</Chip>{transportMode(r)&&<div style={{fontSize:9,color:C.label,marginTop:2,fontWeight:"bold"}}>{transportMode(r)}</div>}</span>}</td>
-              <td style={td}><select value={o.navScac} onChange={e=>setOpt(ri,oi,{navScac:e.target.value})} style={{...inS,padding:"5px 4px",fontSize:11.5,fontWeight:"bold",width:126,maxWidth:140}}>{navOpts.map(x=><option key={x.v} value={x.v}>{x.t}</option>)}</select></td>
+              <td style={td}><select value={o.navScac} onChange={e=>setOpt(ri,oi,{navScac:e.target.value})} style={{...inS,padding:"5px 4px",fontSize:11.5,fontWeight:"bold",width:126,maxWidth:140}}>{navOpts.map(x=><option key={x.v} value={x.v}>{x.t}</option>)}</select>{dir==="I"&&<select value={o.agente||""} onChange={e=>setOpt(ri,oi,{agente:e.target.value})} title="Canal: Directo o Agente" style={{...inS,padding:"3px 4px",fontSize:10.5,width:126,maxWidth:140,marginTop:3,color:o.agente?C.slate:C.label}}><option value="">Directo</option>{(agentes||[]).map(a=><option key={a.nombre} value={a.nombre}>{a.nombre}</option>)}</select>}</td>
               <td style={{...td,textAlign:"center"}}><input value={o.transito||""} onChange={e=>setOpt(ri,oi,{transito:e.target.value})} inputMode="numeric" placeholder="días" style={{...inS,padding:"5px 4px",fontSize:12,width:42,textAlign:"center"}}/></td>
               {eqs.map(e=>{const p=getP(o,e.k);const base=n(p.base),prof=n(p.profit);const adic=adicPorCont(surs,e,dir);const venta=base+adic+prof;const _best=mejorOpcionEq(r,e.k,e,dir,surOf);const _act=opcionActivaEq(r,e.k,e,dir,surOf)===oi;const _isBest=_act&&oi===_best;const _razon=ovRazon(r.elegidaEq&&r.elegidaEq[e.k]);
                 const _summ=surs.filter(s=>!s.incluido&&enPrecio(s,dir)&&(s.basis||"contenedor")!=="bl");
@@ -204,6 +204,7 @@ export function Cotizador({ loadId, onDirty, role }){
   const [cliente,setCliente]=useState("");
   const [salesRep,setSalesRep]=useState("");
   const [usuarios,setUsuarios]=useState([]);
+  const [agentes,setAgentes]=useState([]);
   const [acuerdoId,setAcuerdoId]=useState(null);
   const [myEmail,setMyEmail]=useState("");
   const [avisoVendedor,setAvisoVendedor]=useState("");
@@ -344,6 +345,7 @@ export function Cotizador({ loadId, onDirty, role }){
   const mergedCat=useMemo(()=>{const have=new Set(CATALOG.map(x=>x.c.toUpperCase()));return [...CATALOG,...extraCat.filter(x=>!have.has((x.c||"").toUpperCase()))];},[extraCat]);
   useEffect(()=>{ listSurcharges().then(setExtraCat); },[]);
   useEffect(()=>{ listUsuarios().then(r=>setUsuarios(r.rows||[])); },[]);
+  useEffect(()=>{ listAgentes().then(r=>setAgentes(r.rows||[])); },[]);
   useEffect(()=>{ supabase.auth.getUser().then(({data})=>setMyEmail((data?.user?.email||"").toLowerCase())); },[]);
 
   const recargarClientes=()=>supabase.from("clientes").select("id,no_cliente,nombre,tipo").order("nombre").then(({data})=>setClientes(data||[]));
@@ -660,7 +662,7 @@ export function Cotizador({ loadId, onDirty, role }){
           <span onClick={()=>setRutas(rutas.filter((_,i)=>i!==ri))} style={{cursor:"pointer",color:C.label,fontSize:11,marginBottom:6}}>✕</span>
         </div>);})}
       </div>)}
-      <TarifasGrid rutas={rutas} setRutas={setRutas} quoteNav={quoteNav} equipos={equipos} dir={direccion} editarProp={editarPropuesta} filtro={matchTar} editable={editable} onPropagar={abrirPropagar} onSimilares={abrirSimilares} hlRuta={hlRuta} onFoco={(scac,tl)=>setFocoRecargo({scac,tl,ts:Date.now()})}/>
+      <TarifasGrid rutas={rutas} setRutas={setRutas} quoteNav={quoteNav} equipos={equipos} dir={direccion} editarProp={editarPropuesta} filtro={matchTar} editable={editable} onPropagar={abrirPropagar} onSimilares={abrirSimilares} hlRuta={hlRuta} agentes={agentes} onFoco={(scac,tl)=>setFocoRecargo({scac,tl,ts:Date.now()})}/>
       </fieldset>
       {sim&&<div style={{background:"#fff",border:"2px solid #1F6FB2",borderRadius:12,padding:16,marginTop:12}}>
         <div style={{display:"flex",justifyContent:"space-between",alignItems:"flex-start",marginBottom:4}}>
