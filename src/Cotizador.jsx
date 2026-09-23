@@ -1,6 +1,6 @@
 import React, { useState, useMemo, useEffect } from "react";
 import { supabase } from "./supabaseClient.js";
-import { C, F, EQUIPOS, EQUIPO_CATS, NAVIERAS, navName, CATALOG, COMMODITY_INDUSTRIAS, tx, scopeFull, serviceMode, transportMode, n, round10, adicPorCont, cargosBL, inclPorCont, inclBL, subjectTo, enPrecio, esSubjectTo, money, MONEDAS, optPuertos, optCiudades, puertoNombre, paisDe, paisOrigen, paisDestino, rutaPaisLabel, tlDe, tlLabel, TRADELANES, tradeLabel, rutaEnTradelane, opcionActivaEq, mejorOpcionEq, ordenOpciones, ordenRecargos, ovRazon, PLANTILLA_RECARGOS, parseTarifario, ordenarRutas, ESTADOS_MX, ESTADOS_TODOS, optEstados, abrevEstado } from "./lib.js";
+import { C, F, EQUIPOS, EQUIPO_CATS, NAVIERAS, navName, CATALOG, COMMODITY_INDUSTRIAS, tx, scopeFull, serviceMode, transportMode, n, round10, adicPorCont, cargosBL, inclPorCont, inclBL, subjectTo, enPrecio, esSubjectTo, money, MONEDAS, optPuertos, optCiudades, puertoNombre, paisDe, paisOrigen, paisDestino, rutaPaisLabel, tlDe, tlLabel, TRADELANES, tradeLabel, rutaEnTradelane, opcionActivaEq, mejorOpcionEq, ordenOpciones, ordenRecargos, ovRazon, PLANTILLA_RECARGOS, parseTarifario, ordenarRutas, ESTADOS_MX, ESTADOS_TODOS, optEstados, abrevEstado, surAplican } from "./lib.js";
 import { inS, Lbl, Field, TI, Sel, Chip, Btn, ClaveAutocomplete, ComboBox } from "./ui.jsx";
 import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges, recargosDeRutaSimilar, recargosDeRutaSimilarPorNaviera, recargosDeNaviera, anclarVenta, checkConflictoTarifa, guardarCorreccion, buscarCoincidenciasRecargo, aplicarRecargoEnBorradores, buscarRutasSimilares, listUsuarios, asignarSalesRep, vendedorDeCliente, listAgentes } from "./db.js";
 import { abrirCotizacion } from "./quote.js";
@@ -8,7 +8,7 @@ import { exportarExcel } from "./quoteExcel.js";
 import * as XLSX from "xlsx";
 import ExcelJS from "exceljs";
 
-function SurchargeGrid({surs,onChange,catalog,dir,equipos,editable=true,onPropagar}){
+function SurchargeGrid({surs,onChange,catalog,dir,equipos,editable=true,onPropagar,agentes}){
   const cat=catalog||CATALOG;
   const rows=surs||[];
   const eqsQ=EQUIPOS.filter(e=>(equipos||[]).includes(e.k));
@@ -25,9 +25,9 @@ function SurchargeGrid({surs,onChange,catalog,dir,equipos,editable=true,onPropag
     <table style={{width:"100%",borderCollapse:"collapse"}}>
       <thead><tr style={{background:C.soft,borderBottom:"1px solid "+C.sep2}}>
         <th style={{...th,width:"11%"}}>Clave</th><th style={{...th,width:"22%"}}>Descripción</th><th style={{...th,width:"10%"}}>Monto</th><th style={{...th,width:"9%"}}>Mon.</th>
-        <th style={{...th,width:"12%"}}>Base cobro</th><th style={{...th,width:"8%",textAlign:"center"}}>No Incl.</th><th style={{...th,width:"7%",textAlign:"center"}}>INCL.</th><th style={{...th,width:"8%",textAlign:"center"}}>Mostrar</th><th style={{...th,width:"10%"}}>Pago</th><th style={{...th,width:"3%"}}></th></tr></thead>
+        <th style={{...th,width:"12%"}}>Base cobro</th><th style={{...th,width:"8%",textAlign:"center"}}>No Incl.</th><th style={{...th,width:"7%",textAlign:"center"}}>INCL.</th><th style={{...th,width:"8%",textAlign:"center"}}>Mostrar</th><th style={{...th,width:"10%"}}>Pago</th>{dir==="I"&&<th style={{...th,width:"13%"}} title="Todas = aplica a esta naviera en cualquier canal. Un agente = agency surcharge, solo para esa combinación Agente-Naviera.">Agente</th>}<th style={{...th,width:"3%"}}></th></tr></thead>
       <tbody>
-        {rows.length===0&&<tr><td colSpan={10} style={{padding:10,textAlign:"center",color:C.label,fontSize:12}}>Sin recargos — agrega filas</td></tr>}
+        {rows.length===0&&<tr><td colSpan={dir==="I"?11:10} style={{padding:10,textAlign:"center",color:C.label,fontSize:12}}>Sin recargos — agrega filas</td></tr>}
         {ordenRecargos(rows).map((i)=>{const r=rows[i];const hasSizes=r.montos&&Object.values(r.montos).some(v=>v!==""&&v!=null);return (<React.Fragment key={i}>
         <tr style={{borderBottom:openSize[i]?"none":"1px solid "+C.sep}}>
           <td style={td}><ClaveAutocomplete value={r.c} catalog={cat} cellStyle={cell} onChange={(v)=>onClave(i,v)} onPick={(x)=>set(i,{c:x.c,d:tx(rows[i].d)?rows[i].d:x.d})}/></td>
@@ -38,10 +38,10 @@ function SurchargeGrid({surs,onChange,catalog,dir,equipos,editable=true,onPropag
           <td style={{...td,textAlign:"center"}}><input type="checkbox" checked={!r.incluido} onChange={()=>set(i,{incluido:false})} title="No incluido por la naviera (si es Prepaid, se suma al costo)"/></td>
           <td style={{...td,textAlign:"center"}}><input type="checkbox" checked={!!r.incluido} onChange={()=>set(i,{incluido:true})} title="Incluido en la tarifa base (no se suma)"/></td>
           <td style={{...td,textAlign:"center"}}><input type="checkbox" checked={r.desplegar!==false} onChange={e=>set(i,{desplegar:e.target.checked})} title="Mostrar en el PDF (sección Incluyen / No incluyen)"/></td>
-          <td style={td}><select value={r.pago} onChange={e=>set(i,{pago:e.target.value})} style={{...cell,padding:"5px 4px"}}><option value="prepaid">Prepaid</option><option value="collect">Collect</option></select></td>
+          <td style={td}><select value={r.pago} onChange={e=>set(i,{pago:e.target.value})} style={{...cell,padding:"5px 4px"}}><option value="prepaid">Prepaid</option><option value="collect">Collect</option></select></td>{dir==="I"&&<td style={td}><select value={r.agente||""} onChange={e=>{const v=e.target.value; set(i,{agente:v,agencia:!!v});}} title="Todas = normal (toda la naviera). Un agente = agency surcharge (solo esa combinación)." style={{...cell,padding:"5px 4px",fontSize:11,color:r.agente?C.red:C.slate}}><option value="">Todas (normal)</option>{(agentes||[]).map(a=><option key={a.nombre} value={a.nombre}>{a.nombre}</option>)}</select></td>}
           <td style={{...td,textAlign:"center"}}>{editable&&onPropagar&&tx(r.c)&&<span onClick={()=>onPropagar(r)} title="Propagar este recargo a otros borradores (misma naviera + países)" style={{cursor:"pointer",color:C.slate,fontWeight:"bold",marginRight:8}}>⇄</span>}{editable&&<span onClick={()=>del(i)} style={{cursor:"pointer",color:C.label,fontWeight:"bold"}}>✕</span>}</td>
         </tr>
-        {openSize[i]&&<tr style={{borderBottom:"1px solid "+C.sep,background:C.soft}}><td colSpan={10} style={{padding:"6px 10px"}}>
+        {openSize[i]&&<tr style={{borderBottom:"1px solid "+C.sep,background:C.soft}}><td colSpan={dir==="I"?11:10} style={{padding:"6px 10px"}}>
           <span style={{fontSize:10,color:C.label,fontWeight:"bold",marginRight:10}}>Monto por tamaño (vacío = usa el general{r.monto?" $"+r.monto:""}):</span>
           {eqsQ.length===0&&<span style={{fontSize:11,color:C.label}}>Selecciona equipos arriba para capturar por tamaño.</span>}
           {eqsQ.map(eq=>(<span key={eq.k} style={{display:"inline-flex",alignItems:"center",gap:4,marginRight:12,marginBottom:2}}><span style={{fontSize:11,color:C.slate}}>{eq.t}</span><input value={(r.montos&&r.montos[eq.k])||""} onChange={e=>set(i,{montos:{...(r.montos||{}),[eq.k]:e.target.value}})} onFocus={e=>e.target.select()} inputMode="decimal" placeholder={r.monto||"0"} style={{...cell,width:60,textAlign:"right",padding:"3px 6px"}}/></span>))}
@@ -61,7 +61,7 @@ function SurchargeGrid({surs,onChange,catalog,dir,equipos,editable=true,onPropag
   </div>);
 }
 
-function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,onGenerar,foco,editable,onPropagarRec}){
+function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,onGenerar,foco,editable,onPropagarRec,agentes}){
   const [altaOpen,setAltaOpen]=useState(false);
   const [secCol,setSecCol]=useState(true);
   const [q,setQ]=useState("");
@@ -124,7 +124,7 @@ function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,
             {others.map(x=><option key={x.tl} value={x.tl}>{tlLabel(x.tl)}</option>)}
           </select>}
         </div>
-        {!col&&<div style={{marginTop:6}}><SurchargeGrid surs={surs} catalog={catalog} dir={dir} equipos={equipos} editable={editable} onChange={(s)=>setSurs(b.scac,b.tl,s)} onPropagar={onPropagarRec?(sur)=>onPropagarRec(b.scac,b.tl,sur):null}/></div>}
+        {!col&&<div style={{marginTop:6}}><SurchargeGrid surs={surs} catalog={catalog} dir={dir} equipos={equipos} editable={editable} agentes={agentes} onChange={(s)=>setSurs(b.scac,b.tl,s)} onPropagar={onPropagarRec?(sur)=>onPropagarRec(b.scac,b.tl,sur):null}/></div>}
       </div>);
     })}
     </fieldset>)}
@@ -144,7 +144,7 @@ function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir,onFoco,editarProp,filt
   const setOpt=(ri,oi,patch)=>setRutas(rutas.map((r,i)=>i!==ri?r:{...r,opciones:r.opciones.map((o,j)=>j===oi?{...o,...patch}:o)}));
   const addOpt=(ri)=>setRutas(rutas.map((r,i)=>i!==ri?r:{...r,opciones:[...r.opciones,{navScac:"",transito:"",precios:{}}],elegida:r.elegida??0}));
   const delOpt=(ri,oi)=>setRutas(rutas.map((r,i)=>i!==ri?r:{...r,opciones:r.opciones.filter((_,j)=>j!==oi)}));
-  const totCosto=(o,r)=>eqs.reduce((a,e)=>a+n(getP(o,e.k).base)+adicPorCont(surOf(o.navScac,tlDe(r)),e,dir),0);
+  const totCosto=(o,r)=>eqs.reduce((a,e)=>a+n(getP(o,e.k).base)+adicPorCont(surAplican(surOf(o.navScac,tlDe(r)),o.agente),e,dir),0);
   const sugerida=(r)=>{if(!r.opciones.length)return -1;let bi=0,bc=Infinity;r.opciones.forEach((o,i)=>{const c=totCosto(o,r);if(c<bc){bc=c;bi=i;}});return bi;};
   const HDR=25; // alto aprox. de la 1ª fila del header (para anclar la 2ª debajo)
   const th={fontSize:9.5,letterSpacing:.3,textTransform:"uppercase",color:"#fff",fontWeight:"bold",padding:"6px 5px",whiteSpace:"nowrap",position:"sticky",top:0,background:C.ink,zIndex:2};
@@ -162,7 +162,7 @@ function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir,onFoco,editarProp,filt
       </thead>
       <tbody>
         {rutas.map((r,ri)=>{if(filtro&&!filtro(r)) return null;const sug=sugerida(r);const _tl=tlDe(r);const _anc=tlAnchor[_tl]===ri;
-          return ordenOpciones(r,eqs,dir,surOf).map((oi,pos)=>{const o=r.opciones[oi];const surs=surOf(o.navScac,tlDe(r)),st=surs.filter(s=>esSubjectTo(s,dir)&&s.desplegar!==false).map(s=>s.c),bl=cargosBL(surs,dir),first=pos===0;
+          return ordenOpciones(r,eqs,dir,surOf).map((oi,pos)=>{const o=r.opciones[oi];const surs=surAplican(surOf(o.navScac,tlDe(r)),o.agente),st=surs.filter(s=>esSubjectTo(s,dir)&&s.desplegar!==false).map(s=>s.c),bl=cargosBL(surs,dir),first=pos===0;
             return (<tr key={ri+"-"+oi} id={(first&&_anc)?eidTarifa(_tl):undefined} style={{background:(first&&hlRuta===ri)?"#FFF6D6":(first?"#fff":C.soft),boxShadow:(first&&hlRuta===ri)?"inset 3px 0 0 "+C.red:undefined,transition:"background .3s"}}>
               <td style={{...td,borderTop:first?"2px solid "+C.sep2:"none"}}>{first?<div id={"tarifa-ruta-"+ri} style={{fontSize:12.5}}><b style={{color:C.slate}}>{r.pol}</b><span style={{color:"#C0C7CE",margin:"0 4px"}}>›</span><b style={{color:C.slate}}>{r.pod}</b><div style={{fontSize:10.5,color:C.label,marginTop:1,lineHeight:1.25}}>{r.origen?(r.origen+(r.origenEstado?", "+abrevEstado(r.origenEstado):"")+" › "):""}{puertoNombre(r.pol)} › {puertoNombre(r.pod)}{r.destino?(" › "+r.destino+(r.destinoEstado?", "+abrevEstado(r.destinoEstado):"")):""}</div></div>:<span style={{fontSize:11,color:C.label}}>↳ alt.</span>}</td>
               <td style={{...td,textAlign:"center",borderTop:first?"2px solid "+C.sep2:"none"}}>{first&&<span><Chip>{serviceMode(r)}</Chip>{transportMode(r)&&<div style={{fontSize:9,color:C.label,marginTop:2,fontWeight:"bold"}}>{transportMode(r)}</div>}</span>}</td>
@@ -476,10 +476,10 @@ export function Cotizador({ loadId, onDirty, role }){
   };
   const surOfMain=(scac,tl)=>(quoteNav.find(q=>q.scac===scac&&(q.tl||"")===(tl||""))||{}).surcharges||[];
   const derivarAnclaje=(rts,ep=editarPropuesta)=>(rts||[]).map(r=>{
-    const nr={...r,opciones:(r.opciones||[]).map(o=>{ const precios={...(o.precios||{})}; Object.keys(precios).forEach(ek=>{ const eqObj=EQUIPOS.find(x=>x.k===ek); const pr=precios[ek]; if(!eqObj||!pr||pr.base==null||pr.base==="") return; const base=n(pr.base); const adic=adicPorCont(surOfMain(o.navScac,tlDe(r)),eqObj,direccion); const anchored=r.ventaAncla&&r.ventaAncla[ek]!=null; const target=(anchored&&!ep)?Number(r.ventaAncla[ek]):(base+adic+n(pr.profit)); const vround=round10(target); precios[ek]={...pr,profit:String(vround-base-adic)}; }); return {...o,precios}; })};
+    const nr={...r,opciones:(r.opciones||[]).map(o=>{ const precios={...(o.precios||{})}; Object.keys(precios).forEach(ek=>{ const eqObj=EQUIPOS.find(x=>x.k===ek); const pr=precios[ek]; if(!eqObj||!pr||pr.base==null||pr.base==="") return; const base=n(pr.base); const adic=adicPorCont(surAplican(surOfMain(o.navScac,tlDe(r)),o.agente),eqObj,direccion); const anchored=r.ventaAncla&&r.ventaAncla[ek]!=null; const target=(anchored&&!ep)?Number(r.ventaAncla[ek]):(base+adic+n(pr.profit)); const vround=round10(target); precios[ek]={...pr,profit:String(vround-base-adic)}; }); return {...o,precios}; })};
     // Al editar el precio fijo (ep=true), el precio nuevo pasa a ser el ancla: se recalcula
     // desde la naviera activa de cada equipo con el profit editado, para que se guarde de verdad.
-    if(ep && r.ventaAncla){ const na={...r.ventaAncla}; Object.keys(na).forEach(ek=>{ const eqObj=EQUIPOS.find(x=>x.k===ek); if(!eqObj) return; const oi=opcionActivaEq(nr,ek,eqObj,direccion,surOfMain); const o=(nr.opciones||[])[oi]; if(!o) return; const pr=(o.precios||{})[ek]||{}; if(pr.base==null||pr.base==="") return; na[ek]=round10(n(pr.base)+adicPorCont(surOfMain(o.navScac,tlDe(r)),eqObj,direccion)+n(pr.profit)); }); nr.ventaAncla=na; }
+    if(ep && r.ventaAncla){ const na={...r.ventaAncla}; Object.keys(na).forEach(ek=>{ const eqObj=EQUIPOS.find(x=>x.k===ek); if(!eqObj) return; const oi=opcionActivaEq(nr,ek,eqObj,direccion,surOfMain); const o=(nr.opciones||[])[oi]; if(!o) return; const pr=(o.precios||{})[ek]||{}; if(pr.base==null||pr.base==="") return; na[ek]=round10(n(pr.base)+adicPorCont(surAplican(surOfMain(o.navScac,tlDe(r)),o.agente),eqObj,direccion)+n(pr.profit)); }); nr.ventaAncla=na; }
     return nr;
   });
   const bajoProfit=()=>{ const eqObjs=EQUIPOS.filter(e=>equipos.includes(e.k)); const out=[]; (rutas||[]).forEach(r=>{ eqObjs.forEach(e=>{ const oi=opcionActivaEq(r,e.k,e,direccion,surOfMain); const o=(r.opciones||[])[oi]; if(!o) return; const pr=(o.precios||{})[e.k]||{}; if(pr.base==null||pr.base===""||n(pr.base)<=0) return; const prof=n(pr.profit); if(prof<250) out.push((r.pol||r.origen||"?")+"→"+(r.pod||r.destino||"?")+" "+e.t+" ("+(o.navScac||"—")+"): "+(prof>0?("$"+prof):"SIN PROFIT")); }); }); return out; };
@@ -517,16 +517,16 @@ export function Cotizador({ loadId, onDirty, role }){
       // Entrar a "Editar precio": conservar los profits tal como quedaron con la tarifa fija
       // (venta anclada − base − recargos), para no revertir al profit anterior. La venta se mantiene.
       const baked=(rutas||[]).map(r=>{ if(!r.ventaAncla) return r;
-        return {...r, opciones:(r.opciones||[]).map(o=>{ const precios={...(o.precios||{})}; Object.keys(precios).forEach(ek=>{ const a=r.ventaAncla[ek]; if(a==null||a==="") return; const eqObj=EQUIPOS.find(x=>x.k===ek); const pr=precios[ek]; if(!eqObj||!pr||pr.base==null||pr.base==="") return; const base=n(pr.base); const adic=adicPorCont(surOfMain(o.navScac,tlDe(r)),eqObj,direccion); precios[ek]={...pr, profit:String(round10(Number(a))-base-adic)}; }); return {...o,precios}; }) };
+        return {...r, opciones:(r.opciones||[]).map(o=>{ const precios={...(o.precios||{})}; Object.keys(precios).forEach(ek=>{ const a=r.ventaAncla[ek]; if(a==null||a==="") return; const eqObj=EQUIPOS.find(x=>x.k===ek); const pr=precios[ek]; if(!eqObj||!pr||pr.base==null||pr.base==="") return; const base=n(pr.base); const adic=adicPorCont(surAplican(surOfMain(o.navScac,tlDe(r)),o.agente),eqObj,direccion); precios[ek]={...pr, profit:String(round10(Number(a))-base-adic)}; }); return {...o,precios}; }) };
       });
       setRutas(baked); setEditarPropuesta(true);
     } else { setRutas(derivarAnclaje(rutas,false)); setEditarPropuesta(false); }
   };
-  const lineasPropModificada=()=>{ const out=[]; (rutas||[]).forEach(r=>{ if(!r.ventaAncla) return; Object.keys(r.ventaAncla).forEach(ek=>{ const eqObj=EQUIPOS.find(x=>x.k===ek); if(!eqObj) return; const oi=opcionActivaEq(r,ek,eqObj,direccion,surOfMain); const o=(r.opciones||[])[oi]; if(!o) return; const pr=(o.precios||{})[ek]||{}; if(pr.base==null||pr.base==="") return; const venta=round10(n(pr.base)+adicPorCont(surOfMain(o.navScac,tlDe(r)),eqObj,direccion)+n(pr.profit)); if(venta!==Math.round(Number(r.ventaAncla[ek]))) out.push((r.pol||r.origen||"?")+"→"+(r.pod||r.destino||"?")+" "+eqObj.t+": "+money(Number(r.ventaAncla[ek]))+" → "+money(venta)); }); }); return out; };
+  const lineasPropModificada=()=>{ const out=[]; (rutas||[]).forEach(r=>{ if(!r.ventaAncla) return; Object.keys(r.ventaAncla).forEach(ek=>{ const eqObj=EQUIPOS.find(x=>x.k===ek); if(!eqObj) return; const oi=opcionActivaEq(r,ek,eqObj,direccion,surOfMain); const o=(r.opciones||[])[oi]; if(!o) return; const pr=(o.precios||{})[ek]||{}; if(pr.base==null||pr.base==="") return; const venta=round10(n(pr.base)+adicPorCont(surAplican(surOfMain(o.navScac,tlDe(r)),o.agente),eqObj,direccion)+n(pr.profit)); if(venta!==Math.round(Number(r.ventaAncla[ek]))) out.push((r.pol||r.origen||"?")+"→"+(r.pod||r.destino||"?")+" "+eqObj.t+": "+money(Number(r.ventaAncla[ek]))+" → "+money(venta)); }); }); return out; };
   const anclar=async()=>{ if(!versionId){ alert("Guarda la cotización antes de fijar el precio al cliente."); return; } if(faltanPOLPOD().length){ alert("Completa POL, POD y naviera antes de fijar el precio."); return; } if(!confirm("¿Fijar el precio actual al cliente?\n\nEl precio queda congelado: al ajustar costos cambia tu profit, no el precio. Para cambiarlo después usa \"Editar precio\" o crea un nuevo Amendment.")) return; setSaving(true);
     try{
       // 1) Toma el precio que se ve AHORA (base + recargos + profit de la naviera activa) por equipo y fíjalo como ancla.
-      const conAncla=(rutas||[]).map(r=>{ const na={...(r.ventaAncla||{})}; (equipos||[]).forEach(ek=>{ const eqObj=EQUIPOS.find(x=>x.k===ek); if(!eqObj) return; const oi=opcionActivaEq(r,ek,eqObj,direccion,surOfMain); const o=(r.opciones||[])[oi]; if(!o) return; const pr=(o.precios||{})[ek]||{}; if(pr.base==null||pr.base==="") return; na[ek]=round10(n(pr.base)+adicPorCont(surOfMain(o.navScac,tlDe(r)),eqObj,direccion)+n(pr.profit)); }); return {...r,ventaAncla:na}; });
+      const conAncla=(rutas||[]).map(r=>{ const na={...(r.ventaAncla||{})}; (equipos||[]).forEach(ek=>{ const eqObj=EQUIPOS.find(x=>x.k===ek); if(!eqObj) return; const oi=opcionActivaEq(r,ek,eqObj,direccion,surOfMain); const o=(r.opciones||[])[oi]; if(!o) return; const pr=(o.precios||{})[ek]||{}; if(pr.base==null||pr.base==="") return; na[ek]=round10(n(pr.base)+adicPorCont(surAplican(surOfMain(o.navScac,tlDe(r)),o.agente),eqObj,direccion)+n(pr.profit)); }); return {...r,ventaAncla:na}; });
       // 2) Bloquea: los profits de cada opción se ajustan para dar exactamente ese ancla nuevo.
       const locked=derivarAnclaje(conAncla,false);
       // 3) Guarda ese estado ya anclado.
@@ -633,7 +633,7 @@ export function Cotizador({ loadId, onDirty, role }){
       </div>
       {tradelane && (()=>{ const off=(rutas||[]).filter(r=>(tx(r.pol)||tx(r.origen))&&(tx(r.pod)||tx(r.destino))&&!rutaEnTradelane(tradelane,r)); return off.length?(<div style={{fontSize:11.5,color:"#8A6D1F",background:"#FBF4E0",border:"1px solid #EAD9A0",borderRadius:8,padding:"7px 10px",marginBottom:10}}>⚠ {off.length} ruta(s) parecen fuera del tradelane <b>{tradelane}</b> ({tradeLabel(tradelane)}). Es solo un aviso, no bloquea.</div>):null; })()}
       </fieldset>
-      <NavierasSection quoteNav={quoteNav} setQuoteNav={setQuoteNav} rutas={rutas} catalog={mergedCat} onAlta={altaRecargo} dir={direccion} equipos={equipos} onGenerar={generarRecargos} foco={focoRecargo} editable={editable} onPropagarRec={abrirPropagarNav}/>
+      <NavierasSection quoteNav={quoteNav} setQuoteNav={setQuoteNav} rutas={rutas} catalog={mergedCat} onAlta={altaRecargo} dir={direccion} equipos={equipos} onGenerar={generarRecargos} foco={focoRecargo} editable={editable} onPropagarRec={abrirPropagarNav} agentes={agentes}/>
       <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:8,flexWrap:"wrap",gap:8}}>
         <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
           <span style={{fontSize:13,fontWeight:"bold",color:C.ink}}>Tarifas <span style={{fontWeight:"normal",color:C.label,fontSize:12}}>· base y profit por tamaño; costo, venta y subject-to salen solos</span></span>

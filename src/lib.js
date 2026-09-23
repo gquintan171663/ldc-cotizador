@@ -118,6 +118,8 @@ export const paySum=(dir)=>(dir==="I"?"collect":"prepaid");
 export const montoDe=(s,e)=>{ const k=e&&e.k; const m=(k&&s.montos)?s.montos[k]:null; return (m!=null&&m!=="")?n(m):n(s.monto); };
 export const adicPorCont=(surs,e,dir="E")=>{const pay=paySum(dir);return (surs||[]).filter(s=>!s.incluido&&(s.pago||"prepaid")===pay).reduce((a,s)=>{const bas=s.basis||"contenedor";if(bas==="bl")return a;const perEq=!!(e&&e.k&&s.montos&&s.montos[e.k]!=null&&s.montos[e.k]!=="");const amt=perEq?n(s.montos[e.k]):n(s.monto);return a+(perEq?amt:amt*(bas==="teu"?((e&&e.teu)||1):1));},0);};
 export const cargosBL=(surs,dir="E")=>{const pay=paySum(dir);return (surs||[]).filter(s=>!s.incluido&&(s.pago||"prepaid")===pay&&(s.basis||"contenedor")==="bl").reduce((a,s)=>a+n(s.monto),0);};
+// Recargos que aplican a una opción: los normales + los de "agencia" que coincidan con el agente de la opción.
+export const surAplican=(surs,agente)=>(surs||[]).filter(s=>!s.agencia||(String(s.agente||"")===String(agente||"")));
 // ¿va dentro del precio (panel INCLUYEN)? = incluido, o no-incluido cuyo pago SUMA según dirección
 export const enPrecio=(s,dir="E")=>!!s.incluido || (!s.incluido && (s.pago||"prepaid")===paySum(dir));
 // ¿es subject-to (panel NO INCLUYEN)? = no incluido cuyo pago NO suma según dirección
@@ -368,7 +370,7 @@ export const mkSurOf=(state)=>(scac,tl)=>((state.quoteNav||[]).find(q=>q.scac===
 export const ovNav=(v)=> (v&&typeof v==="object")?v.nav:v;
 export const ovRazon=(v)=> (v&&typeof v==="object")?(v.razon||""):"";
 // Mejor opción (índice) para el equipo ek por menor costo. Ignora base<=0 (no-quote de la naviera para ese tamaño).
-export const mejorOpcionEq=(r,ek,eqObj,dir,surOf)=>{ let bi=-1,bc=Infinity; (r.opciones||[]).forEach((o,i)=>{ const pr=(o.precios||{})[ek]; if(!pr||pr.base==null||pr.base===""||n(pr.base)<=0) return; const c=n(pr.base)+adicPorCont(surOf(o.navScac,tlDe(r)),eqObj,dir); if(c<bc){bc=c;bi=i;} }); return bi; };
+export const mejorOpcionEq=(r,ek,eqObj,dir,surOf)=>{ let bi=-1,bc=Infinity; (r.opciones||[]).forEach((o,i)=>{ const pr=(o.precios||{})[ek]; if(!pr||pr.base==null||pr.base===""||n(pr.base)<=0) return; const c=n(pr.base)+adicPorCont(surAplican(surOf(o.navScac,tlDe(r)),o.agente),eqObj,dir); if(c<bc){bc=c;bi=i;} }); return bi; };
 // Opción activa para un equipo: override guardado (por naviera) o la mejor por costo
 export const opcionActivaEq=(r,ek,eqObj,dir,surOf)=>{ const ov=ovNav(r.elegidaEq&&r.elegidaEq[ek]); if(ov){ const i=(r.opciones||[]).findIndex(o=>o.navScac===ov); if(i>=0) return i; } const b=mejorOpcionEq(r,ek,eqObj,dir,surOf); return b>=0?b:(r.elegida??0); };
 // Orden de las navieras dentro de una ruta (sólo para mostrar; no altera índices):
@@ -377,7 +379,7 @@ export const opcionActivaEq=(r,ek,eqObj,dir,surOf)=>{ const ov=ovNav(r.elegidaEq
 // 2) las que no tienen costo ($0 / no cotizan), al final en orden alfabético
 // Empate -> alfabético, para que el orden sea estable.
 export const ordenOpciones=(r,eqObjs,dir,surOf)=>{
-  const costoProm=(o)=>{ let sum=0,cnt=0; (eqObjs||[]).forEach(e=>{ const pr=(o.precios||{})[e.k]; if(!pr||pr.base==null||pr.base===""||n(pr.base)<=0) return; sum+=n(pr.base)+adicPorCont(surOf(o.navScac,tlDe(r)),e,dir); cnt++; }); return cnt?sum/cnt:0; };
+  const costoProm=(o)=>{ let sum=0,cnt=0; (eqObjs||[]).forEach(e=>{ const pr=(o.precios||{})[e.k]; if(!pr||pr.base==null||pr.base===""||n(pr.base)<=0) return; sum+=n(pr.base)+adicPorCont(surAplican(surOf(o.navScac,tlDe(r)),o.agente),e,dir); cnt++; }); return cnt?sum/cnt:0; };
   const nav=(o)=>String(o.navScac||"").toUpperCase();
   return (r.opciones||[]).map((o,i)=>i).sort((a,b)=>{
     const oa=r.opciones[a], ob=r.opciones[b];
@@ -393,7 +395,7 @@ export const ordenRecargos=(rows)=>{
   const col=(s)=>String((s&&s.pago)||"prepaid").toLowerCase()==="collect"?1:0;
   return (rows||[]).map((s,i)=>i).sort((a,b)=>col(rows[a])-col(rows[b]));
 };
-export const ventaEq=(r,eqObj,dir,surOf)=>{ const oi=opcionActivaEq(r,eqObj.k,eqObj,dir,surOf); const o=(r.opciones||[])[oi]||{}; const pr=(o.precios||{})[eqObj.k]||{}; return n(pr.base)+adicPorCont(surOf(o.navScac,tlDe(r)),eqObj,dir)+n(pr.profit); };
+export const ventaEq=(r,eqObj,dir,surOf)=>{ const oi=opcionActivaEq(r,eqObj.k,eqObj,dir,surOf); const o=(r.opciones||[])[oi]||{}; const pr=(o.precios||{})[eqObj.k]||{}; return n(pr.base)+adicPorCont(surAplican(surOf(o.navScac,tlDe(r)),o.agente),eqObj,dir)+n(pr.profit); };
 // T.T. (rango) de las opciones activas de una ruta para sus equipos
 export const transitoRango=(r,eqObjs,dir,surOf)=>{ const set=new Set(); eqObjs.forEach(e=>{ const oi=opcionActivaEq(r,e.k,e,dir,surOf); const o=(r.opciones||[])[oi]; const t=o&&o.transito; if(t!=null&&String(t).trim()!=="") set.add(String(t).trim()); }); const arr=[...set]; if(!arr.length) return ""; if(arr.length===1) return arr[0]; const nums=arr.map(Number).filter(x=>!isNaN(x)); if(nums.length===arr.length){ return Math.min(...nums)+"–"+Math.max(...nums); } return arr.join(" / "); };
 const _rkc=(r)=>((r.pol||r.origen||"?")+">"+(r.pod||r.destino||"?"));

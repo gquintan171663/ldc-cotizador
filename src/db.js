@@ -118,7 +118,7 @@ async function insertChildren(versionId, state, sum){
   // 3) SURCHARGES en un solo insert
   const surRows=[];
   ops.forEach((op, k)=>{ const {r, o}=opMeta[k]; const surs=surOf(o.navScac, tlDe(r));
-    (surs||[]).forEach((s, idx)=>{ surRows.push({opcion_id:op.id,clave:s.c||"",descripcion:s.d||"",monto:parseFloat(s.monto)||0,moneda:s.moneda||"USD",incluido:!!s.incluido,desplegar:s.desplegar!==false,pago:s.pago||"prepaid",basis:s.basis||"contenedor",montos:s.montos||null,orden:idx}); });
+    (surs||[]).forEach((s, idx)=>{ surRows.push({opcion_id:op.id,clave:s.c||"",descripcion:s.d||"",monto:parseFloat(s.monto)||0,moneda:s.moneda||"USD",incluido:!!s.incluido,desplegar:s.desplegar!==false,pago:s.pago||"prepaid",basis:s.basis||"contenedor",montos:s.montos||null,agencia:!!s.agencia,agente:s.agente||null,orden:idx}); });
   });
   if(surRows.length){ const res=await supabase.from("opcion_surcharges").insert(surRows); if(res.error) sum.errores.push("surcharges: "+res.error.message); else sum.surcharges+=surRows.length; }
 
@@ -422,7 +422,7 @@ export async function loadVersion(versionId){
   const lineById={}; (lineas||[]).forEach(l=>{ lineById[l.id]=l; });
   const quoteNavMap={};
   (opciones||[]).forEach(o=>{ if(!o.naviera) return; const l=lineById[o.linea_id]; const tl=l?tlDe(l):""; const key=o.naviera+"|"+tl;
-    const surs=(sursByOpcion[o.id]||[]).map(s=>({c:s.clave,d:s.descripcion,monto:String(s.monto),moneda:s.moneda,incluido:s.incluido,desplegar:s.desplegar,pago:s.pago,basis:s.basis||"contenedor",montos:s.montos||null}));
+    const surs=(sursByOpcion[o.id]||[]).map(s=>({c:s.clave,d:s.descripcion,monto:String(s.monto),moneda:s.moneda,incluido:s.incluido,desplegar:s.desplegar,pago:s.pago,basis:s.basis||"contenedor",montos:s.montos||null,agencia:!!s.agencia,agente:s.agente||""}));
     const ex=quoteNavMap[key];
     if(!ex){ quoteNavMap[key]={scac:o.naviera,tl,surcharges:surs}; }
     else if((!ex.surcharges||!ex.surcharges.length) && surs.length){ ex.surcharges=surs; } });
