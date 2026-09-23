@@ -304,6 +304,7 @@ export function Cotizador({ loadId, onDirty, role }){
   const [editarPropuesta,setEditarPropuesta]=useState(false);
   const impWbRef=React.useRef(null);
   const impInputRef=React.useRef(null);
+  const baseInputRef=React.useRef(null);
   const bajarPlantillaTarifario=async()=>{
     const HDR=["Customer","Origen","Estado origen","Transp Mode Origen","POL","POD","Destination","Estado destino","Transp Mode Destino","T.T.","Tarifa Base 20'","Tarifa Base 40'/40HC","Carrier","Agente","Tradelane","Srvc. Mode"];
     const MODO=["All Truck","Rail+Truck","Rail Ramp","Truck Ramp","Barge"], CARR=["CMA","Hapag","Maersk","MSC"], SRV=["CY-CY","DR-CY","CY-DR","DR-DR"];
@@ -331,6 +332,73 @@ export function Cotizador({ loadId, onDirty, role }){
   };
   const onTarifarioFile=async(e)=>{ const f=e.target.files&&e.target.files[0]; if(e.target) e.target.value=""; if(!f) return; try{ const buf=await f.arrayBuffer(); const wb=XLSX.read(buf,{type:"array"}); impWbRef.current=wb; if(wb.SheetNames.length===1) aplicarTarifario(wb.SheetNames[0]); else setImpSheets(wb.SheetNames); }catch(ex){ alert("No se pudo leer el archivo: "+ex.message); } };
   const aplicarTarifario=(sheet)=>{ const wb=impWbRef.current; setImpSheets(null); if(!wb) return; let nuevas=[]; try{ const rows=XLSX.utils.sheet_to_json(wb.Sheets[sheet],{header:1,defval:null}); nuevas=parseTarifario(rows); }catch(ex){ alert("Error al interpretar la hoja: "+ex.message); return; } if(!nuevas.length){ alert("No encontré rutas en la hoja \""+sheet+"\"."); return; } setEquipos(prev=>{ const s=new Set(prev); s.add("20DV"); s.add("40HC"); return [...s]; }); const hay=(rutas||[]).some(r=>tx(r.pol)||tx(r.pod)||(r.opciones||[]).some(o=>tx(o.navScac))); if(hay){ const rep=confirm("Importé "+nuevas.length+" ruta(s) de \""+sheet+"\".\n\nAceptar = REEMPLAZAR las rutas actuales.\nCancelar = AGREGAR al final."); setRutas(ordenarRutas(rep?nuevas:[...rutas,...nuevas],direccion)); } else setRutas(ordenarRutas(nuevas,direccion)); };
+  // ===== Excel-B: bajar el borrador actual a Excel (equipos horizontal + Agente) y re-subir =====
+  //        para actualizar las tarifas base de la combinación exacta (naviera+agente), conservando la venta.
+  const bajarBorradorExcel=async()=>{
+    const eqs=(equipos&&equipos.length?equipos:["20DV","40HC"]);
+    const eqLbl=(k)=>{const e=EQUIPOS.find(x=>x.k===k);return e?e.t:k;};
+    const HDR=["Ruta #","Origen","Estado origen","POL","POD","Destino","Estado destino","Naviera","Agente",...eqs.map(k=>"Base "+eqLbl(k))];
+    const wb=new ExcelJS.Workbook();
+    const ws=wb.addWorksheet("Borrador",{views:[{state:"frozen",ySplit:1}]});
+    const baseW=[7,15,13,13,13,15,13,11,16]; ws.columns=HDR.map((h,i)=>({header:h,width:baseW[i]||13}));
+    const hr=ws.getRow(1); hr.height=22;
+    hr.eachCell((c)=>{ c.font={name:"Arial",bold:true,size:9,color:{argb:"FFFFFFFF"}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF1A1A1A"}}; c.alignment={horizontal:"center",vertical:"middle"}; });
+    let rr=2, filas=0;
+    (rutas||[]).forEach((r,ri)=>{ (r.opciones||[]).forEach(o=>{
+      if(!o.navScac) return;
+      const tieneBase=eqs.some(k=>{const pr=(o.precios||{})[k];return pr&&pr.base!=null&&pr.base!=="";});   // sólo con tarifa capturada
+      if(!tieneBase) return;
+      const row=ws.getRow(rr++);
+      row.getCell(1).value=ri+1;
+      row.getCell(2).value=r.origen||""; row.getCell(3).value=r.origenEstado?abrevEstado(r.origenEstado):"";
+      row.getCell(4).value=r.pol||""; row.getCell(5).value=r.pod||"";
+      row.getCell(6).value=r.destino||""; row.getCell(7).value=r.destinoEstado?abrevEstado(r.destinoEstado):"";
+      row.getCell(8).value=o.navScac||""; row.getCell(9).value=o.agente||"";
+      eqs.forEach((k,i)=>{ const pr=(o.precios||{})[k]||{}; const v=pr.base; row.getCell(10+i).value=(v!=null&&v!=="")?Number(v):null; });
+      filas++;
+    }); });
+    if(!filas){ alert("Este borrador no tiene tarifas base capturadas para bajar."); return; }
+    for(let r=2;r<rr;r++){ for(let c=1;c<=9;c++){ ws.getCell(r,c).font={name:"Arial",size:9,color:{argb:"FF6B7280"}}; } }   // identidad en gris = no editar
+    ws.autoFilter="A1:"+ws.getColumn(HDR.length).letter+"1";
+    const buf=await wb.xlsx.writeBuffer();
+    const blob=new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
+    const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download="Borrador_tarifas_base.xlsx"; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+  };
+  const onBaseFile=async(e)=>{ const f=e.target.files&&e.target.files[0]; if(e.target) e.target.value=""; if(!f) return;
+    try{ const buf=await f.arrayBuffer(); const wb=XLSX.read(buf,{type:"array"}); const sheet=wb.SheetNames[0]; const rows=XLSX.utils.sheet_to_json(wb.Sheets[sheet],{header:1,defval:null}); aplicarBaseBorrador(rows); }
+    catch(ex){ alert("No se pudo leer el archivo: "+ex.message); } };
+  const aplicarBaseBorrador=(rows)=>{
+    if(!rows||rows.length<2){ alert("El archivo está vacío."); return; }
+    const H=(rows[0]||[]).map(x=>String(x==null?"":x).trim().toLowerCase());
+    const col=(names)=>{ for(let i=0;i<H.length;i++){ if(names.some(n2=>H[i]===n2||H[i].startsWith(n2))) return i; } return -1; };
+    const cPol=col(["pol"]),cPod=col(["pod"]),cOri=col(["origen"]),cDes=col(["destino","destination"]),cNav=col(["naviera","carrier"]),cAg=col(["agente","agent"]);
+    const eqs=(equipos&&equipos.length?equipos:["20DV","40HC"]);
+    const eqLbl=(k)=>{const e=EQUIPOS.find(x=>x.k===k);return (e?e.t:k).toLowerCase();};
+    const baseCols=eqs.map(k=>{ const lbl="base "+eqLbl(k); let idx=H.findIndex(h=>h===lbl); if(idx<0) idx=H.findIndex(h=>h.startsWith("base")&&h.includes(eqLbl(k))); return {k,idx}; });
+    const num=(v)=>{ if(v==null) return null; const s=String(v).trim(); if(s==="") return null; const x=parseFloat(s.replace(/[,$\s]/g,"")); return isNaN(x)?null:x; };
+    const norm=(s)=>String(s||"").trim().toUpperCase();
+    const next=rutas.map(r=>({...r,opciones:(r.opciones||[]).map(o=>({...o,precios:{...(o.precios||{})}}))}));
+    let cambios=0, sinMatch=0;
+    for(let ri=1;ri<rows.length;ri++){ const row=rows[ri]||[];
+      const pol=norm(cPol>=0?row[cPol]:""), pod=norm(cPod>=0?row[cPod]:""), ori=norm(cOri>=0?row[cOri]:""), des=norm(cDes>=0?row[cDes]:"");
+      const scac=norm(cNav>=0?row[cNav]:""), ag=String((cAg>=0?row[cAg]:"")||"").trim();
+      if(!scac&&!pol&&!pod) continue;
+      const rt=next.find(r=>norm(r.pol)===pol&&norm(r.pod)===pod&&norm(r.origen)===ori&&norm(r.destino)===des);
+      if(!rt){ sinMatch++; continue; }
+      const op=(rt.opciones||[]).find(o=>norm(o.navScac)===scac&&String(o.agente||"")===ag);
+      if(!op){ sinMatch++; continue; }
+      baseCols.forEach(({k,idx})=>{ if(idx<0) return; const nv=num(row[idx]); if(nv==null) return;
+        const pr=op.precios[k]||{}; const oldBase=n(pr.base);
+        if(oldBase===nv) return;
+        const nuevoProfit=n(pr.profit)+(oldBase-nv);   // conservar venta: el profit absorbe el cambio de costo
+        op.precios[k]={...pr,base:String(nv),profit:String(Math.round(nuevoProfit))};
+        cambios++;
+      });
+    }
+    if(!cambios){ alert("No hubo cambios de tarifa base"+(sinMatch?(" · "+sinMatch+" fila(s) no coincidieron con el borrador"):"")+"."); return; }
+    setRutas(next);
+    alert("Actualicé "+cambios+" tarifa(s) base"+(sinMatch?(" · "+sinMatch+" fila(s) sin coincidencia"):"")+".\nSe conservó la tarifa al cliente (el profit absorbió el cambio).\n\nRevisa y guarda el borrador.");
+  };
   const [started,setStarted]=useState(false);
   const [rutas,setRutas]=useState([]);
   const [qTar,setQTar]=useState("");
@@ -646,7 +714,7 @@ export function Cotizador({ loadId, onDirty, role }){
           <span style={{fontSize:13,fontWeight:"bold",color:C.ink}}>Tarifas <span style={{fontWeight:"normal",color:C.label,fontSize:12}}>· base y profit por tamaño; costo, venta y subject-to salen solos</span></span>
           <input value={qTar} onChange={e=>setQTar(e.target.value)} placeholder="Buscar origen, destino, POL, POD…" style={{...inS,fontSize:12,padding:"6px 9px",width:220}}/>{qTar&&<span onClick={()=>setQTar("")} title="Limpiar" style={{cursor:"pointer",fontSize:11,color:C.red}}>Limpiar</span>}
         </div>
-        <div style={{display:"flex",gap:8,alignItems:"center"}}><input type="file" ref={impInputRef} accept=".xlsx,.xls" style={{display:"none"}} onChange={onTarifarioFile}/><Btn kind="ghost" small disabled={!editable} onClick={()=>impInputRef.current&&impInputRef.current.click()}>⇪ Importar tarifario</Btn><Btn kind="ghost" small onClick={bajarPlantillaTarifario} title="Descarga la plantilla con encabezados, ejemplo y listas">⬇ Plantilla</Btn><Btn kind="ghost" small onClick={()=>setEditRutas(!editRutas)}>{editRutas?"Ocultar rutas":"Editar rutas"}</Btn><Btn kind="ghost" small disabled={!editable} onClick={()=>setRutas(ordenarRutas(rutas,direccion))} title="Ordenar por ciudad origen · país POL · región POD · país POD">↕ Ordenar rutas</Btn><Btn kind="ghost" small disabled={!editable} onClick={()=>setRutas([...rutas,mkRuta()])}>＋ Agregar ruta</Btn></div>
+        <div style={{display:"flex",gap:8,alignItems:"center"}}><input type="file" ref={impInputRef} accept=".xlsx,.xls" style={{display:"none"}} onChange={onTarifarioFile}/><Btn kind="ghost" small disabled={!editable} onClick={()=>impInputRef.current&&impInputRef.current.click()}>⇪ Importar tarifario</Btn><Btn kind="ghost" small onClick={bajarPlantillaTarifario} title="Descarga la plantilla con encabezados, ejemplo y listas">⬇ Plantilla</Btn><input type="file" ref={baseInputRef} accept=".xlsx,.xls" style={{display:"none"}} onChange={onBaseFile}/><Btn kind="ghost" small onClick={bajarBorradorExcel} title="Baja las tarifas base de este borrador (equipos horizontal + Agente) para editarlas en Excel">⬇ Borrador a Excel</Btn><Btn kind="ghost" small disabled={!editable} onClick={()=>baseInputRef.current&&baseInputRef.current.click()} title="Sube el Excel editado para actualizar las tarifas base (conserva la venta)">⇪ Subir tarifas base</Btn><Btn kind="ghost" small onClick={()=>setEditRutas(!editRutas)}>{editRutas?"Ocultar rutas":"Editar rutas"}</Btn><Btn kind="ghost" small disabled={!editable} onClick={()=>setRutas(ordenarRutas(rutas,direccion))} title="Ordenar por ciudad origen · país POL · región POD · país POD">↕ Ordenar rutas</Btn><Btn kind="ghost" small disabled={!editable} onClick={()=>setRutas([...rutas,mkRuta()])}>＋ Agregar ruta</Btn></div>
       </div>
       <fieldset disabled={!editable} style={{border:"none",padding:0,margin:0,minWidth:0,opacity:editable?1:.75}}>
       {impSheets&&<div style={{background:"#FFF9E9",border:"1px solid #EAD9A0",borderRadius:8,padding:"8px 10px",marginBottom:10}}>
