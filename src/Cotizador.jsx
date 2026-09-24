@@ -380,44 +380,64 @@ export function Cotizador({ loadId, onDirty, role }){
   // ===== Excel-B: bajar el borrador actual a Excel (equipos horizontal + Agente) y re-subir =====
   //        para actualizar las tarifas base de la combinación exacta (naviera+agente), conservando la venta.
   const bajarBorradorExcel=async()=>{
-    const eqs=(equipos&&equipos.length?equipos:["20DV","40HC"]);
-    const eqLbl=(k)=>{const e=EQUIPOS.find(x=>x.k===k);return e?e.t:k;};
-    const AGL=(agentes||[]).map(a=>a.nombre).filter(Boolean);          // catálogo de agentes; vacío = Directo
-    const HDR=["Ruta #","Origen","Estado origen","POL","POL nombre","POD","POD nombre","Destino","Estado destino","Naviera","Agente",...eqs.map(k=>"Base "+eqLbl(k)),"__k"];
+    // Mismo formato que la plantilla, prellenado con las tarifas actuales, + clave oculta para actualizar en su lugar.
+    const HDR=["Customer","Origen","Estado origen","Transp Mode Origen","POL","POD","Destination","Estado destino","Transp Mode Destino","T.T.","Tarifa Base 20'","Tarifa Base 40'/40HC","Carrier","Agente","Tradelane","Srvc. Mode","__k"];
     const KCOL=HDR.length;                                             // columna clave oculta (última)
+    const MODO=["All Truck","Rail+Truck","Rail Ramp","Truck Ramp","Barge"], SRV=["CY-CY","DR-CY","CY-DR","DR-DR"];
+    const TL=TRADELANES.map(t=>t.code);
+    const AGL=(agentes||[]).map(a=>a.nombre).filter(Boolean);
+    const NAVS=NAVIERAS.map(x=>x.scac+" — "+x.nombre);
+    const PORTS=optPuertos().map(p=>{ const nm=puertoNombre(p.v)||p.label||p.sub||""; return p.v+(nm?(" — "+nm):""); }).filter(Boolean);
+    const portDisp=(code)=>{ const c=String(code||""); if(!c) return ""; const nm=puertoNombre(c); return nm?(c+" — "+nm):c; };
+    const navDisp=(scac)=>{ const s=String(scac||""); if(!s) return ""; const nm=navName(s); return (nm&&nm!==s)?(s+" — "+nm):s; };
+    const clienteNombre=(clientes.find(c=>c.id===cliente)||{}).nombre||"";
     const wb=new ExcelJS.Workbook();
     const ws=wb.addWorksheet("Borrador",{views:[{state:"frozen",ySplit:1}]});
-    const baseW=[7,15,13,13,22,13,22,15,13,11,18]; ws.columns=HDR.map((h,i)=>({header:h,width:(i===KCOL-1?8:(baseW[i]||13))}));
+    const baseW=[13,15,14,17,22,22,15,14,17,7,14,16,18,16,11,11]; ws.columns=HDR.map((h,i)=>({header:h,width:(i===KCOL-1?8:(baseW[i]||14))}));
     const hr=ws.getRow(1); hr.height=22;
     hr.eachCell((c)=>{ c.font={name:"Arial",bold:true,size:9,color:{argb:"FFFFFFFF"}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF1A1A1A"}}; c.alignment={horizontal:"center",vertical:"middle"}; });
-    // catálogo de agentes en hoja oculta para el dropdown (límite de 255 caracteres en validación en línea)
     const wsL=wb.addWorksheet("Listas",{state:"veryHidden"});
-    AGL.forEach((a,i)=>{ wsL.getCell(i+1,1).value=a; });
+    ESTADOS_TODOS.forEach((e,i)=>{ wsL.getCell(i+1,1).value=e; });
+    AGL.forEach((a,i)=>{ wsL.getCell(i+1,2).value=a; });
+    NAVS.forEach((nv,i)=>{ wsL.getCell(i+1,3).value=nv; });
+    const wsP=wb.addWorksheet("Puertos",{state:"veryHidden"});
+    PORTS.forEach((p,i)=>{ wsP.getCell(i+1,1).value=p; });
     let rr=2, filas=0;
     (rutas||[]).forEach((r,ri)=>{ (r.opciones||[]).forEach((o,oi)=>{
       if(!o.navScac) return;
-      const tieneBase=eqs.some(k=>{const pr=(o.precios||{})[k];return pr&&pr.base!=null&&pr.base!=="";});   // sólo con tarifa capturada
-      if(!tieneBase) return;
+      const b20=(o.precios||{})["20DV"], b40=(o.precios||{})["40HC"];
+      const tiene=(b20&&b20.base!=null&&b20.base!=="")||(b40&&b40.base!=null&&b40.base!=="");   // sólo con tarifa capturada (20'/40HC)
+      if(!tiene) return;
       const row=ws.getRow(rr++);
-      row.getCell(1).value=ri+1;
+      row.getCell(1).value=clienteNombre;
       row.getCell(2).value=r.origen||""; row.getCell(3).value=r.origenEstado?abrevEstado(r.origenEstado):"";
-      row.getCell(4).value=r.pol||""; row.getCell(5).value=puertoNombre(r.pol)||"";
-      row.getCell(6).value=r.pod||""; row.getCell(7).value=puertoNombre(r.pod)||"";
-      row.getCell(8).value=r.destino||""; row.getCell(9).value=r.destinoEstado?abrevEstado(r.destinoEstado):"";
-      row.getCell(10).value=o.navScac||""; row.getCell(11).value=o.agente||"";
-      eqs.forEach((k,i)=>{ const pr=(o.precios||{})[k]||{}; const v=pr.base; row.getCell(12+i).value=(v!=null&&v!=="")?Number(v):null; });
+      row.getCell(4).value=r.precarriage_mode||"";
+      row.getCell(5).value=portDisp(r.pol); row.getCell(6).value=portDisp(r.pod);
+      row.getCell(7).value=r.destino||""; row.getCell(8).value=r.destinoEstado?abrevEstado(r.destinoEstado):"";
+      row.getCell(9).value=r.oncarriage_mode||"";
+      row.getCell(10).value=o.transito||"";
+      row.getCell(11).value=(b20&&b20.base!=null&&b20.base!=="")?Number(b20.base):null;
+      row.getCell(12).value=(b40&&b40.base!=null&&b40.base!=="")?Number(b40.base):null;
+      row.getCell(13).value=navDisp(o.navScac); row.getCell(14).value=o.agente||"";
+      row.getCell(15).value=tlDe(r)||""; row.getCell(16).value=serviceMode(r)||"";
       row.getCell(KCOL).value=ri+"|"+oi;                               // clave estable (ruta|opción)
       filas++;
     }); });
-    if(!filas){ alert("Este borrador no tiene tarifas base capturadas para bajar."); return; }
-    for(let r=2;r<rr;r++){ for(let c=1;c<=10;c++){ ws.getCell(r,c).font={name:"Arial",size:9,color:{argb:"FF6B7280"}}; } }   // identidad en gris = no editar (Agente sí es editable)
-    // dropdown de agentes en la columna Agente (col 11); vacío = Directo
-    if(AGL.length){ for(let r=2;r<=Math.max(rr-1,400);r++){ ws.getCell(r,11).dataValidation={type:"list",allowBlank:true,formulae:["Listas!$A$1:$A$"+AGL.length]}; } }
+    if(!filas){ alert("Este borrador no tiene tarifas base (20' o 40'/40HC) capturadas para bajar."); return; }
+    const lastR=Math.max(rr-1,400);
+    const dvRef=(col,ref)=>{ for(let r=2;r<=lastR;r++){ ws.getCell(r,col).dataValidation={type:"list",allowBlank:true,formulae:[ref]}; } };
+    const dv=(col,opts)=>{ for(let r=2;r<=lastR;r++){ ws.getCell(r,col).dataValidation={type:"list",allowBlank:true,formulae:['"'+opts.join(",")+'"']}; } };
+    dvRef(3,"Listas!$A$1:$A$"+ESTADOS_TODOS.length); dv(4,MODO);
+    if(PORTS.length){ dvRef(5,"Puertos!$A$1:$A$"+PORTS.length); dvRef(6,"Puertos!$A$1:$A$"+PORTS.length); }
+    dvRef(8,"Listas!$A$1:$A$"+ESTADOS_TODOS.length); dv(9,MODO);
+    if(NAVS.length) dvRef(13,"Listas!$C$1:$C$"+NAVS.length);
+    if(AGL.length) dvRef(14,"Listas!$B$1:$B$"+AGL.length);
+    dv(15,TL); dv(16,SRV);
     ws.getColumn(KCOL).hidden=true;                                    // clave oculta: no la borres
     ws.autoFilter="A1:"+ws.getColumn(KCOL-1).letter+"1";
     const buf=await wb.xlsx.writeBuffer();
     const blob=new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
-    const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download="Borrador_tarifas_base.xlsx"; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
+    const url=URL.createObjectURL(blob); const a=document.createElement("a"); a.href=url; a.download="Borrador_tarifas.xlsx"; document.body.appendChild(a); a.click(); a.remove(); URL.revokeObjectURL(url);
   };
   const onBaseFile=async(e)=>{ const f=e.target.files&&e.target.files[0]; if(e.target) e.target.value=""; if(!f) return;
     try{ const buf=await f.arrayBuffer(); const wb=XLSX.read(buf,{type:"array"}); const sheet=wb.SheetNames[0]; const rows=XLSX.utils.sheet_to_json(wb.Sheets[sheet],{header:1,defval:null}); aplicarBaseBorrador(rows); }
@@ -427,9 +447,12 @@ export function Cotizador({ loadId, onDirty, role }){
     const H=(rows[0]||[]).map(x=>String(x==null?"":x).trim().toLowerCase());
     const col=(names)=>{ for(let i=0;i<H.length;i++){ if(names.some(n2=>H[i]===n2||H[i].startsWith(n2))) return i; } return -1; };
     const cPol=col(["pol"]),cPod=col(["pod"]),cOri=col(["origen"]),cDes=col(["destino","destination"]),cNav=col(["naviera","carrier"]),cAg=col(["agente","agent"]),cK=col(["__k"]);
+    const soloClave=(s)=>String(s==null?"":s).split(/\s+—\s+|\s+–\s+/)[0].trim();   // "MXZLO — Manzanillo" → "MXZLO"
     const eqs=(equipos&&equipos.length?equipos:["20DV","40HC"]);
-    const eqLbl=(k)=>{const e=EQUIPOS.find(x=>x.k===k);return (e?e.t:k).toLowerCase();};
-    const baseCols=eqs.map(k=>{ const lbl="base "+eqLbl(k); let idx=H.findIndex(h=>h===lbl); if(idx<0) idx=H.findIndex(h=>h.startsWith("base")&&h.includes(eqLbl(k))); return {k,idx}; });
+    // columnas de base: mapea "Tarifa Base 20'/40'/40HC" (o el viejo "Base 20DV/40HC") a los equipos 20DV / 40HC
+    const cB20=H.findIndex(h=>/base/.test(h)&&/20/.test(h)&&!/40/.test(h));
+    const cB40=H.findIndex(h=>/base/.test(h)&&/40/.test(h));
+    const baseCols=[{k:"20DV",idx:cB20},{k:"40HC",idx:cB40}];
     const num=(v)=>{ if(v==null) return null; const s=String(v).trim(); if(s==="") return null; const x=parseFloat(s.replace(/[,$\s]/g,"")); return isNaN(x)?null:x; };
     const norm=(s)=>String(s||"").trim().toUpperCase();
     const next=rutas.map(r=>({...r,opciones:(r.opciones||[]).map(o=>({...o,precios:{...(o.precios||{})}}))}));
@@ -439,13 +462,13 @@ export function Cotizador({ loadId, onDirty, role }){
     const combosCambio=new Map();   // combinaciones (pol|pod|scac|agente) cuya base cambió → para propagar
     for(let ri=1;ri<rows.length;ri++){ const row=rows[ri]||[];
       const key=cK>=0?String(row[cK]||"").trim():"";
-      const scac=norm(cNav>=0?row[cNav]:""), agNew=String((cAg>=0?row[cAg]:"")||"").trim();
+      const scac=norm(soloClave(cNav>=0?row[cNav]:"")), agNew=String((cAg>=0?row[cAg]:"")||"").trim();
       let rt=null, op=null;
       if(key && /^\d+\|\d+$/.test(key)){                              // emparejar por clave oculta (robusto ante cambio de agente)
         const [a,b]=key.split("|").map(Number); rt=next[a]; op=rt&&(rt.opciones||[])[b];
       }
       if(!op){                                                        // respaldo: por ruta + naviera + agente
-        const pol=norm(cPol>=0?row[cPol]:""), pod=norm(cPod>=0?row[cPod]:""), ori=norm(cOri>=0?row[cOri]:""), des=norm(cDes>=0?row[cDes]:"");
+        const pol=norm(soloClave(cPol>=0?row[cPol]:"")), pod=norm(soloClave(cPod>=0?row[cPod]:"")), ori=norm(cOri>=0?row[cOri]:""), des=norm(cDes>=0?row[cDes]:"");
         if(!scac&&!pol&&!pod) continue;
         rt=next.find(r=>norm(r.pol)===pol&&norm(r.pod)===pod&&norm(r.origen)===ori&&norm(r.destino)===des);
         op=rt&&(rt.opciones||[]).find(o=>norm(o.navScac)===scac&&String(o.agente||"")===agNew);
