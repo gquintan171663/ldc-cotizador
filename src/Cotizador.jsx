@@ -89,7 +89,7 @@ function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,
   const toggle=(b)=>setColap(c=>({...c,[bkey(b)]:!c[bkey(b)]}));
   const setAll=(v)=>{ const m={}; blocks.forEach(b=>{m[bkey(b)]=v;}); setColap(m); };
   const allCol=blocks.length>0 && blocks.every(b=>colap[bkey(b)]);
-  useEffect(()=>{ if(!foco||!foco.scac) return; const b={scac:foco.scac,tl:foco.tl}; setColap(c=>({...c,[bkey(b)]:false})); const t=setTimeout(()=>{ const el=document.getElementById(eid(b)); if(el) el.scrollIntoView({behavior:"smooth",block:"center"}); },60); return ()=>clearTimeout(t); },[foco]);
+  useEffect(()=>{ if(!foco||!foco.scac) return; const b={scac:foco.scac,tl:foco.tl}; setSecCol(false); setColap(c=>({...c,[bkey(b)]:false})); const t=setTimeout(()=>{ const el=document.getElementById(eid(b)); if(el){ el.scrollIntoView({behavior:"smooth",block:"center"}); const prev=el.style.boxShadow; el.style.transition="box-shadow .25s"; el.style.boxShadow="0 0 0 2px "+C.red; setTimeout(()=>{ el.style.boxShadow=prev||""; },1400); } },140); return ()=>clearTimeout(t); },[foco]);
   return (<div style={{background:"#fff",border:"1px solid "+C.sep2,borderRadius:12,padding:16,marginBottom:16}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:secColEff?0:10,flexWrap:"wrap",gap:8}}>
       <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
