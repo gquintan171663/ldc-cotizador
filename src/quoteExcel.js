@@ -34,7 +34,8 @@ export async function exportarExcel(st, opts={}){
     // más barata AL MISMO PRECIO DE VENTA (el cliente ve un solo precio; la 2ª naviera
     // es el respaldo, así que lo útil es saber cuánto margen queda si te cambias a ella).
     // Etiqueta Naviera-Agente (o Naviera-Directo si no hay agente); segura para numFmt.
-    const navAg=(o)=>{ if(!o||!o.navScac) return ""; const ag=o.agente?String(o.agente).replace(/"/g,"").trim():"Directo"; return o.navScac+"-"+(ag||"Directo"); };
+    // El agente se abrevia a máx. 8 letras para que la celda no quede muy ancha (el nombre completo se ve al extenderla).
+    const navAg=(o)=>{ if(!o||!o.navScac) return ""; let ag=o.agente?String(o.agente).replace(/"/g,"").trim():"Directo"; if(!ag) ag="Directo"; if(ag.length>8) ag=ag.slice(0,8); return o.navScac+"-"+ag; };
     const cel=eqs.map(e=>{
       const ai=actByEq[e.k];
       const o=(r.opciones||[])[ai]||{navScac:"",precios:{}};
