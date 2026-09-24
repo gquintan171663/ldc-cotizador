@@ -139,6 +139,8 @@ function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir,onFoco,editarProp,filt
   const navOpts=[{v:"",t:"— naviera —"},...NAVIERAS.map(x=>({v:x.scac,t:x.scac+" · "+x.nombre}))];
   const navItems=NAVIERAS.map(x=>({v:x.scac,label:x.scac,sub:x.nombre}));                                   // para ComboBox (busca por clave o nombre)
   const agItems=[{v:"",label:"Directo",sub:""},...(agentes||[]).map(a=>({v:a.nombre,label:a.nombre,sub:a.pais||""}))];
+  const hoyISO=(()=>{const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);})();   // fecha local YYYY-MM-DD
+  const vencida=(o)=>!!(o&&o.vigHasta&&o.vigHasta<hoyISO);                                                    // tarifa base de compra vencida
   const surOf=(scac,tl)=>(quoteNav.find(q=>q.scac===scac&&(q.tl||"")===(tl||""))||{}).surcharges||[];
   const eqs=EQUIPOS.filter(e=>equipos.includes(e.k));
   const getP=(o,k)=>(o.precios&&o.precios[k])||{};
@@ -168,7 +170,7 @@ function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir,onFoco,editarProp,filt
             return (<tr key={ri+"-"+oi} id={(first&&_anc)?eidTarifa(_tl):undefined} style={{background:(first&&hlRuta===ri)?"#FFF6D6":(first?"#fff":C.soft),boxShadow:(first&&hlRuta===ri)?"inset 3px 0 0 "+C.red:undefined,transition:"background .3s"}}>
               <td style={{...td,borderTop:first?"2px solid "+C.sep2:"none"}}>{first?<div id={"tarifa-ruta-"+ri} style={{fontSize:12.5}}><b style={{color:C.slate}}>{r.pol}</b><span style={{color:"#C0C7CE",margin:"0 4px"}}>›</span><b style={{color:C.slate}}>{r.pod}</b><div style={{fontSize:10.5,color:C.label,marginTop:1,lineHeight:1.25}}>{r.origen?(r.origen+(r.origenEstado?", "+abrevEstado(r.origenEstado):"")+" › "):""}{puertoNombre(r.pol)} › {puertoNombre(r.pod)}{r.destino?(" › "+r.destino+(r.destinoEstado?", "+abrevEstado(r.destinoEstado):"")):""}</div></div>:<span style={{fontSize:11,color:C.label}}>↳ alt.</span>}</td>
               <td style={{...td,textAlign:"center",borderTop:first?"2px solid "+C.sep2:"none"}}>{first&&<span><Chip>{serviceMode(r)}</Chip>{transportMode(r)&&<div style={{fontSize:9,color:C.label,marginTop:2,fontWeight:"bold"}}>{transportMode(r)}</div>}</span>}</td>
-              <td style={td}><div style={{display:"flex",gap:5,alignItems:"flex-start"}}><div style={{width:118,maxWidth:140,flex:"0 0 auto"}}><ComboBox value={o.navScac} display={o.navScac||""} items={navItems} placeholder="— naviera —" onChange={v=>setOpt(ri,oi,{navScac:v})}/></div>{dir==="I"&&<div style={{width:112,maxWidth:130,flex:"0 0 auto"}} title="Canal: Directo o Agente"><ComboBox value={o.agente||""} display={o.agente||"Directo"} items={agItems} placeholder="Directo" onChange={v=>setOpt(ri,oi,{agente:v})}/></div>}</div></td>
+              <td style={td}><div style={{display:"flex",gap:5,alignItems:"flex-start"}}><div style={{width:118,maxWidth:140,flex:"0 0 auto"}}><ComboBox value={o.navScac} display={o.navScac||""} items={navItems} placeholder="— naviera —" onChange={v=>setOpt(ri,oi,{navScac:v})}/></div>{dir==="I"&&<div style={{width:112,maxWidth:130,flex:"0 0 auto"}} title="Canal: Directo o Agente"><ComboBox value={o.agente||""} display={o.agente||"Directo"} items={agItems} placeholder="Directo" onChange={v=>setOpt(ri,oi,{agente:v})}/></div>}</div>{tx(o.navScac)&&<div style={{display:"flex",alignItems:"center",gap:4,marginTop:3}} title="Vigencia de la tarifa base de compra (hasta)"><span style={{fontSize:9.5,color:vencida(o)?C.red:C.label,fontWeight:vencida(o)?"bold":"normal"}}>vig. compra</span><input type="date" value={o.vigHasta||""} onChange={e=>setOpt(ri,oi,{vigHasta:e.target.value})} style={{...inS,padding:"1px 4px",fontSize:10.5,width:120,color:vencida(o)?C.red:C.ink,borderColor:vencida(o)?C.red:undefined}}/>{vencida(o)&&<span style={{fontSize:8.5,fontWeight:"bold",color:"#fff",background:C.red,borderRadius:4,padding:"1px 5px",whiteSpace:"nowrap"}}>VENCIDO</span>}</div>}</td>
               <td style={{...td,textAlign:"center"}}><input value={o.transito||""} onChange={e=>setOpt(ri,oi,{transito:e.target.value})} inputMode="numeric" placeholder="días" style={{...inS,padding:"5px 4px",fontSize:12,width:42,textAlign:"center"}}/></td>
               {eqs.map(e=>{const p=getP(o,e.k);const base=n(p.base),prof=n(p.profit);const adic=adicPorCont(surs,e,dir);const venta=base+adic+prof;const _best=mejorOpcionEq(r,e.k,e,dir,surOf);const _act=opcionActivaEq(r,e.k,e,dir,surOf)===oi;const _isBest=_act&&oi===_best;const _razon=ovRazon(r.elegidaEq&&r.elegidaEq[e.k]);
                 const _summ=surs.filter(s=>!s.incluido&&enPrecio(s,dir)&&(s.basis||"contenedor")!=="bl");
@@ -343,7 +345,7 @@ export function Cotizador({ loadId, onDirty, role }){
   const impInputRef=React.useRef(null);
   const baseInputRef=React.useRef(null);
   const bajarPlantillaTarifario=async()=>{
-    const HDR=["Customer","Origen","Estado origen","Transp Mode Origen","POL","POD","Destination","Estado destino","Transp Mode Destino","T.T.","Tarifa Base 20'","Tarifa Base 40'/40HC","Carrier","Agente","Tradelane","Srvc. Mode"];
+    const HDR=["Customer","Origen","Estado origen","Transp Mode Origen","POL","POD","Destination","Estado destino","Transp Mode Destino","T.T.","Tarifa Base 20'","Tarifa Base 40'/40HC","Carrier","Agente","Tradelane","Srvc. Mode","Vig. compra"];
     const MODO=["All Truck","Rail+Truck","Rail Ramp","Truck Ramp","Barge"], CARR=["CMA","Hapag","Maersk","MSC"], SRV=["CY-CY","DR-CY","CY-DR","DR-DR"];
     const TL=TRADELANES.map(t=>t.code);
     const AGL=(agentes||[]).map(a=>a.nombre).filter(Boolean);   // catálogo de agentes; vacío = Directo-Naviera
@@ -354,7 +356,7 @@ export function Cotizador({ loadId, onDirty, role }){
     ws.columns=HDR.map((h,i)=>({ header:h, width:[13,15,14,17,22,22,15,14,17,7,14,16,18,16,11,11][i]||14 }));
     const hr=ws.getRow(1); hr.height=22;
     hr.eachCell((c)=>{ c.font={name:"Arial",bold:true,size:9,color:{argb:"FFFFFFFF"}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF1A1A1A"}}; c.alignment={horizontal:"center",vertical:"middle"}; });
-    const ej=["Deacero","EJEMPLO Guadalajara","Jalisco","All Truck","Manzanillo","Ningbo","","","","28","","1650","Maersk","","TPWB","DR-CY"];
+    const ej=["Deacero","EJEMPLO Guadalajara","Jalisco","All Truck","Manzanillo","Ningbo","","","","28","","1650","Maersk","","TPWB","DR-CY","2026-12-31"];
     const er=ws.getRow(2); ej.forEach((v,i)=>{ er.getCell(i+1).value=v; });
     er.eachCell((c)=>{ c.font={name:"Arial",italic:true,size:9,color:{argb:"FF8A939C"}}; });
     const dv=(col,opts)=>{ for(let r=2;r<=400;r++){ ws.getCell(r,col).dataValidation={ type:"list", allowBlank:true, formulae:['"'+opts.join(",")+'"'] }; } };
@@ -370,6 +372,7 @@ export function Cotizador({ loadId, onDirty, role }){
     if(PORTS.length){ dvRef(5,"Puertos!$A$1:$A$"+PORTS.length); dvRef(6,"Puertos!$A$1:$A$"+PORTS.length); }   // POL / POD
     if(NAVS.length) dvRef(13,"Listas!$C$1:$C$"+NAVS.length); else dv(13,CARR);                                // Carrier (lista completa)
     if(AGL.length) dvRef(14,"Listas!$B$1:$B$"+AGL.length); dv(15,TL); dv(16,SRV);
+    ws.getColumn(HDR.length).numFmt="yyyy-mm-dd";   // Vig. compra como fecha
     ws.autoFilter="A1:"+ws.getColumn(HDR.length).letter+"1";
     const buf=await wb.xlsx.writeBuffer();
     const blob=new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
@@ -381,7 +384,7 @@ export function Cotizador({ loadId, onDirty, role }){
   // actualiza las tarifas base EN SU LUGAR; si no, importa/reemplaza rutas (plantilla nueva).
   const _hojaTieneK=(wb,sn)=>{ try{ const rows=XLSX.utils.sheet_to_json(wb.Sheets[sn],{header:1,defval:null}); const H=(rows[0]||[]).map(x=>String(x==null?"":x).trim().toLowerCase()); return H.includes("__k"); }catch(_){ return false; } };
   const onPlantillaFile=async(e)=>{ const f=e.target.files&&e.target.files[0]; if(e.target) e.target.value=""; if(!f) return;
-    try{ const buf=await f.arrayBuffer(); const wb=XLSX.read(buf,{type:"array"});
+    try{ const buf=await f.arrayBuffer(); const wb=XLSX.read(buf,{type:"array",cellDates:true});
       const snK=wb.SheetNames.find(sn=>_hojaTieneK(wb,sn));
       if(snK){ const rows=XLSX.utils.sheet_to_json(wb.Sheets[snK],{header:1,defval:null}); aplicarBaseBorrador(rows); }   // Borrador a plantilla → actualizar en su lugar
       else { impWbRef.current=wb; if(wb.SheetNames.length===1) aplicarTarifario(wb.SheetNames[0]); else setImpSheets(wb.SheetNames); }  // plantilla nueva → importar/reemplazar
@@ -390,7 +393,7 @@ export function Cotizador({ loadId, onDirty, role }){
   //        para actualizar las tarifas base de la combinación exacta (naviera+agente), conservando la venta.
   const bajarBorradorExcel=async()=>{
     // Mismo formato que la plantilla, prellenado con las tarifas actuales, + clave oculta para actualizar en su lugar.
-    const HDR=["Customer","Origen","Estado origen","Transp Mode Origen","POL","POD","Destination","Estado destino","Transp Mode Destino","T.T.","Tarifa Base 20'","Tarifa Base 40'/40HC","Carrier","Agente","Tradelane","Srvc. Mode","__k"];
+    const HDR=["Customer","Origen","Estado origen","Transp Mode Origen","POL","POD","Destination","Estado destino","Transp Mode Destino","T.T.","Tarifa Base 20'","Tarifa Base 40'/40HC","Carrier","Agente","Tradelane","Srvc. Mode","Vig. compra","__k"];
     const KCOL=HDR.length;                                             // columna clave oculta (última)
     const MODO=["All Truck","Rail+Truck","Rail Ramp","Truck Ramp","Barge"], SRV=["CY-CY","DR-CY","CY-DR","DR-DR"];
     const TL=TRADELANES.map(t=>t.code);
@@ -429,6 +432,7 @@ export function Cotizador({ loadId, onDirty, role }){
       row.getCell(12).value=(b40&&b40.base!=null&&b40.base!=="")?Number(b40.base):null;
       row.getCell(13).value=navDisp(o.navScac); row.getCell(14).value=o.agente||"";
       row.getCell(15).value=tlDe(r)||""; row.getCell(16).value=serviceMode(r)||"";
+      row.getCell(17).value=o.vigHasta?new Date(o.vigHasta+"T00:00:00"):null;   // Vig. compra
       row.getCell(KCOL).value=ri+"|"+oi;                               // clave estable (ruta|opción)
       filas++;
     }); });
@@ -442,6 +446,7 @@ export function Cotizador({ loadId, onDirty, role }){
     if(NAVS.length) dvRef(13,"Listas!$C$1:$C$"+NAVS.length);
     if(AGL.length) dvRef(14,"Listas!$B$1:$B$"+AGL.length);
     dv(15,TL); dv(16,SRV);
+    ws.getColumn(17).numFmt="yyyy-mm-dd";                              // Vig. compra como fecha
     ws.getColumn(KCOL).hidden=true;                                    // clave oculta: no la borres
     ws.autoFilter="A1:"+ws.getColumn(KCOL-1).letter+"1";
     const buf=await wb.xlsx.writeBuffer();
@@ -455,8 +460,9 @@ export function Cotizador({ loadId, onDirty, role }){
     if(!rows||rows.length<2){ alert("El archivo está vacío."); return; }
     const H=(rows[0]||[]).map(x=>String(x==null?"":x).trim().toLowerCase());
     const col=(names)=>{ for(let i=0;i<H.length;i++){ if(names.some(n2=>H[i]===n2||H[i].startsWith(n2))) return i; } return -1; };
-    const cPol=col(["pol"]),cPod=col(["pod"]),cOri=col(["origen"]),cDes=col(["destino","destination"]),cNav=col(["naviera","carrier"]),cAg=col(["agente","agent"]),cK=col(["__k"]);
+    const cPol=col(["pol"]),cPod=col(["pod"]),cOri=col(["origen"]),cDes=col(["destino","destination"]),cNav=col(["naviera","carrier"]),cAg=col(["agente","agent"]),cVig=col(["vig"]),cK=col(["__k"]);
     const soloClave=(s)=>String(s==null?"":s).split(/\s+—\s+|\s+–\s+/)[0].trim();   // "MXZLO — Manzanillo" → "MXZLO"
+    const fechaISO=(v)=>{ if(v==null||v==="") return ""; if(v instanceof Date&&!isNaN(v)){ return new Date(v.getTime()-v.getTimezoneOffset()*60000).toISOString().slice(0,10); } const s=String(v).trim(); if(!s) return ""; let m=s.match(/^(\d{4})-(\d{2})-(\d{2})/); if(m) return m[0]; m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/); if(m){ let d=m[1],mo=m[2],y=m[3]; if(y.length===2) y="20"+y; return y+"-"+String(mo).padStart(2,"0")+"-"+String(d).padStart(2,"0"); } const num=Number(s); if(!isNaN(num)&&num>20000&&num<80000){ const dt=new Date(Math.round((num-25569)*86400*1000)); return new Date(dt.getTime()-dt.getTimezoneOffset()*60000).toISOString().slice(0,10); } return ""; };
     const eqs=(equipos&&equipos.length?equipos:["20DV","40HC"]);
     // columnas de base: mapea "Tarifa Base 20'/40'/40HC" (o el viejo "Base 20DV/40HC") a los equipos 20DV / 40HC
     const cB20=H.findIndex(h=>/base/.test(h)&&/20/.test(h)&&!/40/.test(h));
@@ -488,6 +494,8 @@ export function Cotizador({ loadId, onDirty, role }){
       const ventas={}; eqs.forEach(k=>{ const eqObj=EQUIPOS.find(x=>x.k===k); if(eqObj) ventas[k]=ventaDe(rt,op,eqObj,agOld); });
       // 2) cambio de agente (si el Excel lo modificó)
       if(cAg>=0 && agNew!==agOld){ op.agente=agNew; reasig++; cambios++; }
+      // 2b) vigencia de la tarifa base (Vig. compra)
+      if(cVig>=0){ const v=fechaISO(row[cVig]); if(v!==(op.vigHasta||"")){ op.vigHasta=v; cambios++; } }
       // 3) nuevas bases + reajuste de profit para conservar la venta (considera el agente ya nuevo)
       baseCols.forEach(({k,idx})=>{ if(idx<0) return; const nv=num(row[idx]); if(nv==null) return;
         const eqObj=EQUIPOS.find(x=>x.k===k); if(!eqObj) return;
@@ -669,7 +677,8 @@ export function Cotizador({ loadId, onDirty, role }){
   const bajoProfit=()=>{ const eqObjs=EQUIPOS.filter(e=>equipos.includes(e.k)); const out=[]; (rutas||[]).forEach(r=>{ eqObjs.forEach(e=>{ const oi=opcionActivaEq(r,e.k,e,direccion,surOfMain); const o=(r.opciones||[])[oi]; if(!o) return; const pr=(o.precios||{})[e.k]||{}; if(pr.base==null||pr.base===""||n(pr.base)<=0) return; const prof=n(pr.profit); if(prof<250) out.push((r.pol||r.origen||"?")+"→"+(r.pod||r.destino||"?")+" "+e.t+" ("+(o.navScac||"—")+"): "+(prof>0?("$"+prof):"SIN PROFIT")); }); }); return out; };
   const confirmProfit=()=>{ const low=bajoProfit(); if(!low.length) return true; return confirm("⚠ Profit bajo o nulo (menor a $250 USD) en:\n\n• "+low.slice(0,12).join("\n• ")+"\n\n¿Continuar de todas formas?"); };
   const faltanPOLPOD=()=>{ const out=[]; (rutas||[]).forEach((r,i)=>{ const f=[]; if(!tx(r.pol))f.push("POL"); if(!tx(r.pod))f.push("POD"); if(!(r.opciones||[]).some(o=>tx(o.navScac)))f.push("naviera"); if(tx(r.origen)&&!tx(r.precarriage_mode))f.push("modo (origen)"); if(tx(r.origen)&&!tx(r.origenEstado))f.push("estado (origen)"); if(tx(r.destino)&&!tx(r.oncarriage_mode))f.push("modo (destino)"); if(tx(r.destino)&&!tx(r.destinoEstado))f.push("estado (destino)"); if(f.length) out.push("R"+(i+1)+": falta "+f.join(", ")); }); return out; };
-  const enviar=async()=>{ if(!versionId) return; if(vigDesde&&vigHasta&&vigDesde>vigHasta){ alert("La vigencia está invertida: \"desde\" ("+vigDesde+") es posterior a \"hasta\" ("+vigHasta+"). Corrige las fechas antes de enviar."); return; } const falt=faltanPOLPOD(); if(falt.length){ alert("No se puede marcar como enviada: faltan datos obligatorios en las rutas (POL, POD, naviera y modo si hay ciudad):\n\n• "+falt.join("\n• ")); return; } if(!confirmProfit()) return; await markEnviada(versionId); setEstatus("enviada"); };
+  const basesVencidas=()=>{ const out=[]; const hoy=(()=>{const d=new Date();return new Date(d.getTime()-d.getTimezoneOffset()*60000).toISOString().slice(0,10);})(); (rutas||[]).forEach((r,i)=>{ (r.opciones||[]).forEach(o=>{ if(!tx(o.navScac)) return; const tieneBase=Object.values(o.precios||{}).some(pr=>pr&&pr.base!=null&&pr.base!==""); if(tieneBase && o.vigHasta && o.vigHasta<hoy) out.push("R"+(i+1)+" "+o.navScac+(o.agente?(" · "+o.agente):"")+": venció "+o.vigHasta); }); }); return out; };
+  const enviar=async()=>{ if(!versionId) return; if(vigDesde&&vigHasta&&vigDesde>vigHasta){ alert("La vigencia está invertida: \"desde\" ("+vigDesde+") es posterior a \"hasta\" ("+vigHasta+"). Corrige las fechas antes de enviar."); return; } const falt=faltanPOLPOD(); if(falt.length){ alert("No se puede marcar como enviada: faltan datos obligatorios en las rutas (POL, POD, naviera y modo si hay ciudad):\n\n• "+falt.join("\n• ")); return; } const venc=basesVencidas(); if(venc.length){ alert("No se puede enviar: hay tarifas base de compra VENCIDAS:\n\n• "+venc.join("\n• ")+"\n\nActualiza esas tarifas o su fecha de vig. compra antes de enviar."); return; } if(!confirmProfit()) return; await markEnviada(versionId); setEstatus("enviada"); };
   const guardarCorreccionUI=async()=>{
     if(!versionId) return;
     if(vigDesde&&vigHasta&&vigDesde>vigHasta){ alert("La vigencia está invertida. Corrige las fechas antes de guardar."); return; }

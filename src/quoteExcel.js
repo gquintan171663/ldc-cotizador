@@ -33,6 +33,8 @@ export async function exportarExcel(st, opts={}){
     // Por equipo: venta y profit de la naviera nominada, y qué profit daría la 2ª opción
     // más barata AL MISMO PRECIO DE VENTA (el cliente ve un solo precio; la 2ª naviera
     // es el respaldo, así que lo útil es saber cuánto margen queda si te cambias a ella).
+    // Etiqueta Naviera-Agente (o Naviera-Directo si no hay agente); segura para numFmt.
+    const navAg=(o)=>{ if(!o||!o.navScac) return ""; const ag=o.agente?String(o.agente).replace(/"/g,"").trim():"Directo"; return o.navScac+"-"+(ag||"Directo"); };
     const cel=eqs.map(e=>{
       const ai=actByEq[e.k];
       const o=(r.opciones||[])[ai]||{navScac:"",precios:{}};
@@ -47,9 +49,9 @@ export async function exportarExcel(st, opts={}){
         const p2=(o2.precios&&o2.precios[e.k])||{}; const bb=n(p2.base);
         if(!bb) return;                                   // $0 = no cotizó, no cuenta
         const c2=bb+adicPorCont(surAplican(surOf(o2.navScac,tl),o2.agente),e,dir);
-        if(!b2||c2<b2.c) b2={c:c2,nav:o2.navScac||""};
+        if(!b2||c2<b2.c) b2={c:c2,nav:navAg(o2)};
       });
-      return {v, pf:v-base-adic, nav:o.navScac||"", pf2:b2?(v-b2.c):null, nav2:b2?b2.nav:""};
+      return {v, pf:v-base-adic, nav:navAg(o), pf2:b2?(v-b2.c):null, nav2:b2?b2.nav:""};
     });
     const ventas=cel.map(x=>x.v), profits=cel.map(x=>x.pf), navs=cel.map(x=>x.nav), profits2=cel.map(x=>x.pf2), navs2=cel.map(x=>x.nav2);
     const tm=transportMode(r);

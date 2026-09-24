@@ -584,6 +584,7 @@ export function parseTarifario(rows){
   const H=(rows[0]||[]).map(x=>String(x==null?"":x).trim());
   const idx=(names)=>{ for(let i=0;i<H.length;i++){ const h=H[i].toLowerCase(); if(names.some(n=>h===n||h.startsWith(n))) return i; } return -1; };
   const soloClave=(s)=>{ const t=String(s==null?"":s).trim(); return t.split(/\s+—\s+|\s+–\s+/)[0].trim(); };  // "MXZLO — Manzanillo" → "MXZLO"
+  const fechaISO=(v)=>{ if(v==null||v==="") return ""; if(v instanceof Date&&!isNaN(v)){ return new Date(v.getTime()-v.getTimezoneOffset()*60000).toISOString().slice(0,10); } const s=String(v).trim(); if(!s) return ""; let m=s.match(/^(\d{4})-(\d{2})-(\d{2})/); if(m) return m[0]; m=s.match(/^(\d{1,2})[\/\-](\d{1,2})[\/\-](\d{2,4})$/); if(m){ let d=m[1],mo=m[2],y=m[3]; if(y.length===2) y="20"+y; return y+"-"+String(mo).padStart(2,"0")+"-"+String(d).padStart(2,"0"); } const num=Number(s); if(!isNaN(num)&&num>20000&&num<80000){ const dt=new Date(Math.round((num-25569)*86400*1000)); return new Date(dt.getTime()-dt.getTimezoneOffset()*60000).toISOString().slice(0,10); } return ""; };
   const cOri=idx(["origen"]), cPol=idx(["pol"]), cPod=idx(["pod"]), cDest=idx(["destination","destino"]), cSrvc=idx(["srvc","service","scope"]), cTr=idx(["transp","transport"]);
   const full = cPol>=0 && cPod>=0; // formato completo (MTY) vs simple (Origen/Destino + Via)
   const blocks=[];
@@ -593,6 +594,7 @@ export function parseTarifario(rows){
   // ---- Formato LARGO: una fila por (ruta × naviera), con columna "Carrier" y tarifas base ----
   // Customer | Origen | POL | POD | Destination | T.T. | Tarifa Base 20' | Tarifa Base 40'/40HC | Carrier | Tradelane | Srvc. Mode | Transp Mode
   const cCarr=idx(["carrier","naviera"]);
+  const cVig=idx(["vig"]);   // Vig. compra (vigencia de la tarifa base)
   const cAg=idx(["agente","agent"]);   // Agente (vacío = Directo-Naviera)
   if(cCarr>=0 && !blocks.length && cPol>=0 && cPod>=0){
     let c20=-1,c40=-1,cHC=-1;
@@ -632,9 +634,10 @@ export function parseTarifario(rows){
       if(bfin!=null) precios["40HC"]={base:String(bfin),profit:""};
       const tt=cTT>=0?String(row[cTT]==null?"":row[cTT]).trim():"";
       const ag=cAg>=0?String(row[cAg]||"").trim():"";   // combinación = naviera + agente
+      const vig=cVig>=0?fechaISO(row[cVig]):"";
       const ex=R.opciones.find(o=>o.navScac===scac && String(o.agente||"")===ag);
-      if(ex){ Object.assign(ex.precios,precios); if(tt&&!ex.transito) ex.transito=tt; }
-      else R.opciones.push({navScac:scac,agente:ag,transito:tt,precios});
+      if(ex){ Object.assign(ex.precios,precios); if(tt&&!ex.transito) ex.transito=tt; if(vig&&!ex.vigHasta) ex.vigHasta=vig; }
+      else R.opciones.push({navScac:scac,agente:ag,transito:tt,vigHasta:vig,precios});
     }
     const arr=[...map.values()];
     arr.forEach(R=>{ if(!R.opciones.length) R.opciones.push({navScac:"",transito:"",precios:{}}); });  // ruta sin naviera: fila editable vacía
