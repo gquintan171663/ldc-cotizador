@@ -900,6 +900,78 @@ export async function aplicarRecargoEnBorradores({ targets, versionIds, scac, cl
   return { aplicados, errores };
 }
 
+// ===========================================================================
+// PROPAGACIÓN DE TARIFAS BASE (Excel-B parte 2) — al editar la base de una
+// combinación (naviera+agente) en una ruta (POL→POD), buscar OTROS borradores
+// con la MISMA ruta y combinación que tengan tarifa base, y (con aprobación)
+// copiarles la nueva base por equipo. Conserva la venta: el profit la absorbe.
+// El empate es por POL y POD exactos (la base depende del lane, no solo del país).
+// ===========================================================================
+export async function buscarCoincidenciasBase({ scac, agente, pol, pod, bases, versionExcluir }){
+  if(!scac || !pol || !pod) return { rows:[] };
+  const { data: vers, error } = await supabase.from("versiones")
+    .select("id,codigo,estatus,acuerdos(clientes(nombre))").eq("estatus","borrador").limit(2000);
+  if(error) return { rows:[], error:error.message };
+  const ag=String(agente||"");
+  const basesN={}; Object.keys(bases||{}).forEach(k=>{ const v=bases[k]; if(v!==""&&v!=null) basesN[k]=String(n(v)); });
+  const eqsNew=Object.keys(basesN);
+  const out=[];
+  for(const v of (vers||[])){
+    if(v.id===versionExcluir) continue;
+    let st; try{ st=await loadVersion(v.id); }catch(_){ continue; }
+    if(!st) continue;
+    (st.rutas||[]).forEach(r=>{
+      if(String(r.pol)!==String(pol) || String(r.pod)!==String(pod)) return;          // misma ruta (POL/POD)
+      const o=(r.opciones||[]).find(o=>o.navScac===scac && String(o.agente||"")===ag); // misma combinación
+      if(!o) return;
+      let difiere=false, hayBase=false;
+      eqsNew.forEach(k=>{ const pr=(o.precios||{})[k]; if(pr&&pr.base!=null&&pr.base!==""){ hayBase=true; if(String(n(pr.base))!==basesN[k]) difiere=true; } });
+      if(!hayBase) return;   // el destino no tiene tarifa base en esos equipos → no aplica
+      out.push({ versionId:v.id, cliente:v.acuerdos?.clientes?.nombre||st.clienteNombre||"", folio:v.codigo||st.codigo||"",
+        pol:r.pol, pod:r.pod, rutaLabel:_loc(r.pol)+" → "+_loc(r.pod), difiere, scac, agente:ag });
+    });
+  }
+  return { rows:out };
+}
+
+// Copia las nuevas bases (por equipo) de la combinación scac+agente en la ruta pol→pod,
+// conservando la venta de cada borrador destino (el profit absorbe el cambio de costo).
+export async function aplicarBaseEnBorradores({ targets, scac, agente, pol, pod, nuevosBases, origenFolio }){
+  const ag=String(agente||"");
+  const basesLimpio={}; Object.keys(nuevosBases||{}).forEach(k=>{ const v=nuevosBases[k]; if(v!==""&&v!=null) basesLimpio[k]=String(v); });
+  const versSet=[...new Set((targets||[]).map(t=>t.versionId))];
+  let aplicados=0; const errores=[];
+  for(const vid of versSet){
+    try{
+      let st=await loadVersion(vid); if(!st){ errores.push(vid+": no encontrado"); continue; }
+      if(st.estatus && st.estatus!=="borrador"){ errores.push((st.codigo||vid)+": no es borrador"); continue; }
+      const dir=st.direccion||"E";
+      const eqsMeta=(st.equipos&&st.equipos.length?st.equipos:["20DV"]).map(k=>eqMeta(k)).filter(Boolean);
+      let toco=false;
+      (st.rutas||[]).forEach(r=>{
+        if(String(r.pol)!==String(pol) || String(r.pod)!==String(pod)) return;
+        (r.opciones||[]).forEach(o=>{
+          if(o.navScac!==scac || String(o.agente||"")!==ag) return;
+          eqsMeta.forEach(eqObj=>{
+            const nb=basesLimpio[eqObj.k]; if(nb==null) return;
+            const pr=(o.precios||{})[eqObj.k]; if(!pr||pr.base==null||pr.base==="") return;   // solo donde ya hay base
+            const oldBase=n(pr.base), newBase=n(nb);
+            if(oldBase===newBase) return;
+            pr.profit=String(Math.round(n(pr.profit)+(oldBase-newBase)));   // conservar venta (adic no cambia)
+            pr.base=String(newBase);
+            toco=true;
+          });
+        });
+      });
+      if(!toco){ errores.push((st.codigo||vid)+": sin cambios aplicables"); continue; }
+      const stState={ versionId:vid, codigo:st.codigo, cliente:st.cliente, clienteNombre:st.clienteNombre, modo:st.modo, direccion:dir, tradelane:st.tradelane, commodity:st.commodity, commodity_id:st.commodity_id||null, vigDesde:st.vigDesde, vigHasta:st.vigHasta, notas:st.notas, origen:"cero", equipos:st.equipos, rutas:st.rutas, quoteNav:st.quoteNav };
+      await saveCotizacion(stState, { tipo:"propagacion", origen:origenFolio||null });
+      aplicados++;
+    }catch(ex){ errores.push(vid+": "+ex.message); }
+  }
+  return { aplicados, errores };
+}
+
 export async function reporteFletesEnCotizaciones(){
   const { data: vers, error } = await supabase.from("versiones")
     .select("id,codigo,amendment,direccion,commodity,tradelane,estatus,updated_at,vig_desde,vig_hasta,acuerdos(no_acuerdo,modo,clientes(nombre))")

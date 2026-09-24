@@ -583,6 +583,7 @@ export function parseTarifario(rows){
   if(!rows||!rows.length) return [];
   const H=(rows[0]||[]).map(x=>String(x==null?"":x).trim());
   const idx=(names)=>{ for(let i=0;i<H.length;i++){ const h=H[i].toLowerCase(); if(names.some(n=>h===n||h.startsWith(n))) return i; } return -1; };
+  const soloClave=(s)=>{ const t=String(s==null?"":s).trim(); return t.split(/\s+—\s+|\s+–\s+/)[0].trim(); };  // "MXZLO — Manzanillo" → "MXZLO"
   const cOri=idx(["origen"]), cPol=idx(["pol"]), cPod=idx(["pod"]), cDest=idx(["destination","destino"]), cSrvc=idx(["srvc","service","scope"]), cTr=idx(["transp","transport"]);
   const full = cPol>=0 && cPod>=0; // formato completo (MTY) vs simple (Origen/Destino + Via)
   const blocks=[];
@@ -615,7 +616,7 @@ export function parseTarifario(rows){
       let pre="",on="";
       if(srvc.startsWith("DR")) pre=modo(trOriDe(row));
       if(srvc.endsWith("DR"))  on=modo(trDestDe(row));
-      const pol=codigoPuerto(polR), pod=codigoPuerto(podR);
+      const pol=codigoPuerto(soloClave(polR)), pod=codigoPuerto(soloClave(podR));
       const origen=(cOri>=0&&srvc.startsWith("DR"))?ciudadNorm(String(row[cOri]||"").trim()):"";
       const destino=(cDest>=0&&srvc.endsWith("DR"))?ciudadNorm(String(row[cDest]||"").trim()):"";
       const oEst=(cEstOri>=0&&srvc.startsWith("DR"))?String(row[cEstOri]||"").trim():"";
@@ -623,7 +624,7 @@ export function parseTarifario(rows){
       const key=origen+"|"+pol+"|"+pod;
       if(!map.has(key)) map.set(key,{origen,origenEstado:oEst,precarriage_mode:pre,pol,pod,oncarriage_mode:on,destino,destinoEstado:dEst,opciones:[],elegida:0});
       const R=map.get(key);
-      const scac=scacTarifario(String(row[cCarr]||"").trim()); if(!scac) continue;
+      const scac=scacTarifario(soloClave(String(row[cCarr]||"").trim())); if(!scac) continue;
       const b20=num(row[c20]), bhc=num(cHC>=0?row[cHC]:null), b40=num(c40>=0?row[c40]:null);
       const bfin=(bhc!=null)?bhc:b40;                 // 40HC manda; si viene vacía, se usa la de 40'
       const precios={};

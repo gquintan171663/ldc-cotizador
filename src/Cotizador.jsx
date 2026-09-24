@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { supabase } from "./supabaseClient.js";
 import { C, F, EQUIPOS, EQUIPO_CATS, NAVIERAS, navName, CATALOG, COMMODITY_INDUSTRIAS, tx, scopeFull, serviceMode, transportMode, n, round10, adicPorCont, cargosBL, inclPorCont, inclBL, subjectTo, enPrecio, esSubjectTo, money, MONEDAS, optPuertos, optCiudades, puertoNombre, paisDe, paisOrigen, paisDestino, rutaPaisLabel, tlDe, tlLabel, TRADELANES, tradeLabel, rutaEnTradelane, opcionActivaEq, mejorOpcionEq, ordenOpciones, ordenRecargos, ovRazon, PLANTILLA_RECARGOS, parseTarifario, ordenarRutas, ESTADOS_MX, ESTADOS_TODOS, optEstados, abrevEstado, surAplican } from "./lib.js";
 import { inS, Lbl, Field, TI, Sel, Chip, Btn, ClaveAutocomplete, ComboBox } from "./ui.jsx";
-import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges, recargosDeRutaSimilar, recargosDeRutaSimilarPorNaviera, recargosDeNaviera, anclarVenta, checkConflictoTarifa, guardarCorreccion, buscarCoincidenciasRecargo, aplicarRecargoEnBorradores, buscarRutasSimilares, listUsuarios, asignarSalesRep, vendedorDeCliente, listAgentes } from "./db.js";
+import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges, recargosDeRutaSimilar, recargosDeRutaSimilarPorNaviera, recargosDeNaviera, anclarVenta, checkConflictoTarifa, guardarCorreccion, buscarCoincidenciasRecargo, aplicarRecargoEnBorradores, buscarCoincidenciasBase, aplicarBaseEnBorradores, buscarRutasSimilares, listUsuarios, asignarSalesRep, vendedorDeCliente, listAgentes } from "./db.js";
 import { abrirCotizacion } from "./quote.js";
 import { exportarExcel } from "./quoteExcel.js";
 import * as XLSX from "xlsx";
@@ -137,6 +137,8 @@ function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir,onFoco,editarProp,filt
   // primera ruta de cada lane: ahí ponemos el ancla
   const tlAnchor={}; (rutas||[]).forEach((r,ri)=>{ const t=tlDe(r); if(tlAnchor[t]==null) tlAnchor[t]=ri; });
   const navOpts=[{v:"",t:"— naviera —"},...NAVIERAS.map(x=>({v:x.scac,t:x.scac+" · "+x.nombre}))];
+  const navItems=NAVIERAS.map(x=>({v:x.scac,label:x.scac,sub:x.nombre}));                                   // para ComboBox (busca por clave o nombre)
+  const agItems=[{v:"",label:"Directo",sub:""},...(agentes||[]).map(a=>({v:a.nombre,label:a.nombre,sub:a.pais||""}))];
   const surOf=(scac,tl)=>(quoteNav.find(q=>q.scac===scac&&(q.tl||"")===(tl||""))||{}).surcharges||[];
   const eqs=EQUIPOS.filter(e=>equipos.includes(e.k));
   const getP=(o,k)=>(o.precios&&o.precios[k])||{};
@@ -166,7 +168,7 @@ function TarifasGrid({rutas,setRutas,quoteNav,equipos,dir,onFoco,editarProp,filt
             return (<tr key={ri+"-"+oi} id={(first&&_anc)?eidTarifa(_tl):undefined} style={{background:(first&&hlRuta===ri)?"#FFF6D6":(first?"#fff":C.soft),boxShadow:(first&&hlRuta===ri)?"inset 3px 0 0 "+C.red:undefined,transition:"background .3s"}}>
               <td style={{...td,borderTop:first?"2px solid "+C.sep2:"none"}}>{first?<div id={"tarifa-ruta-"+ri} style={{fontSize:12.5}}><b style={{color:C.slate}}>{r.pol}</b><span style={{color:"#C0C7CE",margin:"0 4px"}}>›</span><b style={{color:C.slate}}>{r.pod}</b><div style={{fontSize:10.5,color:C.label,marginTop:1,lineHeight:1.25}}>{r.origen?(r.origen+(r.origenEstado?", "+abrevEstado(r.origenEstado):"")+" › "):""}{puertoNombre(r.pol)} › {puertoNombre(r.pod)}{r.destino?(" › "+r.destino+(r.destinoEstado?", "+abrevEstado(r.destinoEstado):"")):""}</div></div>:<span style={{fontSize:11,color:C.label}}>↳ alt.</span>}</td>
               <td style={{...td,textAlign:"center",borderTop:first?"2px solid "+C.sep2:"none"}}>{first&&<span><Chip>{serviceMode(r)}</Chip>{transportMode(r)&&<div style={{fontSize:9,color:C.label,marginTop:2,fontWeight:"bold"}}>{transportMode(r)}</div>}</span>}</td>
-              <td style={td}><select value={o.navScac} onChange={e=>setOpt(ri,oi,{navScac:e.target.value})} style={{...inS,padding:"5px 4px",fontSize:11.5,fontWeight:"bold",width:126,maxWidth:140}}>{navOpts.map(x=><option key={x.v} value={x.v}>{x.t}</option>)}</select>{dir==="I"&&<select value={o.agente||""} onChange={e=>setOpt(ri,oi,{agente:e.target.value})} title="Canal: Directo o Agente" style={{...inS,padding:"3px 4px",fontSize:10.5,width:126,maxWidth:140,marginTop:3,color:o.agente?C.slate:C.label}}><option value="">Directo</option>{(agentes||[]).map(a=><option key={a.nombre} value={a.nombre}>{a.nombre}</option>)}</select>}</td>
+              <td style={td}><div style={{width:132,maxWidth:150}}><ComboBox value={o.navScac} display={o.navScac||""} items={navItems} placeholder="— naviera —" onChange={v=>setOpt(ri,oi,{navScac:v})}/></div>{dir==="I"&&<div style={{width:132,maxWidth:150,marginTop:3}} title="Canal: Directo o Agente"><ComboBox value={o.agente||""} display={o.agente||"Directo"} items={agItems} placeholder="Directo" onChange={v=>setOpt(ri,oi,{agente:v})}/></div>}</td>
               <td style={{...td,textAlign:"center"}}><input value={o.transito||""} onChange={e=>setOpt(ri,oi,{transito:e.target.value})} inputMode="numeric" placeholder="días" style={{...inS,padding:"5px 4px",fontSize:12,width:42,textAlign:"center"}}/></td>
               {eqs.map(e=>{const p=getP(o,e.k);const base=n(p.base),prof=n(p.profit);const adic=adicPorCont(surs,e,dir);const venta=base+adic+prof;const _best=mejorOpcionEq(r,e.k,e,dir,surOf);const _act=opcionActivaEq(r,e.k,e,dir,surOf)===oi;const _isBest=_act&&oi===_best;const _razon=ovRazon(r.elegidaEq&&r.elegidaEq[e.k]);
                 const _summ=surs.filter(s=>!s.incluido&&enPrecio(s,dir)&&(s.basis||"contenedor")!=="bl");
@@ -224,6 +226,7 @@ export function Cotizador({ loadId, onDirty, role }){
   const [notas,setNotas]=useState("");
   const [notasInternas,setNotasInternas]=useState("");
   const [prop,setProp]=useState(null); // {route,scac,clave,monto,coinc,sel,busy}
+  const [propBase,setPropBase]=useState(null); // {combos:[{pol,pod,scac,agente,bases}],coinc,sel,busy}
   const [sim,setSim]=useState(null); // {ri, busy, exactas, aproximadas}
   const [hlRuta,setHlRuta]=useState(null);
   const abrirSimilares=async(ri)=>{
@@ -298,6 +301,40 @@ export function Cotizador({ loadId, onDirty, role }){
       alert("Aplicado a "+res.aplicados+" ruta(s)."+(res.errores&&res.errores.length?("\n\nAvisos:\n• "+res.errores.join("\n• ")):""));
     }catch(ex){ setProp(p=>({...p,busy:false})); alert("Error al aplicar: "+ex.message); }
   };
+  // ---- Propagación de TARIFAS BASE (Excel-B parte 2) ----
+  const _bkey=(x)=> x.versionId+"|"+x.ci;
+  const propBaseAbrir=async(combos)=>{
+    if(!combos||!combos.length) return;
+    setPropBase({ combos, coinc:null, sel:{}, busy:true });
+    try{
+      const rows=[];
+      for(let ci=0; ci<combos.length; ci++){ const c=combos[ci];
+        const { rows:rr }=await buscarCoincidenciasBase({ scac:c.scac, agente:c.agente, pol:c.pol, pod:c.pod, bases:c.bases, versionExcluir:versionId });
+        (rr||[]).forEach(x=>rows.push({...x, ci}));
+      }
+      const sel={}; rows.forEach(x=>{ if(!x.difiere) sel[_bkey(x)]=true; });   // las que difieren, sin marcar
+      setPropBase(p=>p?{...p,coinc:rows,sel,busy:false}:null);
+    }catch(ex){ setPropBase(p=>p?{...p,coinc:[],busy:false}:null); alert("Error al buscar: "+ex.message); }
+  };
+  const propBaseAplicar=async(todos)=>{
+    if(!propBase||!propBase.coinc) return;
+    const rows=(propBase.coinc||[]).filter(x=>todos||propBase.sel[_bkey(x)]);
+    if(!rows.length){ alert("No hay rutas seleccionadas."); return; }
+    const nBorr=new Set(rows.map(x=>x.versionId)).size;
+    const nDif=rows.filter(x=>x.difiere).length;
+    if(!confirm("¿Aplicar las tarifas base a "+rows.length+" ruta(s) en "+nBorr+" borrador(es)?"+(nDif?("\n\n⚠ "+nDif+" tienen HOY una base distinta y serán sobreescritas."):"")+"\n\nSe conserva la venta al cliente (el profit absorbe el cambio).")) return;
+    setPropBase(p=>({...p,busy:true}));
+    try{
+      const porCombo={}; rows.forEach(x=>{ (porCombo[x.ci]=porCombo[x.ci]||[]).push(x); });
+      let apl=0; const errs=[];
+      for(const ci of Object.keys(porCombo)){ const c=propBase.combos[ci];
+        const res=await aplicarBaseEnBorradores({ targets:porCombo[ci].map(x=>({versionId:x.versionId})), scac:c.scac, agente:c.agente, pol:c.pol, pod:c.pod, nuevosBases:c.bases, origenFolio:(codigo||codigoPreview) });
+        apl+=res.aplicados||0; if(res.errores&&res.errores.length) errs.push(...res.errores);
+      }
+      setPropBase(null);
+      alert("Propagado a "+apl+" borrador(es)."+(errs.length?("\n\nAvisos:\n• "+errs.join("\n• ")):""));
+    }catch(ex){ setPropBase(p=>({...p,busy:false})); alert("Error al aplicar: "+ex.message); }
+  };
   const [equipos,setEquipos]=useState(["20DV","40HC"]);
   const [impSheets,setImpSheets]=useState(null);
   const [focoRecargo,setFocoRecargo]=useState(null);
@@ -310,21 +347,29 @@ export function Cotizador({ loadId, onDirty, role }){
     const MODO=["All Truck","Rail+Truck","Rail Ramp","Truck Ramp","Barge"], CARR=["CMA","Hapag","Maersk","MSC"], SRV=["CY-CY","DR-CY","CY-DR","DR-DR"];
     const TL=TRADELANES.map(t=>t.code);
     const AGL=(agentes||[]).map(a=>a.nombre).filter(Boolean);   // catálogo de agentes; vacío = Directo-Naviera
+    const NAVS=NAVIERAS.map(x=>x.scac+" — "+x.nombre);           // navieras: clave — nombre
+    const PORTS=optPuertos().map(p=>{ const nm=puertoNombre(p.v)||p.label||p.sub||""; return p.v+(nm?(" — "+nm):""); }).filter(Boolean);  // puertos: clave — nombre
     const wb=new ExcelJS.Workbook();
     const ws=wb.addWorksheet("Tarifario",{views:[{state:"frozen",ySplit:1}]});
-    ws.columns=HDR.map((h,i)=>({ header:h, width:[13,15,14,17,15,15,15,14,17,7,14,16,10,16,11,11][i]||14 }));
+    ws.columns=HDR.map((h,i)=>({ header:h, width:[13,15,14,17,22,22,15,14,17,7,14,16,18,16,11,11][i]||14 }));
     const hr=ws.getRow(1); hr.height=22;
     hr.eachCell((c)=>{ c.font={name:"Arial",bold:true,size:9,color:{argb:"FFFFFFFF"}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF1A1A1A"}}; c.alignment={horizontal:"center",vertical:"middle"}; });
     const ej=["Deacero","EJEMPLO Guadalajara","Jalisco","All Truck","Manzanillo","Ningbo","","","","28","","1650","Maersk","","TPWB","DR-CY"];
     const er=ws.getRow(2); ej.forEach((v,i)=>{ er.getCell(i+1).value=v; });
     er.eachCell((c)=>{ c.font={name:"Arial",italic:true,size:9,color:{argb:"FF8A939C"}}; });
     const dv=(col,opts)=>{ for(let r=2;r<=400;r++){ ws.getCell(r,col).dataValidation={ type:"list", allowBlank:true, formulae:['"'+opts.join(",")+'"'] }; } };
-    // Listas auxiliares (estados y agentes) en hoja oculta por el límite de 255 caracteres de la validación en línea
+    // Listas auxiliares (estados, agentes, navieras) y puertos en hojas ocultas (límite de 255 chars en validación en línea)
     const wsL=wb.addWorksheet("Listas",{state:"veryHidden"});
     ESTADOS_TODOS.forEach((e,i)=>{ wsL.getCell(i+1,1).value=e; });
     AGL.forEach((a,i)=>{ wsL.getCell(i+1,2).value=a; });
+    NAVS.forEach((nv,i)=>{ wsL.getCell(i+1,3).value=nv; });
+    const wsP=wb.addWorksheet("Puertos",{state:"veryHidden"});
+    PORTS.forEach((p,i)=>{ wsP.getCell(i+1,1).value=p; });
     const dvRef=(col,ref)=>{ for(let r=2;r<=400;r++){ ws.getCell(r,col).dataValidation={ type:"list", allowBlank:true, formulae:[ref] }; } };
-    dvRef(3,"Listas!$A$1:$A$"+ESTADOS_TODOS.length); dv(4,MODO); dvRef(8,"Listas!$A$1:$A$"+ESTADOS_TODOS.length); dv(9,MODO); dv(13,CARR); if(AGL.length) dvRef(14,"Listas!$B$1:$B$"+AGL.length); dv(15,TL); dv(16,SRV);
+    dvRef(3,"Listas!$A$1:$A$"+ESTADOS_TODOS.length); dv(4,MODO); dvRef(8,"Listas!$A$1:$A$"+ESTADOS_TODOS.length); dv(9,MODO);
+    if(PORTS.length){ dvRef(5,"Puertos!$A$1:$A$"+PORTS.length); dvRef(6,"Puertos!$A$1:$A$"+PORTS.length); }   // POL / POD
+    if(NAVS.length) dvRef(13,"Listas!$C$1:$C$"+NAVS.length); else dv(13,CARR);                                // Carrier (lista completa)
+    if(AGL.length) dvRef(14,"Listas!$B$1:$B$"+AGL.length); dv(15,TL); dv(16,SRV);
     ws.autoFilter="A1:"+ws.getColumn(HDR.length).letter+"1";
     const buf=await wb.xlsx.writeBuffer();
     const blob=new Blob([buf],{type:"application/vnd.openxmlformats-officedocument.spreadsheetml.sheet"});
@@ -338,11 +383,11 @@ export function Cotizador({ loadId, onDirty, role }){
     const eqs=(equipos&&equipos.length?equipos:["20DV","40HC"]);
     const eqLbl=(k)=>{const e=EQUIPOS.find(x=>x.k===k);return e?e.t:k;};
     const AGL=(agentes||[]).map(a=>a.nombre).filter(Boolean);          // catálogo de agentes; vacío = Directo
-    const HDR=["Ruta #","Origen","Estado origen","POL","POD","Destino","Estado destino","Naviera","Agente",...eqs.map(k=>"Base "+eqLbl(k)),"__k"];
+    const HDR=["Ruta #","Origen","Estado origen","POL","POL nombre","POD","POD nombre","Destino","Estado destino","Naviera","Agente",...eqs.map(k=>"Base "+eqLbl(k)),"__k"];
     const KCOL=HDR.length;                                             // columna clave oculta (última)
     const wb=new ExcelJS.Workbook();
     const ws=wb.addWorksheet("Borrador",{views:[{state:"frozen",ySplit:1}]});
-    const baseW=[7,15,13,13,13,15,13,11,18]; ws.columns=HDR.map((h,i)=>({header:h,width:(i===KCOL-1?8:(baseW[i]||13))}));
+    const baseW=[7,15,13,13,22,13,22,15,13,11,18]; ws.columns=HDR.map((h,i)=>({header:h,width:(i===KCOL-1?8:(baseW[i]||13))}));
     const hr=ws.getRow(1); hr.height=22;
     hr.eachCell((c)=>{ c.font={name:"Arial",bold:true,size:9,color:{argb:"FFFFFFFF"}}; c.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FF1A1A1A"}}; c.alignment={horizontal:"center",vertical:"middle"}; });
     // catálogo de agentes en hoja oculta para el dropdown (límite de 255 caracteres en validación en línea)
@@ -356,17 +401,18 @@ export function Cotizador({ loadId, onDirty, role }){
       const row=ws.getRow(rr++);
       row.getCell(1).value=ri+1;
       row.getCell(2).value=r.origen||""; row.getCell(3).value=r.origenEstado?abrevEstado(r.origenEstado):"";
-      row.getCell(4).value=r.pol||""; row.getCell(5).value=r.pod||"";
-      row.getCell(6).value=r.destino||""; row.getCell(7).value=r.destinoEstado?abrevEstado(r.destinoEstado):"";
-      row.getCell(8).value=o.navScac||""; row.getCell(9).value=o.agente||"";
-      eqs.forEach((k,i)=>{ const pr=(o.precios||{})[k]||{}; const v=pr.base; row.getCell(10+i).value=(v!=null&&v!=="")?Number(v):null; });
+      row.getCell(4).value=r.pol||""; row.getCell(5).value=puertoNombre(r.pol)||"";
+      row.getCell(6).value=r.pod||""; row.getCell(7).value=puertoNombre(r.pod)||"";
+      row.getCell(8).value=r.destino||""; row.getCell(9).value=r.destinoEstado?abrevEstado(r.destinoEstado):"";
+      row.getCell(10).value=o.navScac||""; row.getCell(11).value=o.agente||"";
+      eqs.forEach((k,i)=>{ const pr=(o.precios||{})[k]||{}; const v=pr.base; row.getCell(12+i).value=(v!=null&&v!=="")?Number(v):null; });
       row.getCell(KCOL).value=ri+"|"+oi;                               // clave estable (ruta|opción)
       filas++;
     }); });
     if(!filas){ alert("Este borrador no tiene tarifas base capturadas para bajar."); return; }
-    for(let r=2;r<rr;r++){ for(let c=1;c<=8;c++){ ws.getCell(r,c).font={name:"Arial",size:9,color:{argb:"FF6B7280"}}; } }   // identidad en gris = no editar (Agente sí es editable)
-    // dropdown de agentes en la columna Agente (col 9); vacío = Directo
-    if(AGL.length){ for(let r=2;r<=Math.max(rr-1,400);r++){ ws.getCell(r,9).dataValidation={type:"list",allowBlank:true,formulae:["Listas!$A$1:$A$"+AGL.length]}; } }
+    for(let r=2;r<rr;r++){ for(let c=1;c<=10;c++){ ws.getCell(r,c).font={name:"Arial",size:9,color:{argb:"FF6B7280"}}; } }   // identidad en gris = no editar (Agente sí es editable)
+    // dropdown de agentes en la columna Agente (col 11); vacío = Directo
+    if(AGL.length){ for(let r=2;r<=Math.max(rr-1,400);r++){ ws.getCell(r,11).dataValidation={type:"list",allowBlank:true,formulae:["Listas!$A$1:$A$"+AGL.length]}; } }
     ws.getColumn(KCOL).hidden=true;                                    // clave oculta: no la borres
     ws.autoFilter="A1:"+ws.getColumn(KCOL-1).letter+"1";
     const buf=await wb.xlsx.writeBuffer();
@@ -390,6 +436,7 @@ export function Cotizador({ loadId, onDirty, role }){
     // venta actual de una opción×equipo (para conservarla al cambiar base y/o agente)
     const ventaDe=(rt,o,eqObj,agente)=>{ const pr=(o.precios||{})[eqObj.k]||{}; return n(pr.base)+adicPorCont(surAplican(surOfMain(o.navScac,tlDe(rt)),agente),eqObj,direccion)+n(pr.profit); };
     let cambios=0, sinMatch=0, reasig=0;
+    const combosCambio=new Map();   // combinaciones (pol|pod|scac|agente) cuya base cambió → para propagar
     for(let ri=1;ri<rows.length;ri++){ const row=rows[ri]||[];
       const key=cK>=0?String(row[cK]||"").trim():"";
       const scac=norm(cNav>=0?row[cNav]:""), agNew=String((cAg>=0?row[cAg]:"")||"").trim();
@@ -416,13 +463,18 @@ export function Cotizador({ loadId, onDirty, role }){
         const vBase=(ventas[k]!=null?ventas[k]:(nv+n(pr.profit)));
         const adicNew=adicPorCont(surAplican(surOfMain(op.navScac,tlDe(rt)),op.agente),eqObj,direccion);
         const nuevoProfit=vBase-nv-adicNew;                           // conservar venta
-        if(oldBase!==nv){ op.precios[k]={...pr,base:String(nv),profit:String(Math.round(nuevoProfit))}; cambios++; }
+        if(oldBase!==nv){ op.precios[k]={...pr,base:String(nv),profit:String(Math.round(nuevoProfit))}; cambios++;
+          const ck=rt.pol+"|"+rt.pod+"|"+op.navScac+"|"+(op.agente||"");
+          if(!combosCambio.has(ck)) combosCambio.set(ck,{pol:rt.pol,pod:rt.pod,scac:op.navScac,agente:op.agente||"",bases:{}});
+          combosCambio.get(ck).bases[k]=String(nv); }
         else if(agNew!==agOld){ op.precios[k]={...pr,profit:String(Math.round(nuevoProfit))}; }   // agente cambió: re-cuadra profit aunque la base sea igual
       });
     }
     if(!cambios){ alert("No hubo cambios"+(sinMatch?(" · "+sinMatch+" fila(s) no coincidieron con el borrador"):"")+"."); return; }
     setRutas(next);
-    alert("Actualicé "+cambios+" dato(s)"+(reasig?(" · "+reasig+" cambio(s) de agente"):"")+(sinMatch?(" · "+sinMatch+" fila(s) sin coincidencia"):"")+".\nSe conservó la tarifa al cliente (el profit absorbió el cambio).\n\nRevisa y guarda el borrador.");
+    const combos=[...combosCambio.values()];
+    alert("Actualicé "+cambios+" dato(s)"+(reasig?(" · "+reasig+" cambio(s) de agente"):"")+(sinMatch?(" · "+sinMatch+" fila(s) sin coincidencia"):"")+".\nSe conservó la tarifa al cliente (el profit absorbió el cambio).\n\nRevisa y guarda el borrador."+(combos.length?"\n\nEnseguida te ofrezco propagar estas bases a otros borradores.":""));
+    if(combos.length) propBaseAbrir(combos);   // ofrecer propagación de las bases cambiadas
   };
   const [started,setStarted]=useState(false);
   const [rutas,setRutas]=useState([]);
@@ -912,6 +964,41 @@ export function Cotizador({ loadId, onDirty, role }){
           </div>
         )}
         {prop.coinc==null&&<div style={{display:"flex",justifyContent:"flex-end",marginTop:6}}><Btn kind="ghost" onClick={()=>setProp(null)}>Cerrar</Btn></div>}
+      </div>
+    </div>}
+    {propBase&&<div onClick={()=>!propBase.busy&&setPropBase(null)} style={{position:"fixed",inset:0,background:"rgba(0,0,0,0.4)",display:"flex",alignItems:"center",justifyContent:"center",zIndex:1000,padding:16}}>
+      <div onClick={e=>e.stopPropagation()} style={{background:"#fff",borderRadius:12,padding:20,width:"min(700px,94vw)",maxHeight:"88vh",overflow:"auto",boxShadow:"0 12px 44px rgba(0,0,0,0.28)"}}>
+        <div style={{fontSize:15,fontWeight:"bold",color:C.ink,marginBottom:4}}>⇄ Propagar tarifas base a otros borradores</div>
+        <div style={{fontSize:11.5,color:C.label,marginBottom:12,lineHeight:1.45}}>Copia las bases que acabas de editar a otros borradores con la <b>misma ruta (POL→POD)</b> y la <b>misma combinación</b> (naviera + agente). Solo borradores. Se conserva la <b>venta</b>: el profit absorbe el cambio.</div>
+        <div style={{fontSize:11,color:C.slate,marginBottom:10,background:C.soft,border:"1px solid "+C.sep2,borderRadius:8,padding:"8px 10px"}}>
+          <div style={{fontWeight:"bold",color:C.label,fontSize:10.5,marginBottom:4}}>Combinaciones editadas ({propBase.combos.length})</div>
+          {propBase.combos.map((c,i)=><div key={i} style={{marginBottom:2}}><b>{c.scac}</b> · {c.agente?("🏷 "+c.agente):"Directo"} · {c.pol}→{c.pod} · {Object.entries(c.bases).map(([k,v])=>((EQUIPOS.find(e=>e.k===k)||{}).t||k)+" $"+v).join(", ")}</div>)}
+        </div>
+        {propBase.busy&&propBase.coinc==null&&<div style={{fontSize:12.5,color:C.label,padding:"12px 0"}}>Buscando coincidencias…</div>}
+        {propBase.coinc!=null&&(propBase.coinc.length===0?<div style={{fontSize:12.5,color:C.label,padding:"12px 0"}}>No hay otros borradores con esa ruta y combinación.</div>:
+          <div>
+            <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:6}}>
+              <div style={{fontSize:12,fontWeight:"bold",color:C.slate}}>{propBase.coinc.length} coincidencia(s)</div>
+              <span onClick={()=>{const all=propBase.coinc.every(x=>propBase.sel[_bkey(x)]); const sel={}; if(!all) propBase.coinc.forEach(x=>sel[_bkey(x)]=true); setPropBase(p=>({...p,sel}));}} style={{fontSize:11,color:C.red,cursor:"pointer"}}>{propBase.coinc.every(x=>propBase.sel[_bkey(x)])?"Quitar todas":"Seleccionar todas"}</span>
+            </div>
+            {propBase.coinc.some(x=>x.difiere)&&<div style={{fontSize:10.5,color:"#B23B3B",marginBottom:6}}>⚠ Las rutas marcadas <b>difieren</b> de la base a copiar; vienen <b>sin seleccionar</b> — márcalas solo si quieres sobreescribirlas.</div>}
+            <div style={{border:"1px solid "+C.sep2,borderRadius:8,overflow:"hidden"}}>
+              {propBase.coinc.map((x,i)=><label key={i} style={{display:"flex",gap:8,alignItems:"center",padding:"7px 10px",borderBottom:i<propBase.coinc.length-1?"1px solid "+C.sep:"none",fontSize:12,cursor:"pointer"}}>
+                <input type="checkbox" checked={!!propBase.sel[_bkey(x)]} onChange={e=>setPropBase(p=>({...p,sel:{...p.sel,[_bkey(x)]:e.target.checked}}))}/>
+                <span style={{fontWeight:"bold",color:C.ink,minWidth:64}}>{x.folio}</span>
+                <span style={{color:C.slate,flex:1,minWidth:110}}>{x.cliente}</span>
+                <span style={{color:C.label,whiteSpace:"nowrap"}}>{x.scac}{x.agente?(" · "+x.agente):""}</span>
+                <span style={{color:C.label,flex:1.2}}>{x.rutaLabel}</span>
+                {x.difiere&&<span style={{fontSize:9.5,fontWeight:"bold",color:"#B23B3B",background:"#FBEAEA",border:"1px solid #F0C9C9",borderRadius:5,padding:"1px 6px",whiteSpace:"nowrap"}}>⚠ difiere</span>}
+              </label>)}
+            </div>
+            <div style={{display:"flex",gap:8,justifyContent:"flex-end",marginTop:12,flexWrap:"wrap"}}>
+              <Btn kind="ghost" onClick={()=>setPropBase(null)} disabled={propBase.busy}>Cerrar</Btn>
+              <Btn kind="primary" onClick={()=>propBaseAplicar(false)} disabled={propBase.busy}>{propBase.busy?"Aplicando…":"Aplicar a seleccionadas"}</Btn>
+              <Btn kind="dark" onClick={()=>propBaseAplicar(true)} disabled={propBase.busy}>Aplicar a todas</Btn>
+            </div>
+          </div>
+        )}
       </div>
     </div>}
   </div>);
