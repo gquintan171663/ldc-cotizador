@@ -28,7 +28,7 @@ export async function exportarExcel(st, opts={}){
     const actByEq={}; eqs.forEach(e=>{ actByEq[e.k]=opcionActivaEq(r,e.k,e,dir,surOf); });
     const actIdxs=[...new Set(Object.values(actByEq))];
     let excShown=0;
-    actIdxs.forEach(oi=>{ const o=(r.opciones||[])[oi]||{navScac:""}; surOf(o.navScac,tl).forEach(s=>{ if(s.desplegar===false) return; const cell={d:s.d||s.c,monto:s.monto,moneda:s.moneda,basis:s.basis,pago:s.pago}; if(enPrecio(s,dir)){ if(!P.inc[s.c]) P.inc[s.c]=cell; } else { if(!P.exc[s.c]){ P.exc[s.c]=cell; excShown++; } } }); });
+    actIdxs.forEach(oi=>{ const o=(r.opciones||[])[oi]||{navScac:""}; surAplican(surOf(o.navScac,tl),o.agente).forEach(s=>{ if(s.desplegar===false) return; const cell={d:s.d||s.c,monto:s.monto,moneda:s.moneda,basis:s.basis,pago:s.pago}; if(enPrecio(s,dir)){ if(!P.inc[s.c]) P.inc[s.c]=cell; } else { if(!P.exc[s.c]){ P.exc[s.c]=cell; excShown++; } } }); });
     const ttv=transitoRango(r,eqs,dir,surOf);
     // Por equipo: venta y profit de la naviera nominada, y qué profit daría la 2ª opción
     // más barata AL MISMO PRECIO DE VENTA (el cliente ve un solo precio; la 2ª naviera
