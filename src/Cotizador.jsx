@@ -61,7 +61,8 @@ function SurchargeGrid({surs,onChange,catalog,dir,equipos,editable=true,onPropag
   </div>);
 }
 
-function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,onGenerar,foco,editable,onPropagarRec,agentes}){
+function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,onGenerar,foco,editable,onPropagarRec,agentes,onVolverRuta}){
+  const origenRuta=React.useRef({});   // bkey -> ri exacta desde la que se abrió este bloque (para regresar justo ahí)
   const [altaOpen,setAltaOpen]=useState(false);
   const [secCol,setSecCol]=useState(true);
   const [q,setQ]=useState("");
@@ -77,8 +78,8 @@ function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,
   const surOf=(scac,tl)=>(quoteNav.find(q=>q.scac===scac&&(q.tl||"")===(tl||""))||{}).surcharges||[];
   // updater funcional: evita perder cambios si se encadenan dos ediciones seguidas
   const setSurs=(scac,tl,s)=>setQuoteNav(prev=>{ const arr=prev||[]; const idx=arr.findIndex(q=>q.scac===scac&&(q.tl||"")===(tl||"")); return idx>=0 ? arr.map((q,j)=>j===idx?{...q,surcharges:s}:q) : [...arr,{scac,tl,surcharges:s}]; });
-  // Regresar del detalle de recargos a la primera tarifa de ese lane
-  const irATarifa=(tl)=>{ const el=document.getElementById(eidTarifa(tl)); if(!el) return; el.scrollIntoView({behavior:"smooth",block:"center"}); const prev=el.style.boxShadow; el.style.transition="box-shadow .25s"; el.style.boxShadow="inset 0 0 0 2px "+C.red; setTimeout(()=>{ el.style.boxShadow=prev||""; },1400); };
+  // Regresar del detalle de recargos a la ruta exacta desde la que se abrió (si se conoce); si no, a la 1ª tarifa del lane
+  const irATarifa=(b)=>{ const tl=b&&b.tl; const ri=b?origenRuta.current[bkey(b)]:null; if(ri!=null && onVolverRuta){ onVolverRuta(ri); return; } const el=document.getElementById(eidTarifa(tl)); if(!el) return; el.scrollIntoView({behavior:"smooth",block:"center"}); const prev=el.style.boxShadow; el.style.transition="box-shadow .25s"; el.style.boxShadow="inset 0 0 0 2px "+C.red; setTimeout(()=>{ el.style.boxShadow=prev||""; },1400); };
   const copyFrom=(scac,tl,fromTl)=>{ if(!fromTl) return; const src=surOf(scac,fromTl); if(!src.length) return; if(surOf(scac,tl).length && !confirm("¿Reemplazar los recargos actuales con los de "+tlLabel(fromTl)+"?")) return; setSurs(scac,tl,src.map(x=>({...x}))); };
   const [colap,setColap]=useState({});
   const bkey=(b)=>b.scac+"|"+(b.tl||"");
@@ -89,7 +90,7 @@ function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,
   const toggle=(b)=>setColap(c=>({...c,[bkey(b)]:!c[bkey(b)]}));
   const setAll=(v)=>{ const m={}; blocks.forEach(b=>{m[bkey(b)]=v;}); setColap(m); };
   const allCol=blocks.length>0 && blocks.every(b=>colap[bkey(b)]);
-  useEffect(()=>{ if(!foco||!foco.scac) return; const b={scac:foco.scac,tl:foco.tl}; setSecCol(false); setColap(c=>({...c,[bkey(b)]:false})); const t=setTimeout(()=>{ const el=document.getElementById(eid(b)); if(el){ el.scrollIntoView({behavior:"smooth",block:"center"}); const prev=el.style.boxShadow; el.style.transition="box-shadow .25s"; el.style.boxShadow="0 0 0 2px "+C.red; setTimeout(()=>{ el.style.boxShadow=prev||""; },1400); } },140); return ()=>clearTimeout(t); },[foco]);
+  useEffect(()=>{ if(!foco||!foco.scac) return; const b={scac:foco.scac,tl:foco.tl}; if(foco.ri!=null) origenRuta.current[bkey(b)]=foco.ri; setSecCol(false); setColap(c=>({...c,[bkey(b)]:false})); const t=setTimeout(()=>{ const el=document.getElementById(eid(b)); if(el){ el.scrollIntoView({behavior:"smooth",block:"center"}); const prev=el.style.boxShadow; el.style.transition="box-shadow .25s"; el.style.boxShadow="0 0 0 2px "+C.red; setTimeout(()=>{ el.style.boxShadow=prev||""; },1400); } },140); return ()=>clearTimeout(t); },[foco]);
   return (<div style={{background:"#fff",border:"1px solid "+C.sep2,borderRadius:12,padding:16,marginBottom:16}}>
     <div style={{display:"flex",justifyContent:"space-between",alignItems:"center",marginBottom:secColEff?0:10,flexWrap:"wrap",gap:8}}>
       <div style={{display:"flex",alignItems:"center",gap:12,flexWrap:"wrap"}}>
@@ -116,7 +117,7 @@ function NavierasSection({quoteNav,setQuoteNav,rutas,catalog,onAlta,dir,equipos,
           <span onClick={()=>toggle(b)} title={col?"Expandir":"Colapsar"} style={{cursor:"pointer",fontSize:13,color:C.label,fontWeight:"bold",width:14,display:"inline-block"}}>{col?"▸":"▾"}</span>
           <span onClick={()=>toggle(b)} style={{cursor:"pointer",fontSize:11,fontWeight:"bold",color:"#fff",background:C.slate,borderRadius:4,padding:"2px 8px",letterSpacing:1}}>{b.scac}</span>
           <span onClick={()=>toggle(b)} style={{cursor:"pointer",fontSize:13,fontWeight:"bold",color:C.slate}}>{navName(b.scac)}</span>
-          <span onClick={()=>irATarifa(b.tl)} title="Regresar a la tarifa de este lane" style={{cursor:"pointer",fontSize:11,fontWeight:"bold",color:"#fff",background:C.red,borderRadius:4,padding:"2px 8px"}}>↩ {tlLabel(b.tl)}</span>
+          <span onClick={()=>irATarifa(b)} title="Regresar a la ruta desde la que abriste estos recargos" style={{cursor:"pointer",fontSize:11,fontWeight:"bold",color:"#fff",background:C.red,borderRadius:4,padding:"2px 8px"}}>↩ {tlLabel(b.tl)}</span>
           {col&&<span style={{fontSize:11,color:C.label}}>· {surs.length?(surs.length+" recargo(s)"):"sin recargos"}</span>}
           {editable&&onGenerar&&<span onClick={()=>onGenerar(b.scac,b.tl)} title="Buscar coincidencias o generar recargos para esta naviera × lane" style={{cursor:"pointer",fontSize:11,fontWeight:"bold",color:surs.length?C.slate:"#fff",background:surs.length?C.soft:C.red,border:surs.length?("1px solid "+C.sep2):"none",borderRadius:6,padding:"3px 9px",marginLeft:col?8:4}}>⚡ {surs.length?"Regenerar":"Generar recargos"}</span>}
           {!col&&others.length>0&&<select value="" onChange={e=>copyFrom(b.scac,b.tl,e.target.value)} style={{...inS,padding:"4px 6px",fontSize:11.5,marginLeft:"auto",maxWidth:240}}>
