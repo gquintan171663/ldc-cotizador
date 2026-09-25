@@ -112,8 +112,9 @@ export const serviceMode=(l)=>((tx(l.origen)!==""?"DR":"CY")+"-"+(tx(l.destino)!
 export const transportMode=(l)=>{const oCity=tx(l.origen)!=="",dCity=tx(l.destino)!=="";if(!oCity&&!dCity)return "";const leftT=oCity?(tx(l.precarriage_mode)||"—"):"CY";const rightT=dCity?(tx(l.oncarriage_mode)||"—"):"CY";return leftT+"/"+rightT;};
 export const n=(v)=>{const x=parseFloat(v);return isFinite(x)?x:0;};
 export const round10=(x)=>Math.round((Number(x)||0)/10)*10;
-// Dirección-aware: el pago que SUMA al costo es Prepaid en export ("E") y Collect en import ("I")
-export const paySum=(dir)=>(dir==="I"?"collect":"prepaid");
+// El pago que SUMA al flete base es SIEMPRE Prepaid (cargos en origen, van dentro del flete), en export e import.
+// Los Collect son cargos al arribo/destino: NO suman y quedan como "subject to" (se pagan al arribo).
+export const paySum=(dir)=>"prepaid";
 // Monto del recargo para un equipo e={k,teu}: usa el monto por tamaño si existe, si no el general
 export const montoDe=(s,e)=>{ const k=e&&e.k; const m=(k&&s.montos)?s.montos[k]:null; return (m!=null&&m!=="")?n(m):n(s.monto); };
 export const adicPorCont=(surs,e,dir="E")=>{const pay=paySum(dir);return (surs||[]).filter(s=>!s.incluido&&(s.pago||"prepaid")===pay).reduce((a,s)=>{const bas=s.basis||"contenedor";if(bas==="bl")return a;const perEq=!!(e&&e.k&&s.montos&&s.montos[e.k]!=null&&s.montos[e.k]!=="");const amt=perEq?n(s.montos[e.k]):n(s.monto);return a+(perEq?amt:amt*(bas==="teu"?((e&&e.teu)||1):1));},0);};
