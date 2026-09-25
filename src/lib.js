@@ -120,8 +120,10 @@ export const paySum=(dir)=>"prepaid"; // obsoleto: se conserva por compatibilida
 // Monto del recargo para un equipo e={k,teu}: usa el monto por tamaño si existe, si no el general
 export const montoDe=(s,e)=>{ const k=e&&e.k; const m=(k&&s.montos)?s.montos[k]:null; return (m!=null&&m!=="")?n(m):n(s.monto); };
 // Suma al costo lo que PAGA LDC (incluido=true). El pago (prepaid/collect) ya no interviene.
-export const adicPorCont=(surs,e,dir="E")=>(surs||[]).filter(s=>s.incluido).reduce((a,s)=>{const bas=s.basis||"contenedor";if(bas==="bl")return a;const perEq=!!(e&&e.k&&s.montos&&s.montos[e.k]!=null&&s.montos[e.k]!=="");const amt=perEq?n(s.montos[e.k]):n(s.monto);return a+(perEq?amt:amt*(bas==="teu"?((e&&e.teu)||1):1));},0);
-export const cargosBL=(surs,dir="E")=>(surs||[]).filter(s=>s.incluido&&(s.basis||"contenedor")==="bl").reduce((a,s)=>a+n(s.monto),0);
+// Los cargos por BL se suman como si fueran por contenedor (monto completo en cada contenedor), a pedido de operaciones.
+export const adicPorCont=(surs,e,dir="E")=>(surs||[]).filter(s=>s.incluido).reduce((a,s)=>{const bas=s.basis||"contenedor";const perEq=!!(e&&e.k&&s.montos&&s.montos[e.k]!=null&&s.montos[e.k]!=="");const amt=perEq?n(s.montos[e.k]):n(s.monto);return a+(bas==="teu"?amt*((e&&e.teu)||1):amt);},0);
+// BL que PAGA EL CLIENTE (subject to) — para mostrarlo aparte; el BL que paga LDC ya entra en adicPorCont.
+export const cargosBL=(surs,dir="E")=>(surs||[]).filter(s=>!s.incluido&&(s.basis||"contenedor")==="bl").reduce((a,s)=>a+n(s.monto),0);
 // Recargos que aplican a una opción: los normales + los de "agencia" que coincidan con el agente de la opción.
 export const surAplican=(surs,agente)=>(surs||[]).filter(s=>!s.agencia||(String(s.agente||"")===String(agente||"")));
 // ¿va dentro del precio (panel INCLUYEN)? = lo paga LDC (incluido)
