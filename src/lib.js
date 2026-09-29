@@ -119,24 +119,27 @@ export const round10=(x)=>Math.round((Number(x)||0)/10)*10;
 export const paySum=(dir)=>"prepaid"; // obsoleto: se conserva por compatibilidad de imports; ya no decide la suma.
 // Monto del recargo para un equipo e={k,teu}: usa el monto por tamaño si existe, si no el general
 export const montoDe=(s,e)=>{ const k=e&&e.k; const m=(k&&s.montos)?s.montos[k]:null; return (m!=null&&m!=="")?n(m):n(s.monto); };
-// Suma al costo lo que PAGA LDC (incluido=true). El pago (prepaid/collect) ya no interviene.
-// Los cargos por BL se suman como si fueran por contenedor (monto completo en cada contenedor), a pedido de operaciones.
-export const adicPorCont=(surs,e,dir="E")=>(surs||[]).filter(s=>s.incluido).reduce((a,s)=>{const bas=s.basis||"contenedor";const perEq=!!(e&&e.k&&s.montos&&s.montos[e.k]!=null&&s.montos[e.k]!=="");const amt=perEq?n(s.montos[e.k]):n(s.monto);return a+(bas==="teu"?amt*((e&&e.teu)||1):amt);},0);
-// BL que PAGA EL CLIENTE (subject to) — para mostrarlo aparte; el BL que paga LDC ya entra en adicPorCont.
-export const cargosBL=(surs,dir="E")=>(surs||[]).filter(s=>!s.incluido&&(s.basis||"contenedor")==="bl").reduce((a,s)=>a+n(s.monto),0);
+// REGLA DE SUMA: un cargo suma al costo si su Pago es PREPAID (lo paga LDC en origen),
+// o si se marca la excepción "LDC paga" (incluido=true) para forzar que un Collect sume.
+// COLLECT (lo paga el cliente al destino/arribo) NO suma, sin importar la moneda.
+export const sumaAlCosto=(s)=>(((s&&s.pago)||"prepaid")==="prepaid")||!!(s&&s.incluido);
+// Suma al costo por contenedor. Los cargos por BL se suman como si fueran por contenedor (monto completo en cada contenedor).
+export const adicPorCont=(surs,e,dir="E")=>(surs||[]).filter(s=>sumaAlCosto(s)).reduce((a,s)=>{const bas=s.basis||"contenedor";const perEq=!!(e&&e.k&&s.montos&&s.montos[e.k]!=null&&s.montos[e.k]!=="");const amt=perEq?n(s.montos[e.k]):n(s.monto);return a+(bas==="teu"?amt*((e&&e.teu)||1):amt);},0);
+// BL que NO suma (subject to, lo paga el cliente) — para mostrarlo aparte; el BL que suma ya entra en adicPorCont.
+export const cargosBL=(surs,dir="E")=>(surs||[]).filter(s=>!sumaAlCosto(s)&&(s.basis||"contenedor")==="bl").reduce((a,s)=>a+n(s.monto),0);
 // Recargos que aplican a una opción: los normales + los de "agencia" que coincidan con el agente de la opción.
 export const surAplican=(surs,agente)=>(surs||[]).filter(s=>!s.agencia||(String(s.agente||"")===String(agente||"")));
-// ¿va dentro del precio (panel INCLUYEN)? = lo paga LDC (incluido)
-export const enPrecio=(s,dir="E")=>!!s.incluido;
-// ¿es subject-to (panel NO INCLUYEN)? = lo paga el cliente aparte (no incluido)
-export const esSubjectTo=(s,dir="E")=>!s.incluido;
+// ¿va dentro del precio (panel INCLUYEN / en la tarifa)? = suma al costo
+export const enPrecio=(s,dir="E")=>sumaAlCosto(s);
+// ¿es subject-to (panel NO INCLUYEN)? = no suma (Collect que paga el cliente)
+export const esSubjectTo=(s,dir="E")=>!sumaAlCosto(s);
 export const subjectTo=(surs,dir="E")=>(surs||[]).filter(s=>esSubjectTo(s,dir)).map(s=>s.c);
 // Totales por contenedor para el pie del bloque:
-// "Paga LDC" (suma / en la tarifa) = incluido; "Paga cliente" (subject to) = no incluido.
-export const inclPorCont=(surs,e)=>(surs||[]).filter(s=>s.incluido).reduce((a,s)=>{const bas=s.basis||"contenedor";if(bas==="bl")return a;const perEq=!!(e&&e.k&&s.montos&&s.montos[e.k]!=null&&s.montos[e.k]!=="");const amt=perEq?n(s.montos[e.k]):n(s.monto);return a+(perEq?amt:amt*(bas==="teu"?((e&&e.teu)||1):1));},0);
-export const inclBL=(surs)=>(surs||[]).filter(s=>s.incluido&&(s.basis||"contenedor")==="bl").reduce((a,s)=>a+n(s.monto),0);
-export const subjPorCont=(surs,e)=>(surs||[]).filter(s=>!s.incluido).reduce((a,s)=>{const bas=s.basis||"contenedor";if(bas==="bl")return a;const perEq=!!(e&&e.k&&s.montos&&s.montos[e.k]!=null&&s.montos[e.k]!=="");const amt=perEq?n(s.montos[e.k]):n(s.monto);return a+(perEq?amt:amt*(bas==="teu"?((e&&e.teu)||1):1));},0);
-export const subjBL=(surs)=>(surs||[]).filter(s=>!s.incluido&&(s.basis||"contenedor")==="bl").reduce((a,s)=>a+n(s.monto),0);
+// "Suma al costo" = sumaAlCosto (Prepaid o excepción LDC); "Subject to" = lo que no suma (Collect del cliente).
+export const inclPorCont=(surs,e)=>(surs||[]).filter(s=>sumaAlCosto(s)).reduce((a,s)=>{const bas=s.basis||"contenedor";if(bas==="bl")return a;const perEq=!!(e&&e.k&&s.montos&&s.montos[e.k]!=null&&s.montos[e.k]!=="");const amt=perEq?n(s.montos[e.k]):n(s.monto);return a+(perEq?amt:amt*(bas==="teu"?((e&&e.teu)||1):1));},0);
+export const inclBL=(surs)=>(surs||[]).filter(s=>sumaAlCosto(s)&&(s.basis||"contenedor")==="bl").reduce((a,s)=>a+n(s.monto),0);
+export const subjPorCont=(surs,e)=>(surs||[]).filter(s=>!sumaAlCosto(s)).reduce((a,s)=>{const bas=s.basis||"contenedor";if(bas==="bl")return a;const perEq=!!(e&&e.k&&s.montos&&s.montos[e.k]!=null&&s.montos[e.k]!=="");const amt=perEq?n(s.montos[e.k]):n(s.monto);return a+(perEq?amt:amt*(bas==="teu"?((e&&e.teu)||1):1));},0);
+export const subjBL=(surs)=>(surs||[]).filter(s=>!sumaAlCosto(s)&&(s.basis||"contenedor")==="bl").reduce((a,s)=>a+n(s.monto),0);
 // Formato de dinero con signo $ (USD -> "$1,234" · otras -> "$1,234 MXN")
 export const money=(v,m="USD")=>{const num=Number(v||0).toLocaleString("en-US",{minimumFractionDigits:0,maximumFractionDigits:2});return m==="USD"?("$"+num):("$"+num+" "+m);};
 
@@ -413,11 +416,11 @@ export const hayCambioCosto=(nuevo,previo,dir)=>{ const soN=mkSurOf(nuevo), soP=
 
 // Plantilla genérica de recargos (último recurso al "generar" un bloque naviera×lane)
 export const PLANTILLA_RECARGOS=()=>[
-  {c:"BAF",d:"Bunker Adjustment Factor",monto:"",moneda:"USD",incluido:true,desplegar:false,pago:"prepaid",basis:"contenedor",montos:null},
-  {c:"LSS",d:"Low Sulphur Surcharge",monto:"",moneda:"USD",incluido:true,desplegar:false,pago:"prepaid",basis:"contenedor",montos:null},
-  {c:"THC",d:"Terminal Handling Charge",monto:"",moneda:"USD",incluido:true,desplegar:true,pago:"collect",basis:"contenedor",montos:null},
-  {c:"DOC",d:"Documentation Fee",monto:"",moneda:"USD",incluido:true,desplegar:false,pago:"prepaid",basis:"bl",montos:null},
-  {c:"ISPS",d:"Security Fee (ISPS)",monto:"",moneda:"USD",incluido:true,desplegar:false,pago:"prepaid",basis:"contenedor",montos:null},
+  {c:"BAF",d:"Bunker Adjustment Factor",monto:"",moneda:"USD",incluido:false,desplegar:false,pago:"prepaid",basis:"contenedor",montos:null},
+  {c:"LSS",d:"Low Sulphur Surcharge",monto:"",moneda:"USD",incluido:false,desplegar:false,pago:"prepaid",basis:"contenedor",montos:null},
+  {c:"THC",d:"Terminal Handling Charge",monto:"",moneda:"USD",incluido:false,desplegar:true,pago:"collect",basis:"contenedor",montos:null},
+  {c:"DOC",d:"Documentation Fee",monto:"",moneda:"USD",incluido:false,desplegar:false,pago:"prepaid",basis:"bl",montos:null},
+  {c:"ISPS",d:"Security Fee (ISPS)",monto:"",moneda:"USD",incluido:false,desplegar:false,pago:"prepaid",basis:"contenedor",montos:null},
 ];
 
 // ====== Importador de tarifario del cliente (Excel Omnisource-style) ======
