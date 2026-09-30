@@ -6,7 +6,7 @@ import { matchCommodity, paisDe, tlDe, n, adicPorCont, tx, eqMeta, prefijoClient
 export async function volumenCliente(logitudeCode){
   if(!logitudeCode) return [];
   const { data, error } = await supabase.from("movimientos_cliente_ruta")
-    .select("direccion,pol,pod,anio,cont_20,cont_40,cont_otros,total")
+    .select("direccion,pol,pod,origen_estado,anio,cont_20,cont_40,cont_otros,total")
     .eq("logitude_code", String(logitudeCode));
   if(error){ console.warn("volumenCliente:", error.message); return []; }
   return data||[];

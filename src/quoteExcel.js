@@ -62,7 +62,7 @@ export async function exportarExcel(st, opts={}){
     });
     const ventas=cel.map(x=>x.v), profits=cel.map(x=>x.pf), navs=cel.map(x=>x.nav), profits2=cel.map(x=>x.pf2), navs2=cel.map(x=>x.nav2);
     const tm=transportMode(r);
-    const vol = hasVol ? volumenRuta(volMovs, r.pol, r.pod, anioAct) : null;
+    const vol = hasVol ? volumenRuta(volMovs, r.pol, r.pod, abrevEstado(r.origenEstado), anioAct) : null;
     dataRows.push({ origen:(r.origen||"")+(r.origen&&r.origenEstado?", "+abrevEstado(r.origenEstado):""), pol:tx(r.pol)?puertoLabel(r.pol):(r.pol||""), pod:tx(r.pod)?puertoLabel(r.pod):(r.pod||""), destino:(r.destino||"")+(r.destino&&r.destinoEstado?", "+abrevEstado(r.destinoEstado):""), srvc:serviceMode(r)+(tm?(" / "+tm):""), tt:ttv?(ttv+" d"):"", ventas, profits, navs, profits2, navs2, allin:excShown===0, vol });
   });
 
@@ -172,11 +172,11 @@ export async function exportarExcel(st, opts={}){
       ws.mergeCells(R,1,R,NC); const h=ws.getCell(R,1);
       h.value="Rutas que el cliente movió y NO están cotizadas (PDW) — "+noCot.length+" ruta(s)";
       h.font=font({bold:true,size:9,color:{argb:"FF"+RED}}); R++;
-      const heads=["Ruta (POL → POD)","Dir",anioAct+" 20'",anioAct+" 40/HC",anioAct+" Tot",anioPrev+" Tot","Histórico"];
-      heads.forEach((t,i)=>{ const c=ws.getCell(R,i+1); c.value=t; c.font=font({bold:true,size:8.5,color:{argb:"FFFFFFFF"}}); c.fill=fill(SLATE); c.alignment={horizontal:i>=2?"right":"left",vertical:"middle"}; c.border=bd(); }); R++;
+      const heads=["Ruta (POL → POD)","Dir","Origen",anioAct+" 20'",anioAct+" 40/HC",anioAct+" Tot",anioPrev+" Tot","Histórico"];
+      heads.forEach((t,i)=>{ const c=ws.getCell(R,i+1); c.value=t; c.font=font({bold:true,size:8.5,color:{argb:"FFFFFFFF"}}); c.fill=fill(SLATE); c.alignment={horizontal:i>=3?"right":"left",vertical:"middle"}; c.border=bd(); }); R++;
       noCot.slice(0,40).forEach(a=>{
-        const vals=[(a.pol||"")+" → "+(a.pod||""),(a.direccion==="Import"?"IMP":"EXP"),a.c20A,a.c40A,a.totA,a.totP,a.totHist];
-        vals.forEach((v,i)=>{ const c=ws.getCell(R,i+1); c.border=bd(); if(i>=2){ const num=Number(v)||0; if(num>0){ c.value=num; c.numFmt="#,##0"; c.font=font({size:8.5,bold:i===6,color:{argb:"FF"+(i===6?SLATE:INK)}}); } else { c.value="–"; c.font=font({size:8.5,color:{argb:"FFC0C7CE"}}); } c.alignment={horizontal:"right",vertical:"middle"}; } else { c.value=v; c.font=font({size:8.5,bold:i===0}); c.alignment={vertical:"middle"}; } }); R++;
+        const vals=[(a.pol||"")+" → "+(a.pod||""),(a.direccion==="Import"?"IMP":"EXP"),(a.estado&&a.estado!=="—"?a.estado:"—"),a.c20A,a.c40A,a.totA,a.totP,a.totHist];
+        vals.forEach((v,i)=>{ const c=ws.getCell(R,i+1); c.border=bd(); if(i>=3){ const num=Number(v)||0; if(num>0){ c.value=num; c.numFmt="#,##0"; c.font=font({size:8.5,bold:i===7,color:{argb:"FF"+(i===7?SLATE:INK)}}); } else { c.value="–"; c.font=font({size:8.5,color:{argb:"FFC0C7CE"}}); } c.alignment={horizontal:"right",vertical:"middle"}; } else { c.value=v; c.font=font({size:8.5,bold:i===0}); c.alignment={vertical:"middle"}; } }); R++;
       });
       if(noCot.length>40){ ws.mergeCells(R,1,R,NC); const m=ws.getCell(R,1); m.value="… (+"+(noCot.length-40)+" rutas más)"; m.font=font({italic:true,size:8,color:{argb:"FF8A939C"}}); R++; }
       R++;
