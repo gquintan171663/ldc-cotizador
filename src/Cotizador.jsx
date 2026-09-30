@@ -2,7 +2,7 @@ import React, { useState, useMemo, useEffect } from "react";
 import { supabase } from "./supabaseClient.js";
 import { C, F, EQUIPOS, EQUIPO_CATS, NAVIERAS, navName, CATALOG, COMMODITY_INDUSTRIAS, tx, scopeFull, serviceMode, transportMode, n, round10, adicPorCont, cargosBL, inclPorCont, inclBL, subjPorCont, subjBL, sumaAlCosto, subjectTo, enPrecio, esSubjectTo, money, MONEDAS, optPuertos, optCiudades, puertoNombre, paisDe, paisOrigen, paisDestino, rutaPaisLabel, tlDe, tlLabel, TRADELANES, tradeLabel, rutaEnTradelane, opcionActivaEq, mejorOpcionEq, ordenOpciones, ordenRecargos, ovRazon, PLANTILLA_RECARGOS, parseTarifario, ordenarRutas, ESTADOS_MX, ESTADOS_TODOS, optEstados, abrevEstado, surAplican } from "./lib.js";
 import { inS, Lbl, Field, TI, Sel, Chip, Btn, ClaveAutocomplete, ComboBox } from "./ui.jsx";
-import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges, recargosDeRutaSimilar, recargosDeRutaSimilarPorNaviera, recargosDeNaviera, anclarVenta, checkConflictoTarifa, guardarCorreccion, buscarCoincidenciasRecargo, aplicarRecargoEnBorradores, buscarCoincidenciasBase, aplicarBaseEnBorradores, buscarRutasSimilares, listUsuarios, asignarSalesRep, vendedorDeCliente, listAgentes } from "./db.js";
+import { saveCotizacion, loadVersion, markEnviada, nuevaVersion, crearCliente, altaSurcharge, listSurcharges, recargosDeRutaSimilar, recargosDeRutaSimilarPorNaviera, recargosDeNaviera, anclarVenta, checkConflictoTarifa, guardarCorreccion, buscarCoincidenciasRecargo, aplicarRecargoEnBorradores, buscarCoincidenciasBase, aplicarBaseEnBorradores, buscarRutasSimilares, listUsuarios, asignarSalesRep, vendedorDeCliente, listAgentes, volumenCliente } from "./db.js";
 import { abrirCotizacion } from "./quote.js";
 import { exportarExcel } from "./quoteExcel.js";
 import * as XLSX from "xlsx";
@@ -540,7 +540,7 @@ export function Cotizador({ loadId, onDirty, role }){
   useEffect(()=>{ listAgentes().then(r=>setAgentes(r.rows||[])); },[]);
   useEffect(()=>{ supabase.auth.getUser().then(({data})=>setMyEmail((data?.user?.email||"").toLowerCase())); },[]);
 
-  const recargarClientes=()=>supabase.from("clientes").select("id,no_cliente,nombre,tipo").order("nombre").then(({data})=>setClientes(data||[]));
+  const recargarClientes=()=>supabase.from("clientes").select("id,no_cliente,nombre,tipo,logitude_code").order("nombre").then(({data})=>setClientes(data||[]));
   const guardarNuevoCliente=async()=>{
     const nm=nuevoNombre.trim(); if(!nm){ alert("Escribe el nombre."); return; }
     setCreando(true);
@@ -610,7 +610,7 @@ export function Cotizador({ loadId, onDirty, role }){
   // eslint-disable-next-line
   },[rutas,started]);
 
-  useEffect(()=>{ supabase.from("clientes").select("id,no_cliente,nombre,tipo").order("nombre").then(({data})=>setClientes(data||[])); },[]);
+  useEffect(()=>{ supabase.from("clientes").select("id,no_cliente,nombre,tipo,logitude_code").order("nombre").then(({data})=>setClientes(data||[])); },[]);
   useEffect(()=>{ supabase.from("commodities").select("id,industria,commodity").eq("activo",true).order("industria").order("commodity").then(({data})=>setComms(data||[])); },[]);
   useEffect(()=>{
     if(!loadId) return; setLoading(true); hydrating.current=true;
@@ -704,7 +704,7 @@ export function Cotizador({ loadId, onDirty, role }){
   const nueva=async()=>{ if(!versionId) return; if(!confirm("¿Crear un nuevo Amendment (AM"+((amendment||1)+1)+")? Se copia el actual para que edites las diferencias; el AM anterior queda superseded.")) return; setSaving(true); const res=await nuevaVersion(versionId); setSaving(false); if(res.errores&&res.errores.length){ alert("Error: "+res.errores.join(" · ")); return; } if(res.versionId){ setVersionId(res.versionId); setCodigo(res.codigo); setAmendment(res.amendment||((amendment||1)+1)); if(res.vigDesde) setVigDesde(res.vigDesde); setCambiosLog([]); setEstatus("borrador"); setSaved(res); } };
   const stCotiz=()=>{ const cn=(clientes.find(c=>c.id===cliente)||{}).nombre; return {clienteNombre:cn,codigo:codigo||codigoPreview,no_acuerdo:noAcuerdo,tradelane,amendment,commodity:comLabel,direccion,equipos,rutas:derivarAnclaje(rutas),quoteNav,vigDesde,vigHasta,notas,correcciones:notasInternas||"",salesRep:salesRep||""}; };
   const generar=()=>{ const falt=faltanPOLPOD(); if(falt.length){ if(estatus==="borrador"){ if(!confirm("Este borrador tiene rutas incompletas; el PDF saldrá con renglones sin naviera/tarifa:\n\n• "+falt.join("\n• ")+"\n\n¿Descargar de todas formas?")) return; } else { alert("Faltan datos obligatorios en las rutas (POL, POD, naviera y modo si hay ciudad):\n\n• "+falt.join("\n• ")); return; } } if(!confirmProfit()) return; abrirCotizacion(stCotiz()); };
-  const exportarXlsx=async(interno)=>{ const falt=faltanPOLPOD(); if(falt.length){ if(estatus==="borrador"){ if(!confirm("Este borrador tiene rutas incompletas; el Excel saldrá con renglones sin naviera/tarifa:\n\n• "+falt.join("\n• ")+"\n\n¿Descargar de todas formas?")) return; } else { alert("Faltan datos obligatorios en las rutas (POL, POD, naviera y modo si hay ciudad):\n\n• "+falt.join("\n• ")); return; } } if(!interno&&!confirmProfit()) return; try{ await exportarExcel(stCotiz(),{interno:!!interno}); }catch(ex){ alert("Error al exportar a Excel: "+ex.message); } };
+  const exportarXlsx=async(interno)=>{ const falt=faltanPOLPOD(); if(falt.length){ if(estatus==="borrador"){ if(!confirm("Este borrador tiene rutas incompletas; el Excel saldrá con renglones sin naviera/tarifa:\n\n• "+falt.join("\n• ")+"\n\n¿Descargar de todas formas?")) return; } else { alert("Faltan datos obligatorios en las rutas (POL, POD, naviera y modo si hay ciudad):\n\n• "+falt.join("\n• ")); return; } } if(!interno&&!confirmProfit()) return; let volumen=null; if(interno){ const lc=(clientes.find(c=>c.id===cliente)||{}).logitude_code; if(lc){ try{ volumen=await volumenCliente(lc); }catch(_){} } } try{ await exportarExcel(stCotiz(),{interno:!!interno, volumen}); }catch(ex){ alert("Error al exportar a Excel: "+ex.message); } };
   const toggleEditProp=()=>{ const next=!editarPropuesta;
     if(next){
       // Entrar a "Editar precio": conservar los profits tal como quedaron con la tarifa fija

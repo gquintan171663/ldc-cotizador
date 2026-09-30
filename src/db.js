@@ -1,6 +1,17 @@
 import { supabase } from "./supabaseClient.js";
 import { matchCommodity, paisDe, tlDe, n, adicPorCont, tx, eqMeta, prefijoCliente, numeroAcuerdo, hayCambioCosto, ventaEq, mkSurOf, round10, opcionActivaEq, puertoNombre, abrevEstado, sonPuertosAlternos, sonPuertosBase, surAplican } from "./lib.js";
 
+// Volumen histórico del cliente (movimientos del PDW, sincronizados por el colector).
+// Devuelve [] si el cliente no tiene logitude_code o no hay datos.
+export async function volumenCliente(logitudeCode){
+  if(!logitudeCode) return [];
+  const { data, error } = await supabase.from("movimientos_cliente_ruta")
+    .select("direccion,pol,pod,anio,cont_20,cont_40,cont_otros,total")
+    .eq("logitude_code", String(logitudeCode));
+  if(error){ console.warn("volumenCliente:", error.message); return []; }
+  return data||[];
+}
+
 // Mapa commodity(lower) -> id desde el catálogo
 async function commodityMap(){
   const { data } = await supabase.from("commodities").select("id,commodity");
