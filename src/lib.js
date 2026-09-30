@@ -66,7 +66,9 @@ export const sonPuertosBase=(a,b)=>{ if(!a||!b) return false; if(paisDe(a)!=="CN
 const _ALIAS_PUERTO={ CNNBO:"CNNBG", CNNBG:"CNNBO" };
 const _upP=(c)=>String(c||"").trim().toUpperCase();
 // ¿el código a (de una ruta cotizada) y b (del PDW) son el mismo puerto?
-export const mismoPuerto=(a,b)=>{ a=_upP(a); b=_upP(b); if(!a||!b) return false; if(a===b) return true; if(_ALIAS_PUERTO[a]===b||_ALIAS_PUERTO[b]===a) return true; if(sonPuertosAlternos(a,b)) return true; if(sonPuertosBase(a,b)) return true; return false; };
+// EXACTO (mismo UN/LOCODE) + alias de códigos equivalentes. NO junta puertos
+// alternos (Manzanillo↔Lázaro): cada ruta debe mostrar su volumen real por POL/POD.
+export const mismoPuerto=(a,b)=>{ a=_upP(a); b=_upP(b); if(!a||!b) return false; if(a===b) return true; if(_ALIAS_PUERTO[a]===b||_ALIAS_PUERTO[b]===a) return true; return false; };
 const _acumVol=(acc,m,anioAct)=>{ const c20=Number(m.cont_20)||0, c40=Number(m.cont_40)||0, ot=Number(m.cont_otros)||0; const tot=(m.total!=null?Number(m.total):(c20+c40+ot))||0; acc.totHist+=tot; if(m.anio===anioAct){ acc.c20A+=c20; acc.c40A+=c40; acc.totA+=tot; } else if(m.anio===anioAct-1){ acc.c20P+=c20; acc.c40P+=c40; acc.totP+=tot; } };
 const _volCero=()=>({c20A:0,c40A:0,totA:0,c20P:0,c40P:0,totP:0,totHist:0});
 // Volumen de UNA ruta cotizada (pol/pod) contra los movimientos del cliente.
