@@ -9,7 +9,7 @@ export async function volumenCliente(code){
     .filter(Boolean).map(String);
   if(!codes.length) return [];
   const { data, error } = await supabase.from("movimientos_cliente_ruta")
-    .select("direccion,pol,pod,origen_estado,anio,cont_20,cont_40,cont_otros,total")
+    .select("direccion,pol,pod,origen_estado,origen_ciudad,anio,cont_20,cont_40,cont_otros,total")
     .in("logitude_code", codes);
   if(error){ console.warn("volumenCliente:", error.message); return []; }
   return data||[];

@@ -73,6 +73,39 @@ const _acumVol=(acc,m,anioAct)=>{ const c20=Number(m.cont_20)||0, c40=Number(m.c
 const _volCero=()=>({c20A:0,c40A:0,totA:0,c20P:0,c40P:0,totP:0,totHist:0});
 // Abreviatura de estado de una ruta cotizada (para empatar con el PDW). "" si no tiene.
 const _rutaEst=(r)=>{ const e=r&&r.origenEstado?abrevEstado(r.origenEstado):""; return _upP(e); };
+// Normaliza una ciudad para empatar (sin acentos, solo alfanumérico, mayúsculas).
+// "" / "Not Specified" / "—" → "—" (origen desconocido, se reparte como comodín).
+const _cnorm=(c)=>{ const s=String(c==null?"":c).normalize("NFD").replace(/[̀-ͯ]/g,"").replace(/[^A-Za-z0-9]/g,"").toUpperCase(); return (!s||s==="NOTSPECIFIED")?"—":s; };
+const _rutaCiu=(r)=>_cnorm(r&&r.origen?r.origen:"");
+// Volumen por ruta repartido por CIUDAD de origen (con respaldo por estado + comodín):
+//  - cada ruta toma su ciudad exacta;
+//  - ciudades del MISMO estado que ninguna otra ruta del POL/POD cotiza se le suman;
+//  - origen "—" (Not Specified en el PDW) se reparte como comodín del POL/POD;
+//  - ciudades que SÍ son de otra ruta, o de otro estado, no se mezclan (salen en "no cotizadas").
+// Devuelve un arreglo alineado a `rutas`.
+export const volumenPorRuta=(movs, rutas, anioAct)=>{
+  const laneKey=(pol,pod)=>_upP(pol)+"|"+_upP(pod);
+  const claimed=new Map();   // lane -> Set(ciudadNorm de rutas que SÍ traen ciudad)
+  (rutas||[]).forEach(r=>{ const c=_rutaCiu(r); if(c&&c!=="—"){ const k=laneKey(r.pol,r.pod); if(!claimed.has(k)) claimed.set(k,new Set()); claimed.get(k).add(c); } });
+  return (rutas||[]).map(r=>{
+    const C=_rutaCiu(r), S=_rutaEst(r), k=laneKey(r.pol,r.pod); const claimSet=claimed.get(k)||new Set();
+    const acc=_volCero();
+    (movs||[]).forEach(m=>{
+      if(!mismoPuerto(r.pol,m.pol)||!mismoPuerto(r.pod,m.pod)) return;
+      const nc=_cnorm(m.origen_ciudad), me=_upP(m.origen_estado);
+      let ok=false;
+      if(C&&C!=="—"){
+        if(nc===C) ok=true;                                 // su ciudad exacta
+        else if(nc==="—") ok=true;                          // origen sin ciudad → comodín del lane
+        else if(!claimSet.has(nc) && S && me===S) ok=true;  // ciudad del mismo estado no cotizada aparte
+      } else {
+        if(nc==="—" || !S || me===S) ok=true;               // ruta sin ciudad: por estado + comodín
+      }
+      if(ok) _acumVol(acc,m,anioAct);
+    });
+    return acc;
+  });
+};
 // Volumen de UNA ruta cotizada contra los movimientos del cliente.
 // Empata por POL/POD exacto Y por ESTADO de origen (si la ruta trae estado);
 // si la ruta no trae estado, cuenta todos los orígenes de ese POL/POD.
@@ -80,7 +113,7 @@ export const volumenRuta=(movs,pol,pod,estadoAbbr,anioAct)=>{ const est=_upP(est
 // ¿esta ruta tiene algún movimiento? (para no pintar filas vacías)
 export const tieneVolumen=(v)=>!!v&&(v.totHist>0);
 // Rutas (POL/POD/estado) que el cliente SÍ movió (PDW) y que NO están en la cotización.
-export const rutasVolNoCotizadas=(movs,rutas,anioAct)=>{ const map=new Map(); (movs||[]).forEach(m=>{ const est=_upP(m.origen_estado)||"—"; const k=_upP(m.pol)+"|"+_upP(m.pod)+"|"+est; let a=map.get(k); if(!a){ a=Object.assign({pol:m.pol,pod:m.pod,direccion:m.direccion,estado:est},_volCero()); map.set(k,a); } _acumVol(a,m,anioAct); }); const out=[]; for(const a of map.values()){ const cotizada=(rutas||[]).some(r=>{ if(!mismoPuerto(r.pol,a.pol)||!mismoPuerto(r.pod,a.pod)) return false; if(a.estado==="—") return true; /* volumen sin estado se reparte como comodín a cualquier ruta de ese POL/POD */ const re=_rutaEst(r); return !re || re===a.estado; }); if(!cotizada) out.push(a); } out.sort((x,y)=>y.totHist-x.totHist); return out; };
+export const rutasVolNoCotizadas=(movs,rutas,anioAct)=>{ const map=new Map(); (movs||[]).forEach(m=>{ const ciu=_cnorm(m.origen_ciudad); const est=_upP(m.origen_estado)||"—"; const k=_upP(m.pol)+"|"+_upP(m.pod)+"|"+ciu+"|"+est; let a=map.get(k); if(!a){ a=Object.assign({pol:m.pol,pod:m.pod,direccion:m.direccion,estado:est,ciudad:(ciu==="—"?"—":(m.origen_ciudad||"—"))},_volCero()); map.set(k,a); } _acumVol(a,m,anioAct); }); const out=[]; for(const a of map.values()){ const ac=_cnorm(a.ciudad); const cubierta=(rutas||[]).some(r=>{ if(!mismoPuerto(r.pol,a.pol)||!mismoPuerto(r.pod,a.pod)) return false; if(ac==="—") return true; /* sin ciudad: comodín del lane */ const rc=_rutaCiu(r), re=_rutaEst(r); if(rc===ac) return true; /* misma ciudad cotizada */ if(!rc||rc==="—") return true; /* ruta CY cubre el lane */ if(re && re===a.estado) return true; /* mismo estado: se absorbe como comodín */ return false; }); if(!cubierta) out.push(a); } out.sort((x,y)=>y.totHist-x.totHist); return out; };
 
 export const ESTADOS_MX_ABBR={"Aguascalientes":"AGS","Baja California":"BC","Baja California Sur":"BCS","Campeche":"CAMP","Chiapas":"CHIS","Chihuahua":"CHIH","Ciudad de México":"CDMX","Coahuila":"COAH","Colima":"COL","Durango":"DGO","Estado de México":"MEX","Guanajuato":"GTO","Guerrero":"GRO","Hidalgo":"HGO","Jalisco":"JAL","Michoacán":"MICH","Morelos":"MOR","Nayarit":"NAY","Nuevo León":"NL","Oaxaca":"OAX","Puebla":"PUE","Querétaro":"QRO","Quintana Roo":"QROO","San Luis Potosí":"SLP","Sinaloa":"SIN","Sonora":"SON","Tabasco":"TAB","Tamaulipas":"TAMPS","Tlaxcala":"TLAX","Veracruz":"VER","Yucatán":"YUC","Zacatecas":"ZAC"};
 export const ESTADOS_US=["Alabama","Alaska","Arizona","Arkansas","California","Colorado","Connecticut","Delaware","District of Columbia","Florida","Georgia","Hawaii","Idaho","Illinois","Indiana","Iowa","Kansas","Kentucky","Louisiana","Maine","Maryland","Massachusetts","Michigan","Minnesota","Mississippi","Missouri","Montana","Nebraska","Nevada","New Hampshire","New Jersey","New Mexico","New York","North Carolina","North Dakota","Ohio","Oklahoma","Oregon","Pennsylvania","Rhode Island","South Carolina","South Dakota","Tennessee","Texas","Utah","Vermont","Virginia","Washington","West Virginia","Wisconsin","Wyoming"];
