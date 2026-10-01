@@ -182,11 +182,11 @@ export async function exportarExcel(st, opts={}){
       ws.mergeCells(R,1,R,NC); const h=ws.getCell(R,1);
       h.value="Rutas que el cliente movió y NO están cotizadas (PDW) — "+noCot.length+" ruta(s)";
       h.font=font({bold:true,size:9,color:{argb:"FF"+RED}}); R++;
-      const heads=["Ruta (POL → POD)","Dir","Origen",anioAct+" 20'",anioAct+" 40/HC",anioAct+" Tot",anioPrev+" Tot","Histórico"];
+      const heads=["Origin","POL","POD",anioAct+" 20'",anioAct+" 40/HC",anioAct+" Tot",anioPrev+" Tot","Histórico"];
       heads.forEach((t,i)=>{ const c=ws.getCell(R,i+1); c.value=t; c.font=font({bold:true,size:8.5,color:{argb:"FFFFFFFF"}}); c.fill=fill(SLATE); c.alignment={horizontal:i>=3?"right":"left",vertical:"middle"}; c.border=bd(); }); R++;
       noCot.slice(0,40).forEach(a=>{
         const _ori=(a.ciudad&&a.ciudad!=="—")?(a.ciudad+(a.estado&&a.estado!=="—"?", "+a.estado:"")):((a.estado&&a.estado!=="—")?a.estado:"—");
-        const vals=[(a.pol||"")+" → "+(a.pod||""),(a.direccion==="Import"?"IMP":"EXP"),_ori,a.c20A,a.c40A,a.totA,a.totP,a.totHist];
+        const vals=[_ori, tx(a.pol)?puertoLabel(a.pol):(a.pol||""), tx(a.pod)?puertoLabel(a.pod):(a.pod||""), a.c20A,a.c40A,a.totA,a.totP,a.totHist];
         vals.forEach((v,i)=>{ const c=ws.getCell(R,i+1); c.border=bd(); if(i>=3){ const num=Number(v)||0; if(num>0){ c.value=num; c.numFmt="#,##0"; c.font=font({size:8.5,bold:i===7,color:{argb:"FF"+(i===7?SLATE:INK)}}); } else { c.value="–"; c.font=font({size:8.5,color:{argb:"FFC0C7CE"}}); } c.alignment={horizontal:"right",vertical:"middle"}; } else { c.value=v; c.font=font({size:8.5,bold:i===0}); c.alignment={vertical:"middle"}; } }); R++;
       });
       if(noCot.length>40){ ws.mergeCells(R,1,R,NC); const m=ws.getCell(R,1); m.value="… (+"+(noCot.length-40)+" rutas más)"; m.font=font({italic:true,size:8,color:{argb:"FF8A939C"}}); R++; }
