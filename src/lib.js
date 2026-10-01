@@ -63,7 +63,7 @@ export const sonPuertosBase=(a,b)=>{ if(!a||!b) return false; if(paisDe(a)!=="CN
 // ===== Volumen histórico (movimientos del PDW) =====
 // Alias de códigos de puerto donde el PDW y el catálogo del cotizador difieren
 // (mismo puerto, distinto UN/LOCODE). Se amplía según hallazgos.
-const _ALIAS_PUERTO={ CNNBO:"CNNBG", CNNBG:"CNNBO" };
+const _ALIAS_PUERTO={ CNNBO:"CNNBG", CNNBG:"CNNBO", CNSHG:"CNNHS", CNNHS:"CNSHG" };
 const _upP=(c)=>String(c||"").trim().toUpperCase();
 // ¿el código a (de una ruta cotizada) y b (del PDW) son el mismo puerto?
 // EXACTO (mismo UN/LOCODE) + alias de códigos equivalentes. NO junta puertos
