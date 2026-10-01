@@ -110,6 +110,8 @@ export async function exportarExcel(st, opts={}){
   if(st.amendment) meta.push(["Amendment:","AM"+st.amendment]);
   if(st.commodity) meta.push(["Commodity:",st.commodity]);
   if(st.tradelane) meta.push(["Tradelane:",st.tradelane]);
+  const empRel=Array.isArray(opts.empresasRel)?opts.empresasRel:[];
+  if(empRel.length) meta.push(["Válida también para:", empRel.map(r=>r.nombre||r.code).join(", ")]);
   const vig=(st.vigDesde||st.vigHasta)?((st.vigDesde?fmtFecha(st.vigDesde):"")+(st.vigHasta?" – "+fmtFecha(st.vigHasta):"")):"Sujeta a confirmación";
   meta.push(["Vigencia:",vig]);
   let R=4;

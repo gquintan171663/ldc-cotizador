@@ -2,14 +2,33 @@ import { supabase } from "./supabaseClient.js";
 import { matchCommodity, paisDe, tlDe, n, adicPorCont, tx, eqMeta, prefijoCliente, numeroAcuerdo, hayCambioCosto, ventaEq, mkSurOf, round10, opcionActivaEq, puertoNombre, abrevEstado, sonPuertosAlternos, sonPuertosBase, surAplican } from "./lib.js";
 
 // Volumen histórico del cliente (movimientos del PDW, sincronizados por el colector).
-// Devuelve [] si el cliente no tiene logitude_code o no hay datos.
-export async function volumenCliente(logitudeCode){
-  if(!logitudeCode) return [];
+// Acepta un código o un arreglo de códigos (cliente principal + empresas relacionadas).
+// Devuelve [] si no hay códigos o no hay datos.
+export async function volumenCliente(code){
+  const codes = (Array.isArray(code) ? code : [code])
+    .filter(Boolean).map(String);
+  if(!codes.length) return [];
   const { data, error } = await supabase.from("movimientos_cliente_ruta")
     .select("direccion,pol,pod,origen_estado,anio,cont_20,cont_40,cont_otros,total")
-    .eq("logitude_code", String(logitudeCode));
+    .in("logitude_code", codes);
   if(error){ console.warn("volumenCliente:", error.message); return []; }
   return data||[];
+}
+
+// Grupo de empresas relacionadas guardado en el cliente (jsonb empresas_relacionadas).
+// Tolerante si la columna aún no existe (devuelve []).
+export async function grupoCliente(clienteId){
+  if(!clienteId) return [];
+  const { data, error } = await supabase.from("clientes")
+    .select("empresas_relacionadas").eq("id", clienteId).single();
+  if(error) return [];
+  return (data && data.empresas_relacionadas) || [];
+}
+export async function guardarGrupoCliente(clienteId, lista){
+  if(!clienteId) return { error:"sin cliente" };
+  const { error } = await supabase.from("clientes")
+    .update({ empresas_relacionadas: Array.isArray(lista)?lista:[] }).eq("id", clienteId);
+  return { error: error ? error.message : null };
 }
 
 // Mapa commodity(lower) -> id desde el catálogo
