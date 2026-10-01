@@ -26,9 +26,12 @@ export async function exportarExcel(st, opts={}){
   const anioAct = new Date().getFullYear();
   const anioPrev = anioAct - 1;
   const hasVol = !!(volMovs && volMovs.length);
+  // Solo el tráfico (dirección) de esta cotización: no mezclar IMP en una EXPO ni viceversa.
+  const dirPDW = dir==="E" ? "Export" : "Import";
+  const volMovsDir = hasVol ? (volMovs||[]).filter(m=>String(m.direccion)===dirPDW) : null;
 
   const panelByTl={}, tlOrder=[], dataRows=[];
-  const vols = hasVol ? volumenPorRuta(volMovs, rutas, anioAct) : null;   // volumen repartido por ciudad+comodín, alineado a `rutas`
+  const vols = hasVol ? volumenPorRuta(volMovsDir, rutas, anioAct) : null;   // volumen repartido por ciudad+comodín, alineado a `rutas`
   rutas.forEach((r,ri)=>{
     const tl=tlDe(r);
     if(!panelByTl[tl]){ panelByTl[tl]={inc:{},exc:{}}; tlOrder.push(tl); }
@@ -173,7 +176,7 @@ export async function exportarExcel(st, opts={}){
 
   // ===== Rutas movidas por el cliente y NO cotizadas (PDW) — solo interno =====
   if(hasVol){
-    const noCot=rutasVolNoCotizadas(volMovs,rutas,anioAct);
+    const noCot=rutasVolNoCotizadas(volMovsDir,rutas,anioAct);
     if(noCot.length){
       R++;
       ws.mergeCells(R,1,R,NC); const h=ws.getCell(R,1);
