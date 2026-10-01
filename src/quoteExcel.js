@@ -6,6 +6,7 @@ const LOGO_B64="iVBORw0KGgoAAAANSUhEUgAAAeAAAACsCAYAAACjOX82AABmPklEQVR42u2dd3wU
 const RED="C8202E", INK="1A1A1A", SLATE="1F2D3A", GREEN="0B7A3B", GREENBG="E8F5EC";
 const YEL="8A6D1F", YELBG="FBF4E0", REDBG="FCEEF0";
 const LRED="C0392B", LREDBG="FDE7E7";   // rojo claro para profit < 250
+const BLUE="2E5A8A", BLUEBG="E8F0FA";   // columnas del año en curso (volumen)
 const ARIAL="Arial";
 
 const fmtFecha=(d)=>{ if(!d) return ""; const x=new Date(d); if(isNaN(x)) return String(d); const p=(v)=>String(v).padStart(2,"0"); return p(x.getDate())+"/"+p(x.getMonth()+1)+"/"+x.getFullYear(); };
@@ -66,6 +67,9 @@ export async function exportarExcel(st, opts={}){
     dataRows.push({ origen:(r.origen||"")+(r.origen&&r.origenEstado?", "+abrevEstado(r.origenEstado):""), pol:tx(r.pol)?puertoLabel(r.pol):(r.pol||""), pod:tx(r.pod)?puertoLabel(r.pod):(r.pod||""), destino:(r.destino||"")+(r.destino&&r.destinoEstado?", "+abrevEstado(r.destinoEstado):""), srvc:serviceMode(r)+(tm?(" / "+tm):""), tt:ttv?(ttv+" d"):"", ventas, profits, navs, profits2, navs2, allin:excShown===0, vol });
   });
 
+  // Interno con volumen: ordena la tabla por el volumen del año en curso (de mayor a menor).
+  if(hasVol) dataRows.sort((a,b)=>(((b.vol&&b.vol.totA)||0)-((a.vol&&a.vol.totA)||0)));
+
   // ===== Workbook =====
   const wb=new ExcelJS.Workbook();
   const ws=wb.addWorksheet("Cotización",{views:[{showGridLines:false}],pageSetup:{fitToPage:true,fitToWidth:1,fitToHeight:0,orientation:"landscape",horizontalCentered:true,margins:{left:0.3,right:0.3,top:0.4,bottom:0.4,header:0.2,footer:0.2}}});
@@ -85,9 +89,9 @@ export async function exportarExcel(st, opts={}){
   // Volumen histórico del cliente en esta ruta (PDW) — solo interno.
   if(hasVol){
     cols.push({key:"v_sep",h:"",vol:true,sep:true});
-    cols.push({key:"vA_20",h:anioAct+" 20'",num:true,vol:true});
-    cols.push({key:"vA_40",h:anioAct+" 40/HC",num:true,vol:true});
-    cols.push({key:"vA_tot",h:anioAct+" Tot",num:true,vol:true,voltot:true});
+    cols.push({key:"vA_20",h:anioAct+" 20'",num:true,vol:true,cur:true});
+    cols.push({key:"vA_40",h:anioAct+" 40/HC",num:true,vol:true,cur:true});
+    cols.push({key:"vA_tot",h:anioAct+" Tot",num:true,vol:true,voltot:true,cur:true});
     cols.push({key:"vP_20",h:anioPrev+" 20'",num:true,vol:true});
     cols.push({key:"vP_40",h:anioPrev+" 40/HC",num:true,vol:true});
     cols.push({key:"vP_tot",h:anioPrev+" Tot",num:true,vol:true,voltot:true});
@@ -114,7 +118,7 @@ export async function exportarExcel(st, opts={}){
 
   // Encabezado tabla
   const hr=R;
-  cols.forEach((c,i)=>{ const cc=ws.getCell(hr,i+1); cc.value=c.h; cc.font=font({bold:true,size:9,color:{argb:"FFFFFFFF"}}); cc.fill=fill(SLATE); cc.alignment={horizontal:c.num?"right":(c.ctr?"center":"left"),vertical:"middle"}; cc.border=bd(); });
+  cols.forEach((c,i)=>{ const cc=ws.getCell(hr,i+1); cc.value=c.h; cc.font=font({bold:true,size:9,color:{argb:"FFFFFFFF"}}); cc.fill=fill(c.cur?BLUE:SLATE); cc.alignment={horizontal:c.num?"right":(c.ctr?"center":"left"),vertical:"middle"}; cc.border=bd(); });
   ws.getRow(hr).height=20; R++;
 
   // Filas + medición de ancho por columna
@@ -135,7 +139,7 @@ export async function exportarExcel(st, opts={}){
         cc.alignment={horizontal:"right",vertical:"middle"}; }
       else if(c.key.indexOf("eq_")===0){ const idx=eqs.findIndex(e=>("eq_"+e.k)===c.key); const v=d.ventas[idx]; if(v!=null){ cc.value=v; cc.numFmt="$#,##0"; cc.font=font({bold:true,color:{argb:"FF"+INK}}); setmax(c.key,"$"+v.toLocaleString()); } else { cc.value="—"; cc.font=font({color:{argb:"FFC0C7CE"}}); } cc.alignment={horizontal:"right",vertical:"middle"}; }
       else if(c.key==="term"){ if(d.allin){ cc.value="ALL-IN"; cc.font=font({bold:true,size:8.5,color:{argb:"FF"+GREEN}}); cc.fill=fill(GREENBG); } cc.alignment={horizontal:"center",vertical:"middle"}; setmax(c.key,"ALL-IN"); }
-      else if(c.vol){ if(c.sep){ cc.value=""; cc.border={}; } else { const vv=d.vol||{}; const mm={vA_20:vv.c20A,vA_40:vv.c40A,vA_tot:vv.totA,vP_20:vv.c20P,vP_40:vv.c40P,vP_tot:vv.totP,vH_tot:vv.totHist}; const num=mm[c.key]||0; if(num>0){ cc.value=num; cc.numFmt="#,##0"; cc.font=font({size:9,bold:!!c.voltot,color:{argb:"FF"+(c.voltot?SLATE:INK)}}); setmax(c.key,String(num)); } else { cc.value="–"; cc.font=font({size:9,color:{argb:"FFC0C7CE"}}); } cc.alignment={horizontal:"right",vertical:"middle"}; } }
+      else if(c.vol){ if(c.sep){ cc.value=""; cc.border={}; } else { const vv=d.vol||{}; const mm={vA_20:vv.c20A,vA_40:vv.c40A,vA_tot:vv.totA,vP_20:vv.c20P,vP_40:vv.c40P,vP_tot:vv.totP,vH_tot:vv.totHist}; const num=mm[c.key]||0; if(num>0){ cc.value=num; cc.numFmt="#,##0"; cc.font=font({size:9,bold:!!c.voltot,color:{argb:"FF"+(c.voltot?SLATE:INK)}}); setmax(c.key,String(num)); } else { cc.value="–"; cc.font=font({size:9,color:{argb:"FFC0C7CE"}}); } if(c.cur) cc.fill=fill(BLUEBG); cc.alignment={horizontal:"right",vertical:"middle"}; } }
       else if(c.key==="tt"){ cc.value=d.tt; cc.font=font({size:9}); cc.alignment={horizontal:"center",vertical:"middle"}; setmax(c.key,d.tt); }
       else { const val=c.key==="pol"?d.pol:c.key==="pod"?d.pod:c.key==="destino"?d.destino:c.key==="srvc"?d.srvc:d.origen; cc.value=val||""; cc.font=font({size:9,bold:c.key==="origen"}); cc.alignment={vertical:"middle"}; setmax(c.key,val); }
     });
