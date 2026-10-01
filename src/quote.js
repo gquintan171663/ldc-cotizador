@@ -87,7 +87,7 @@ export function buildQuoteHtml(st){
   const showOri=(st.rutas||[]).some(r=>tx(r.origen));
   const showDest=(st.rutas||[]).some(r=>tx(r.destino));
   // Filas de tarifas (opción elegida por ruta) + recargos agrupados por tradelane
-  let bodyRows=""; const panelByTl={}; const tlOrder=[];
+  let bodyRows=""; let anySubjectExport=false; const panelByTl={}; const tlOrder=[];
   const cel=(v)=> v&&String(v).trim()!=="" ? esc(v) : '<span style="color:#C0C7CE">—</span>';
   const dir=st.direccion||"E";
   ordenarRutas(st.rutas||[], st.direccion||"E").forEach(r=>{
@@ -100,6 +100,7 @@ export function buildQuoteHtml(st){
     // Recargos del panel: unión de las navieras activas de la ruta
     let excShown=0;
     actIdxs.forEach(oi=>{ const o=(r.opciones||[])[oi]||{navScac:""}; surOf(o.navScac,tl).forEach(s=>{ const mostrar=s.desplegar!==false; if(!mostrar) return; const cell={d:s.d||s.c,monto:s.monto,moneda:s.moneda,basis:s.basis,pago:s.pago}; if(enPrecio(s,dir)){ if(!P.inc[s.c]) P.inc[s.c]=cell; } else { if(!P.exc[s.c]){ P.exc[s.c]=cell; excShown++; } } }); });
+    if(excShown>0) anySubjectExport=true;
     const allInCell = excShown===0 ? '<td class="ctr"><span class="allin">ALL-IN</span></td>' : '<td class="ctr"></td>';
     const ttv=transitoRango(r,eqs,dir,surOf);
     const tt = ttv ? (esc(ttv)+" días") : '<span style="color:#C0C7CE">—</span>';
@@ -118,6 +119,9 @@ export function buildQuoteHtml(st){
       '</tr>';
   });
 
+  // Exportación: ALL-IN a nivel cotización. Si hay algún cargo que paga el cliente
+  // (collect, mostrado), se quita el ALL-IN de todas las líneas.
+  if(dir==="E" && anySubjectExport) bodyRows = bodyRows.split('<span class="allin">ALL-IN</span>').join('');
   const _basis=(b)=>b==="teu"?"/TEU":b==="bl"?"/BL":"/cont.";
   const _amt=(o)=>{const v=n(o.monto);return v>0?('<span style="color:#1F2D3A;font-weight:bold"> '+money(v,o.moneda||"USD")+'</span><span style="color:#7A8794;font-size:10px">'+_basis(o.basis||"contenedor")+'</span>'):"";};
   const _pago=(o)=>{const p=(o.pago||"").toLowerCase();return p==="collect"?'<span class="pgo col">Collect</span>':p==="prepaid"?'<span class="pgo pre">Prepaid</span>':"";};
@@ -126,8 +130,9 @@ export function buildQuoteHtml(st){
   const panelsHtml=tlOrder.map(tl=>{ const P=panelByTl[tl];
     if(Object.keys(P.inc).length===0 && Object.keys(P.exc).length===0) return "";   // sin recargos: no imprimir (ya dice ALL-IN en la línea)
     const head=multiTl?('<div class="tlhead">Tradelane: '+esc(tlLabel(tl))+'</div>'):'';
-    return head+'<div class="cols2"><div class="panel inc"><h4>Incluyen:</h4><ul>'+_li(P.inc)+'</ul></div>'+
-      '<div class="panel exc"><h4>No incluyen (subject to):</h4><ul>'+_li(P.exc)+'</ul></div></div>';
+    const incHtml = Object.keys(P.inc).length ? _li(P.inc) : '<li><span class="allin">ALL-IN</span></li>';
+    return head+'<div class="cols2"><div class="panel inc"><h4>Included:</h4><ul>'+incHtml+'</ul></div>'+
+      '<div class="panel exc"><h4>Not included (subject to):</h4><ul>'+_li(P.exc)+'</ul></div></div>';
   }).join("");
   const eqTh=eqs.map(e=>'<th class="num">'+esc(e.t)+'</th>').join("");
   const ncols=eqs.length;
