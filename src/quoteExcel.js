@@ -165,6 +165,18 @@ export async function exportarExcel(st, opts={}){
   // Zoom automático: ajusta para ver todas las columnas a lo ancho sin zoom manual.
   try{ let totalPx=0; for(let i=1;i<=NC;i++){ const w=ws.getColumn(i).width||8; totalPx+=Math.round(w*7)+5; } const target=interno?1200:1350; let z=Math.floor(target/totalPx*100); z=Math.max(interno?40:45,Math.min(100,z)); ws.views=[{showGridLines:false,zoomScale:z,zoomScaleNormal:z}]; }catch(e){}
 
+  // Alto de renglón automático para celdas con wrapText (notas y paneles),
+  // según el ancho combinado de las columnas 2..NC y los saltos de línea.
+  const _mergedChars=(fromCol)=>{ let w=0; for(let i=fromCol;i<=NC;i++){ w+=(ws.getColumn(i).width||8); } return Math.max(w,12); };
+  const _autoH=(txt,fromCol)=>{ const perLine=_mergedChars(fromCol); let lines=0; String(txt==null?"":txt).split(/\r?\n/).forEach(s=>{ lines+=Math.max(1,Math.ceil((s.length||1)/perLine)); }); return Math.min(Math.max(lines*14.5,16),409); };
+
+  // Notas — van justo debajo del recuadro de tarifas (antes de los recargos).
+  R++;
+  const notas=(st.notas||"").trim();
+  if(notas){ const nk=ws.getCell(R,1); nk.value="Notas:"; nk.font=font({bold:true,size:9,color:{argb:"FF"+SLATE}}); ws.mergeCells(R,2,R,NC); const nv=ws.getCell(R,2); nv.value=notas; nv.font=font({size:9}); nv.alignment={wrapText:true,vertical:"top"}; ws.getRow(R).height=_autoH(notas,2); R+=2; }
+  const corr=interno?((st.correcciones||"").trim()):"";
+  if(corr){ const ck=ws.getCell(R,1); ck.value="Notas internas:"; ck.font=font({bold:true,size:9,color:{argb:"FF"+RED}}); ws.mergeCells(R,2,R,NC); const cv=ws.getCell(R,2); cv.value=corr; cv.font=font({size:9,color:{argb:"FF8A6D1F"}}); cv.alignment={wrapText:true,vertical:"top"}; cv.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFFBF4E0"}}; ws.getRow(R).height=_autoH(corr,2); R+=2; }
+
   // Paneles Incluyen / No incluyen
   R++;
   const _basis=(b)=>b==="teu"?"/TEU":b==="bl"?"/BL":"/cont.";
@@ -174,8 +186,8 @@ export async function exportarExcel(st, opts={}){
     const P=panelByTl[tl];
     if(Object.keys(P.inc).length===0 && Object.keys(P.exc).length===0) return;   // sin recargos: no imprimir (ya dice ALL-IN en la línea)
     if(multiTl){ ws.mergeCells(R,1,R,NC); const c=ws.getCell(R,1); c.value="Tradelane: "+tlLabel(tl); c.font=font({bold:true,size:9,color:{argb:"FF"+SLATE}}); R++; }
-    const c1=ws.getCell(R,1); c1.value="Included in the rate:"; c1.font=font({bold:true,size:9,color:{argb:"FF"+GREEN}}); ws.mergeCells(R,2,R,NC); const c2=ws.getCell(R,2); c2.value=liTxt(P.inc).join("   ·   ")||"ALL-IN"; c2.font=font({size:9}); c2.alignment={wrapText:true,vertical:"middle"}; R++;
-    const e1=ws.getCell(R,1); e1.value="Not included (subject to):"; e1.font=font({bold:true,size:9,color:{argb:"FF"+RED}}); ws.mergeCells(R,2,R,NC); const e2=ws.getCell(R,2); e2.value=liTxt(P.exc).join("   ·   ")||"—"; e2.font=font({size:9}); e2.alignment={wrapText:true,vertical:"middle"}; R++;
+    const c1=ws.getCell(R,1); c1.value="Included in the rate:"; c1.font=font({bold:true,size:9,color:{argb:"FF"+GREEN}}); ws.mergeCells(R,2,R,NC); const c2=ws.getCell(R,2); c2.value=liTxt(P.inc).join("   ·   ")||"ALL-IN"; c2.font=font({size:9}); c2.alignment={wrapText:true,vertical:"middle"}; ws.getRow(R).height=_autoH(c2.value,2); R++;
+    const e1=ws.getCell(R,1); e1.value="Not included (subject to):"; e1.font=font({bold:true,size:9,color:{argb:"FF"+RED}}); ws.mergeCells(R,2,R,NC); const e2=ws.getCell(R,2); e2.value=liTxt(P.exc).join("   ·   ")||"—"; e2.font=font({size:9}); e2.alignment={wrapText:true,vertical:"middle"}; ws.getRow(R).height=_autoH(e2.value,2); R++;
     R++;
   });
 
@@ -199,11 +211,7 @@ export async function exportarExcel(st, opts={}){
     }
   }
 
-  // Notas (si hay)
-  const notas=(st.notas||"").trim();
-  if(notas){ const nk=ws.getCell(R,1); nk.value="Notas:"; nk.font=font({bold:true,size:9,color:{argb:"FF"+SLATE}}); ws.mergeCells(R,2,R,NC); const nv=ws.getCell(R,2); nv.value=notas; nv.font=font({size:9}); nv.alignment={wrapText:true,vertical:"top"}; R+=2; }
-  const corr=interno?((st.correcciones||"").trim()):"";
-  if(corr){ const ck=ws.getCell(R,1); ck.value="Notas internas:"; ck.font=font({bold:true,size:9,color:{argb:"FF"+RED}}); ws.mergeCells(R,2,R,NC); const cv=ws.getCell(R,2); cv.value=corr; cv.font=font({size:9,color:{argb:"FF8A6D1F"}}); cv.alignment={wrapText:true,vertical:"top"}; cv.fill={type:"pattern",pattern:"solid",fgColor:{argb:"FFFBF4E0"}}; R+=2; }
+  // (Las notas se imprimen arriba, justo debajo del recuadro de tarifas.)
 
   // Pie
   ws.mergeCells(R,1,R,NC);
