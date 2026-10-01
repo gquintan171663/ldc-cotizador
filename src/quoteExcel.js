@@ -71,6 +71,11 @@ export async function exportarExcel(st, opts={}){
     dataRows.push({ origen:(r.origen||"")+(r.origen&&r.origenEstado?", "+abrevEstado(r.origenEstado):""), pol:tx(r.pol)?puertoLabel(r.pol):(r.pol||""), pod:tx(r.pod)?puertoLabel(r.pod):(r.pod||""), destino:(r.destino||"")+(r.destino&&r.destinoEstado?", "+abrevEstado(r.destinoEstado):""), srvc:serviceMode(r)+(tm?(" / "+tm):""), tt:ttv?(ttv+" d"):"", ventas, profits, navs, profits2, navs2, allin:excShown===0, vol });
   });
 
+  // Exportación: el ALL-IN es a nivel COTIZACIÓN. Si alguna ruta tiene un cargo que
+  // paga el cliente (collect, no "LDC paga") y está marcado "mostrar", se quita el
+  // ALL-IN de TODAS las rutas (así la línea no contradice los recargos "subject to").
+  if(dir==="E" && dataRows.some(d=>!d.allin)) dataRows.forEach(d=>{ d.allin=false; });
+
   // Interno con volumen: ordena la tabla por el volumen del año en curso (de mayor a menor).
   if(hasVol) dataRows.sort((a,b)=>(((b.vol&&b.vol.totA)||0)-((a.vol&&a.vol.totA)||0)));
 
