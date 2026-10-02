@@ -69,8 +69,12 @@ const _upP=(c)=>String(c||"").trim().toUpperCase();
 // EXACTO (mismo UN/LOCODE) + alias de códigos equivalentes. NO junta puertos
 // alternos (Manzanillo↔Lázaro): cada ruta debe mostrar su volumen real por POL/POD.
 export const mismoPuerto=(a,b)=>{ a=_upP(a); b=_upP(b); if(!a||!b) return false; if(a===b) return true; if(_ALIAS_PUERTO[a]===b||_ALIAS_PUERTO[b]===a) return true; return false; };
-const _acumVol=(acc,m,anioAct)=>{ const c20=Number(m.cont_20)||0, c40=Number(m.cont_40)||0, ot=Number(m.cont_otros)||0; const tot=(m.total!=null?Number(m.total):(c20+c40+ot))||0; acc.totHist+=tot; if(m.anio===anioAct){ acc.c20A+=c20; acc.c40A+=c40; acc.totA+=tot; } else if(m.anio===anioAct-1){ acc.c20P+=c20; acc.c40P+=c40; acc.totP+=tot; } };
-const _volCero=()=>({c20A:0,c40A:0,totA:0,c20P:0,c40P:0,totP:0,totHist:0});
+const _parseDet=(s)=>{ try{ const o=JSON.parse(s||"{}"); return (o&&typeof o==="object")?o:{}; }catch(_){ return {}; } };
+const _mergeDet=(acc,o)=>{ for(const k in o){ acc[k]=(acc[k]||0)+(Number(o[k])||0); } };
+const _acumVol=(acc,m,anioAct)=>{ const c20=Number(m.cont_20)||0, c40=Number(m.cont_40)||0, ot=Number(m.cont_otros)||0; const tot=(m.total!=null?Number(m.total):(c20+c40+ot))||0; const det=ot>0?_parseDet(m.otros_detalle):null; acc.totHist+=tot; if(m.anio===anioAct){ acc.c20A+=c20; acc.c40A+=c40; acc.otrosA+=ot; acc.totA+=tot; if(det) _mergeDet(acc.detA,det); } else if(m.anio===anioAct-1){ acc.c20P+=c20; acc.c40P+=c40; acc.otrosP+=ot; acc.totP+=tot; if(det) _mergeDet(acc.detP,det); } };
+const _volCero=()=>({c20A:0,c40A:0,otrosA:0,totA:0,c20P:0,c40P:0,otrosP:0,totP:0,totHist:0,detA:{},detP:{}});
+// Formatea el detalle de "otros": {"45'GP":2,"40'FR":1} -> "45'GP ×2, 40'FR"
+export const fmtOtros=(det)=>Object.keys(det||{}).map(k=>k+((Number(det[k])||0)>1?" ×"+det[k]:"")).join(", ");
 // Abreviatura de estado de una ruta cotizada (para empatar con el PDW). "" si no tiene.
 const _rutaEst=(r)=>{ const e=r&&r.origenEstado?abrevEstado(r.origenEstado):""; return _upP(e); };
 // Normaliza una ciudad para empatar (sin acentos, solo alfanumérico, mayúsculas).
